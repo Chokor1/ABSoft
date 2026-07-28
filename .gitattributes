@@ -1,0 +1,13 @@
+# Keep line endings predictable no matter which machine clones this.
+* text=auto eol=lf
+
+# Batch files must stay CRLF: cmd.exe is unreliable with LF-only scripts.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Never let Git rewrite bytes inside these.
+*.db binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

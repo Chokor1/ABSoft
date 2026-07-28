@@ -1,0 +1,214 @@
+import { api } from '../api.js';
+import { icon } from '../icons.js';
+import { count, errorText, methodText, t } from '../i18n.js';
+import {
+  confirmDialog,
+  dateText,
+  dateTimeText,
+  debounce,
+  downloadCsv,
+  emptyState,
+  esc,
+  modal,
+  money,
+  monthStart,
+  qtyText,
+  rangeBar,
+  signClass,
+  store,
+  toast,
+  todayISO,
+} from '../ui.js';
+
+/** Printable receipt / invoice for a completed sale. */
+export function showReceipt(sale, { change = 0 } = {}) {
+  const cfg = sale.settings || store.settings;
+  const line = (label, value, cls = '') =>
+    `<div class="r-line ${cls}"><span>${esc(label)}</span><span>${value}</span></div>`;
+
+  return modal({
+    title: t('receipt.title', { doc: sale.doc_no }),
+    subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')}`,
+    body: `<div class="receipt" id="receipt-print">
+        <div class="r-center"><b>${esc(cfg.store_name || t('app.name'))}</b></div>
+        <div class="r-center">${esc(sale.doc_no)} · ${dateTimeText(sale.created_at || sale.date)}</div>
+        <div class="r-rule"></div>
+        ${sale.items
+          .map(
+            (i) =>
+              `${line(`${i.name}`, money(i.total))}
+               <div class="r-line" style="color:var(--muted)"><span class="r-detail">&nbsp;&nbsp;${qtyText(
+                 i.qty,
+               )} ${esc(i.unit)} × ${money(i.unit_price)}${
+                i.discount ? ` − ${money(i.discount)}` : ''
+              }</span><span></span></div>`,
+          )
+          .join('')}
+        <div class="r-rule"></div>
+        ${line(t('common.subtotal'), money(sale.subtotal))}
+        ${sale.discount ? line(t('common.discount'), `−${money(sale.discount)}`) : ''}
+        ${sale.tax ? line(t('common.tax'), money(sale.tax)) : ''}
+        ${line(t('receipt.total'), money(sale.total), 'r-total')}
+        ${line(t('receipt.paid', { method: methodText(sale.method) }), money(sale.paid))}
+        ${change > 0.004 ? line(t('receipt.change'), money(change)) : ''}
+        <div class="r-rule"></div>
+        <div class="r-center">${esc(cfg.receipt_footer || '')}</div>
+      </div>`,
+    footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
+             <button class="btn btn-primary" data-print>${icon('print')} ${esc(t('common.print'))}</button>`,
+    setup: (root) => root.querySelector('[data-print]').addEventListener('click', () => window.print()),
+  });
+}
+
+export async function render(root, ctx) {
+  const state = { from: monthStart(), to: todayISO(), search: '' };
+
+  const bar = rangeBar(state, (r) => {
+    Object.assign(state, r);
+    load();
+  });
+
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'input-icon';
+  searchWrap.style.minWidth = '240px';
+  searchWrap.innerHTML = `${icon('search')}<input class="input" data-search placeholder="${esc(t('sales.search'))}"/>`;
+  searchWrap.querySelector('input').addEventListener(
+    'input',
+    debounce((e) => {
+      state.search = e.target.value.trim();
+      load();
+    }, 250),
+  );
+  bar.appendChild(searchWrap);
+
+  const body = document.createElement('div');
+  root.innerHTML = '';
+  root.append(bar, body);
+
+  ctx.actions.innerHTML = `<button class="btn" id="export">${icon('download')} ${esc(t('common.export_csv'))}</button>`;
+
+  let rows = [];
+
+  ctx.actions.querySelector('#export').addEventListener('click', () =>
+    downloadCsv(
+      `absoft-sales-${state.from}-to-${state.to}.csv`,
+      rows.map((s) => ({
+        invoice: s.doc_no,
+        date: s.date,
+        customer: s.customer,
+        items: s.line_count,
+        subtotal: s.subtotal,
+        discount: s.discount,
+        tax: s.tax,
+        total: s.total,
+        cost: s.cogs,
+        profit: s.profit,
+        method: s.method,
+        cashier: s.username || '',
+      })),
+    ),
+  );
+
+  async function load() {
+    body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
+      t('common.loading'),
+    )}</p></div></div></div>`;
+    rows = await api.sales({ from: state.from, to: state.to, search: state.search });
+
+    const sum = rows.reduce(
+      (a, s) => ({
+        total: a.total + s.total,
+        profit: a.profit + s.profit,
+        cogs: a.cogs + s.cogs,
+        qty: a.qty + s.total_qty,
+      }),
+      { total: 0, profit: 0, cogs: 0, qty: 0 },
+    );
+
+    body.innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div><h3>${esc(count('sales', rows.length))}</h3>
+          <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
+          <div class="spacer"></div>
+          <span class="badge accent">${esc(t('sales.revenue_badge', { v: money(sum.total) }))}</span>
+          <span class="badge ${sum.profit >= 0 ? 'success' : 'danger'}">${esc(
+            t('sales.profit_badge', { v: money(sum.profit) }),
+          )}</span>
+        </div>
+        <div class="card-body flush">
+          ${
+            rows.length
+              ? `<div class="table-wrap"><table class="data">
+                  <thead><tr>
+                    <th>${esc(t('sales.invoice'))}</th><th>${esc(t('common.date'))}</th>
+                    <th>${esc(t('common.customer'))}</th><th class="right">${esc(t('common.items'))}</th>
+                    <th class="right">${esc(t('common.total'))}</th><th class="right">${esc(t('common.cost'))}</th>
+                    <th class="right">${esc(t('common.profit'))}</th>
+                    <th>${esc(t('sales.payment'))}</th><th>${esc(t('sales.cashier'))}</th><th></th>
+                  </tr></thead>
+                  <tbody>${rows
+                    .map(
+                      (s) => `<tr class="row-click" data-open="${s.id}">
+                        <td class="mono">${esc(s.doc_no)}</td>
+                        <td class="nowrap">${dateText(s.date)}</td>
+                        <td>${esc(s.customer || t('common.walk_in'))}</td>
+                        <td class="right">${qtyText(s.total_qty)}</td>
+                        <td class="right"><b>${money(s.total)}</b></td>
+                        <td class="right muted">${money(s.cogs)}</td>
+                        <td class="right ${signClass(s.profit)}">${money(s.profit)}</td>
+                        <td><span class="badge">${esc(methodText(s.method))}</span></td>
+                        <td class="muted">${esc(s.username || t('common.none'))}</td>
+                        <td class="right">${
+                          store.user.role === 'admin'
+                            ? `<button class="btn btn-sm btn-ghost" data-void="${s.id}" title="${esc(
+                                t('sales.void_tip'),
+                              )}">${icon('trash')}</button>`
+                            : ''
+                        }</td>
+                      </tr>`,
+                    )
+                    .join('')}</tbody>
+                  <tfoot><tr>
+                    <td colspan="4">${esc(t('common.totals'))}</td>
+                    <td class="right">${money(sum.total)}</td>
+                    <td class="right">${money(sum.cogs)}</td>
+                    <td class="right ${signClass(sum.profit)}">${money(sum.profit)}</td>
+                    <td colspan="3"></td>
+                  </tr></tfoot>
+                </table></div>`
+              : emptyState(t('sales.none'), t('sales.none_sub'), 'receipt')
+          }
+        </div>
+      </div>`;
+
+    body.querySelectorAll('[data-open]').forEach((tr) =>
+      tr.addEventListener('click', async (e) => {
+        if (e.target.closest('[data-void]')) return;
+        showReceipt(await api.sale(tr.dataset.open));
+      }),
+    );
+
+    body.querySelectorAll('[data-void]').forEach((btn) =>
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await confirmDialog({
+          title: t('sales.void_title'),
+          message: t('sales.void_msg'),
+          confirmLabel: t('sales.void_confirm'),
+          danger: true,
+        });
+        if (!ok) return;
+        try {
+          await api.deleteSale(btn.dataset.void);
+          toast(t('sales.voided'), 'success');
+          load();
+        } catch (err) {
+          toast(errorText(err), 'error');
+        }
+      }),
+    );
+  }
+
+  await load();
+}
