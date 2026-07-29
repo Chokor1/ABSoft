@@ -85,6 +85,12 @@ export const api = {
   settings: () => api.get('/api/settings'),
   saveSettings: (s) => api.put('/api/settings', s),
 
+  entityKinds: () => api.get('/api/entity-kinds'),
+  entities: (kind, query) => api.get(`/api/entities/${kind}`, query),
+  saveEntity: (kind, e) =>
+    e.id ? api.put(`/api/entities/${kind}/${e.id}`, e) : api.post(`/api/entities/${kind}`, e),
+  deleteEntity: (kind, id) => api.del(`/api/entities/${kind}/${id}`),
+
   system: () => api.get('/api/system'),
   backupLocal: () => api.post('/api/backup/local'),
 };

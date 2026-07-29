@@ -8,17 +8,20 @@ import {
   downloadCsv,
   emptyState,
   esc,
+  forgetSuggestions,
   formModal,
   modal,
   money,
   pct,
   qtyText,
+  suggestions,
   toast,
 } from '../ui.js';
 
 export async function render(root, ctx) {
   const state = { search: '', showInactive: false, lowOnly: false, rows: [] };
   let categories = [];
+  let units = [];
 
   ctx.actions.innerHTML = `
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
@@ -76,12 +79,14 @@ export async function render(root, ctx) {
     list.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;
-    const [rows, cats] = await Promise.all([
+    const [rows, cats, unitNames] = await Promise.all([
       api.products({ search: state.search, all: state.showInactive ? '1' : '', low: state.lowOnly ? '1' : '' }),
-      api.categories(),
+      suggestions('category'),
+      suggestions('unit'),
     ]);
     state.rows = rows;
     categories = cats;
+    units = unitNames;
 
     const stockValue = rows.reduce((s, p) => s + p.stock_value, 0);
     root.querySelector('#summary').textContent = t('prod.summary', { n: rows.length, v: money(stockValue) });
@@ -192,7 +197,14 @@ export async function render(root, ctx) {
         },
         { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
         { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
-        { name: 'unit', label: t('common.unit'), value: product?.unit || 'pcs', placeholder: t('prod.unit_placeholder') },
+        {
+          name: 'unit',
+          label: t('common.unit'),
+          value: product?.unit || 'pcs',
+          placeholder: t('prod.unit_placeholder'),
+          list: 'unit-list',
+          datalist: units,
+        },
         {
           name: 'min_stock',
           label: t('prod.min_stock'),
@@ -221,6 +233,9 @@ export async function render(root, ctx) {
     try {
       await api.saveProduct({ ...data, id: product?.id });
       toast(isNew ? t('prod.created') : t('prod.updated'), 'success');
+      // A new category or unit typed here is now saved for next time.
+      forgetSuggestions('category');
+      forgetSuggestions('unit');
       load();
     } catch (err) {
       toast(errorText(err), 'error');

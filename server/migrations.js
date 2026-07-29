@@ -36,6 +36,46 @@ const MIGRATIONS = [
     name: 'product-description',
     up: (db) => addColumn(db, 'products', 'description', `TEXT NOT NULL DEFAULT ''`),
   },
+  {
+    // Reusable names (customers, suppliers, categories, units). Documents keep
+    // storing plain text; this is a directory that fills itself in as you work.
+    name: 'entities-directory',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS entities (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind         TEXT    NOT NULL,
+          name         TEXT    NOT NULL COLLATE NOCASE,
+          phone        TEXT    NOT NULL DEFAULT '',
+          email        TEXT    NOT NULL DEFAULT '',
+          address      TEXT    NOT NULL DEFAULT '',
+          tax_id       TEXT    NOT NULL DEFAULT '',
+          note         TEXT    NOT NULL DEFAULT '',
+          active       INTEGER NOT NULL DEFAULT 1,
+          used_count   INTEGER NOT NULL DEFAULT 0,
+          last_used_at TEXT,
+          created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+          UNIQUE (kind, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_entities_kind ON entities(kind, active);
+      `);
+
+      // Seed from names already typed on existing documents, so an established
+      // shop gets a full directory the moment it updates.
+      const seed = (kind, table, column) =>
+        db.exec(
+          `INSERT OR IGNORE INTO entities (kind, name, used_count)
+           SELECT '${kind}', TRIM(${column}), COUNT(*)
+           FROM ${table} WHERE TRIM(COALESCE(${column}, '')) <> ''
+           GROUP BY TRIM(${column}) COLLATE NOCASE`,
+        );
+      seed('customer', 'sales', 'customer');
+      seed('supplier', 'purchases', 'supplier');
+      seed('category', 'products', 'category');
+      seed('unit', 'products', 'unit');
+      seed('expense_category', 'expenses', 'category');
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

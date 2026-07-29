@@ -8,12 +8,14 @@ import {
   downloadCsv,
   emptyState,
   esc,
+  forgetSuggestions,
   modal,
   money,
   monthStart,
   qtyText,
   rangeBar,
   store,
+  suggestions,
   toast,
   todayISO,
 } from '../ui.js';
@@ -175,6 +177,7 @@ function showPurchase(p) {
 export async function newPurchase(onSaved) {
   const products = await api.products({});
   if (!products.length) return toast(t('buy.need_product'), 'warn');
+  const supplierNames = await suggestions('supplier');
 
   const lines = [];
 
@@ -219,7 +222,12 @@ export async function newPurchase(onSaved) {
       <form id="purchase-form">
         <div class="form-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px">
           <div class="field"><label>${esc(t('common.supplier'))}</label>
-            <input class="input" name="supplier" placeholder="${esc(t('buy.supplier_placeholder'))}" autocomplete="off"/></div>
+            <input class="input" name="supplier" list="supplier-names" placeholder="${esc(
+              t('buy.supplier_placeholder'),
+            )}" autocomplete="off"/>
+            <datalist id="supplier-names">${supplierNames
+              .map((n) => `<option value="${esc(n)}"></option>`)
+              .join('')}</datalist></div>
           <div class="field"><label>${esc(t('common.date'))}</label>
             <input class="input" type="date" name="date" value="${todayISO()}"/></div>
           <div class="field"><label>${esc(t('buy.ref'))}</label>
@@ -302,6 +310,7 @@ export async function newPurchase(onSaved) {
             items: valid.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_cost: l.unit_cost })),
           });
           toast(t('buy.saved', { doc: saved.doc_no, v: money(saved.total) }), 'success');
+          if (saved.supplier) forgetSuggestions('supplier');
           close(true);
           onSaved?.();
         } catch (err) {

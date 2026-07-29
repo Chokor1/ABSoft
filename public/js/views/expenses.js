@@ -9,10 +9,12 @@ import {
   downloadCsv,
   emptyState,
   esc,
+  forgetSuggestions,
   formModal,
   money,
   monthStart,
   rangeBar,
+  suggestions,
   toast,
   todayISO,
 } from '../ui.js';
@@ -25,7 +27,7 @@ const categorySuggestions = (used) => [
 export async function render(root, ctx) {
   const state = { from: monthStart(), to: todayISO(), search: '' };
   let rows = [];
-  let used = await api.expenseCategories();
+  let used = await suggestions('expense_category');
 
   ctx.actions.innerHTML = `
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
@@ -196,7 +198,8 @@ export async function render(root, ctx) {
     try {
       await api.saveExpense({ ...data, id: expense?.id });
       toast(isNew ? t('exp.saved') : t('exp.updated'), 'success');
-      used = await api.expenseCategories();
+      forgetSuggestions('expense_category');
+      used = await suggestions('expense_category');
       load();
     } catch (err) {
       toast(errorText(err), 'error');

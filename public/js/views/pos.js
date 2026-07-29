@@ -1,7 +1,18 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { PAYMENT_METHODS, errorText, methodText, t } from '../i18n.js';
-import { debounce, emptyState, esc, formModal, money, qtyText, store, toast } from '../ui.js';
+import {
+  debounce,
+  emptyState,
+  esc,
+  forgetSuggestions,
+  formModal,
+  money,
+  qtyText,
+  store,
+  suggestions,
+  toast,
+} from '../ui.js';
 import { showReceipt } from './sales.js';
 
 const methodOptions = () => PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) }));
@@ -44,7 +55,11 @@ export async function render(root, ctx) {
           <div class="form-grid" style="gap:9px;margin-bottom:12px">
             <div class="field">
               <label>${esc(t('common.customer'))}</label>
-              <input class="input" id="customer" placeholder="${esc(t('common.walk_in'))}" autocomplete="off"/>
+              <!-- free text: pick a saved customer or type a new one, which is then remembered -->
+              <input class="input" id="customer" list="customer-names" placeholder="${esc(
+                t('common.walk_in'),
+              )}" autocomplete="off"/>
+              <datalist id="customer-names"></datalist>
             </div>
             <div class="field">
               <label>${esc(t('sales.payment'))}</label>
@@ -66,6 +81,13 @@ export async function render(root, ctx) {
   const $ = (sel) => root.querySelector(sel);
   const tiles = $('#tiles');
   const scan = $('#scan');
+
+  const fillCustomers = async () => {
+    $('#customer-names').innerHTML = (await suggestions('customer'))
+      .map((n) => `<option value="${esc(n)}"></option>`)
+      .join('');
+  };
+  fillCustomers();
 
   /* ------------------------------------------------------------ catalogue -- */
 
@@ -349,6 +371,12 @@ export async function render(root, ctx) {
       );
       if (sale.shortages?.length) {
         toast(t('pos.shortage', { names: sale.shortages.map((s) => s.name).join(', ') }), 'warn', 5200);
+      }
+
+      // A new customer name is now saved, so refresh the suggestions for the next sale.
+      if (sale.customer) {
+        forgetSuggestions('customer');
+        fillCustomers();
       }
 
       state.cart = [];

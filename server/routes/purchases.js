@@ -1,4 +1,5 @@
 ﻿import { db, lastId, transact } from '../db.js';
+import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
 import { isoDate, money, nextDocNo, num, qty, str } from '../util.js';
 
@@ -75,6 +76,7 @@ export function register(router) {
 
     const date = isoDate(ctx.body.date);
     const total = money(prepared.reduce((sum, l) => sum + l.total, 0));
+    const supplier = canonicalName('supplier', ctx.body.supplier);
 
     return transact(() => {
       const docNo = str(ctx.body.doc_no) || nextDocNo(db, 'purchases', 'PO');
@@ -82,7 +84,7 @@ export function register(router) {
         .prepare(
           `INSERT INTO purchases (doc_no, supplier, date, total, note, user_id) VALUES (?, ?, ?, ?, ?, ?)`,
         )
-        .run(docNo, str(ctx.body.supplier), date, total, str(ctx.body.note), ctx.user.id);
+        .run(docNo, supplier, date, total, str(ctx.body.note), ctx.user.id);
       const purchaseId = lastId(res);
 
       const insertItem = db.prepare(
@@ -102,11 +104,12 @@ export function register(router) {
           line.qty,
           line.unit_cost,
           purchaseId,
-          `${docNo}${str(ctx.body.supplier) ? ' · ' + str(ctx.body.supplier) : ''}`,
+          `${docNo}${supplier ? ' · ' + supplier : ''}`,
           ctx.user.id,
           `${date} ${new Date().toISOString().slice(11, 19)}`,
         );
       }
+      rememberEntity('supplier', supplier);
       return loadPurchase(purchaseId);
     });
   });

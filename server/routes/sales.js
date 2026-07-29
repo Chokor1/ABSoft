@@ -1,4 +1,5 @@
 ﻿import { db, getSettings, lastId, transact } from '../db.js';
+import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
 import { isoDate, money, nextDocNo, num, qty, str } from '../util.js';
 
@@ -81,6 +82,8 @@ export function register(router) {
     const cogs = money(prepared.reduce((s, l) => s + l.qty * l.unit_cost, 0));
     const date = isoDate(ctx.body.date);
     const paid = ctx.body.paid === undefined ? total : money(Math.max(0, num(ctx.body.paid)));
+    // Use the directory's spelling when this customer is already known.
+    const customer = canonicalName('customer', ctx.body.customer);
 
     // Selling into negative stock is allowed (counts often lag reality) but reported back.
     const shortages = prepared
@@ -96,7 +99,7 @@ export function register(router) {
         )
         .run(
           docNo,
-          str(ctx.body.customer),
+          customer,
           date,
           subtotal,
           discount,
@@ -126,11 +129,13 @@ export function register(router) {
           -line.qty,
           line.unit_cost,
           saleId,
-          `${docNo}${str(ctx.body.customer) ? ' · ' + str(ctx.body.customer) : ''}`,
+          `${docNo}${customer ? ' · ' + customer : ''}`,
           ctx.user.id,
           `${date} ${new Date().toISOString().slice(11, 19)}`,
         );
       }
+      // A customer typed on the invoice joins the directory for next time.
+      rememberEntity('customer', customer);
       return loadSale(saleId);
     });
 

@@ -1,6 +1,6 @@
 ﻿import { db, lastId } from '../db.js';
-import { notFound } from '../http.js';
-import { badRequest } from '../http.js';
+import { canonicalName, listEntities, rememberEntity } from '../entities.js';
+import { badRequest, notFound } from '../http.js';
 import { isoDate, money, num, str } from '../util.js';
 
 const SELECT = `SELECT e.*, u.username FROM expenses e LEFT JOIN users u ON u.id = e.user_id`;
@@ -25,16 +25,18 @@ export function register(router) {
   router.post('/api/expenses', (ctx) => {
     const amount = money(num(ctx.body.amount));
     if (!(amount > 0)) throw badRequest('Expense amount must be greater than zero', 'EXPENSE_POSITIVE');
+    const category = canonicalName('expense_category', str(ctx.body.category) || 'General');
     const res = db
       .prepare(`INSERT INTO expenses (date, category, note, amount, method, user_id) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(
         isoDate(ctx.body.date),
-        str(ctx.body.category) || 'General',
+        category,
         str(ctx.body.note),
         amount,
         str(ctx.body.method) || 'cash',
         ctx.user.id,
       );
+    rememberEntity('expense_category', category);
     return db.prepare(`${SELECT} WHERE e.id = ?`).get(lastId(res));
   });
 
@@ -43,14 +45,19 @@ export function register(router) {
     if (!existing) throw notFound('Expense not found', 'EXPENSE_NOT_FOUND');
     const amount = ctx.body.amount === undefined ? existing.amount : money(num(ctx.body.amount));
     if (!(amount > 0)) throw badRequest('Expense amount must be greater than zero', 'EXPENSE_POSITIVE');
+    const category = canonicalName(
+      'expense_category',
+      ctx.body.category === undefined ? existing.category : str(ctx.body.category) || 'General',
+    );
     db.prepare(`UPDATE expenses SET date = ?, category = ?, note = ?, amount = ?, method = ? WHERE id = ?`).run(
       ctx.body.date === undefined ? existing.date : isoDate(ctx.body.date),
-      ctx.body.category === undefined ? existing.category : str(ctx.body.category) || 'General',
+      category,
       ctx.body.note === undefined ? existing.note : str(ctx.body.note),
       amount,
       ctx.body.method === undefined ? existing.method : str(ctx.body.method) || 'cash',
       existing.id,
     );
+    rememberEntity('expense_category', category);
     return db.prepare(`${SELECT} WHERE e.id = ?`).get(existing.id);
   });
 
@@ -60,12 +67,7 @@ export function register(router) {
     return { deleted: true };
   });
 
-  // Only the categories actually in use — the browser adds its own translated
-  // suggestions on top, so the defaults are never stored in one fixed language.
-  router.get('/api/expense-categories', () =>
-    db
-      .prepare(`SELECT DISTINCT category FROM expenses WHERE category <> '' ORDER BY category`)
-      .all()
-      .map((r) => r.category),
-  );
+  // From the directory, most-used first. The browser adds its own translated
+  // starter suggestions on top, so defaults are never stored in one fixed language.
+  router.get('/api/expense-categories', () => listEntities('expense_category').map((e) => e.name));
 }

@@ -1,3 +1,4 @@
+import { api } from './api.js';
 import { icon } from './icons.js';
 import { isRtl, locale, t } from './i18n.js';
 
@@ -318,6 +319,35 @@ export function shortNum(v) {
   if (abs >= 1e3) return `${(n / 1e3).toFixed(abs >= 1e4 ? 0 : 1)}k`;
   return String(Math.round(n));
 }
+
+/* ----------------------------------------------------------- suggestions -- */
+
+/**
+ * Saved names for a directory kind (customer, supplier, category, unit…).
+ *
+ * Cached per kind so a busy till is not refetching on every keystroke. Anything
+ * that adds a name calls `forgetSuggestions` so the next field picks it up.
+ */
+const suggestionCache = new Map();
+
+export function suggestions(kind) {
+  if (!suggestionCache.has(kind)) {
+    suggestionCache.set(
+      kind,
+      api
+        .entities(kind)
+        .then((rows) => rows.map((r) => r.name))
+        .catch(() => []), // suggestions are a convenience; never block the form
+    );
+  }
+  return suggestionCache.get(kind);
+}
+
+export const forgetSuggestions = (kind) => (kind ? suggestionCache.delete(kind) : suggestionCache.clear());
+
+/** Options for a free-text input that also offers saved names. */
+export const datalistHtml = (id, values) =>
+  `<datalist id="${id}">${values.map((v) => `<option value="${esc(v)}"></option>`).join('')}</datalist>`;
 
 /* ------------------------------------------------------------------ misc -- */
 

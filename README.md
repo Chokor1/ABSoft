@@ -48,6 +48,7 @@ npm run reset    # wipe all business data, keep users and settings
 | **Buy — Stock In** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
 | **Products** (`F3`) | Define what you sell: name, optional description, barcode, category, cost, default price, unit, low-stock level. Click any row for its full movement history. |
+| **Lists** | Customers, suppliers, product categories, units and expense categories — the names you reuse. |
 | **Sales History** | Every invoice, with cost and profit per sale. Click one to reprint it. |
 | **Reports** | Profit & loss for any date range, plus product performance, stock valuation, the movement ledger and per-cashier totals. |
 | **Users** | Add cashiers and administrators. |
@@ -60,6 +61,37 @@ chrome is just clutter. (Your browser's own `F11` works too.)
 Product **descriptions** are optional. Fill one in and it appears under the name in the
 product list, on the till tile, and in the product's history view — and it is searchable, so
 a cashier can find "750ml bottle" without knowing the product name.
+
+---
+
+## Names you reuse — customers, suppliers, categories, units
+
+Type a customer on an invoice, a supplier on a purchase, or a category on a product, and
+ABSoft **remembers it**. Next time the field offers it as a suggestion. Nothing changes about
+how you work: the field is still an ordinary text box, an unfamiliar name is simply a new one,
+and none of it is ever required.
+
+The **Lists** screen is where those names live, with a tab each for customers, suppliers,
+product categories, units and expense categories. Open any entry to add detail — phone, email,
+address, tax number, a note — all optional, added whenever you feel like it and never before.
+You can also add an entry by hand, so a customer can be suggested before their first sale.
+
+Three behaviours worth knowing:
+
+- **Capitalisation is not a new customer.** Type "ahmad store" when the list already holds
+  "Ahmad Store" and the invoice records "Ahmad Store". Without that, one customer quietly
+  becomes three spellings and every total that groups by name is wrong.
+- **Renaming corrects the past.** Fix a typo and the invoices, purchases or products that
+  already carry that name are corrected too — which is what "I spelled it wrong" means.
+- **Removing one does not.** Deleting an entry only stops it being suggested. Documents keep
+  the name exactly as recorded, because an issued invoice is a historical record.
+
+Cashiers get the suggestions they need to sell and can create names just by using them.
+Editing and deleting shared lists is administrator work.
+
+Nothing here changes how data is stored: a sale still holds its customer as plain text, so
+reports, exports and old invoices are entirely unaffected. On update, every name already in
+your data is collected into these lists automatically.
 
 ---
 
@@ -260,6 +292,7 @@ server/
   version.js        app version, read BOM-tolerantly from package.json
   db.js             base schema, settings, transaction helper
   migrations.js     schema changes made after v1.0.0  ← add yours here
+  entities.js       reusable names (customers, suppliers, categories, units)
   backup.js         consistent snapshots via VACUUM INTO
   auth.js           scrypt password hashing, sessions
   http.js           tiny router, JSON body, static files

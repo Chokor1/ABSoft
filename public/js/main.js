@@ -10,6 +10,7 @@ import * as purchases from './views/purchases.js';
 import * as salesView from './views/sales.js';
 import * as expenses from './views/expenses.js';
 import * as reports from './views/reports.js';
+import * as lists from './views/lists.js';
 import * as users from './views/users.js';
 import * as settings from './views/settings.js';
 
@@ -20,6 +21,7 @@ const VIEWS = {
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
   products: { key: 'products', icon: 'box', mod: products, group: 'catalogue' },
+  lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
   sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'reports' },
   reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports' },
   users: { key: 'users', icon: 'users', mod: users, group: 'settings', adminOnly: true },

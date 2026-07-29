@@ -1,4 +1,5 @@
 import { db, lastId, transact } from '../db.js';
+import { canonicalName, listEntities, rememberAll } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
 import { money, num, qty, required, str } from '../util.js';
 
@@ -16,8 +17,9 @@ function readPayload(body, { partial = false } = {}) {
   if (!partial || body.name !== undefined) out.name = required(body.name, 'Product name', 'product_name');
   if (!partial || body.description !== undefined) out.description = str(body.description);
   if (!partial || body.barcode !== undefined) out.barcode = str(body.barcode) || null;
-  if (!partial || body.category !== undefined) out.category = str(body.category);
-  if (!partial || body.unit !== undefined) out.unit = str(body.unit) || 'pcs';
+  // Match the directory's spelling when these are already known names.
+  if (!partial || body.category !== undefined) out.category = canonicalName('category', body.category);
+  if (!partial || body.unit !== undefined) out.unit = canonicalName('unit', str(body.unit) || 'pcs');
   if (!partial || body.cost !== undefined) out.cost = money(Math.max(0, num(body.cost)));
   if (!partial || body.price !== undefined) out.price = money(Math.max(0, num(body.price)));
   if (!partial || body.min_stock !== undefined) out.min_stock = qty(Math.max(0, num(body.min_stock)));
@@ -107,6 +109,10 @@ export function register(router) {
            VALUES (?, ?, ?, 'opening', 'Opening balance', ?)`,
         ).run(id, opening, data.cost, ctx.user.id);
       }
+      rememberAll([
+        ['category', data.category],
+        ['unit', data.unit],
+      ]);
       return getProduct(id);
     });
   });
@@ -133,6 +139,10 @@ export function register(router) {
       merged.active ? 1 : 0,
       existing.id,
     );
+    rememberAll([
+      ['category', merged.category],
+      ['unit', merged.unit],
+    ]);
     return getProduct(existing.id);
   });
 
@@ -167,10 +177,7 @@ export function register(router) {
     return getProduct(product.id);
   });
 
-  router.get('/api/categories', () =>
-    db
-      .prepare(`SELECT DISTINCT category FROM products WHERE category <> '' ORDER BY category`)
-      .all()
-      .map((r) => r.category),
-  );
+  // Backed by the directory, so a category created there shows up before any
+  // product uses it.
+  router.get('/api/categories', () => listEntities('category').map((e) => e.name));
 }
