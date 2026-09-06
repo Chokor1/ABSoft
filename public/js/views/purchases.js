@@ -22,14 +22,20 @@ import {
   todayISO,
 } from '../ui.js';
 
+/** #/purchases, #/purchases/new */
 export async function render(root, ctx) {
+  if (ctx.params[0] === 'new') return renderForm(root, ctx);
+  return renderList(root, ctx);
+}
+
+async function renderList(root, ctx) {
   const state = { from: monthStart(), to: todayISO(), search: '' };
   let rows = [];
 
   ctx.actions.innerHTML = `
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('buy.new'))}</button>`;
-  ctx.actions.querySelector('#new').addEventListener('click', () => newPurchase(load));
+  ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('purchases/new'));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       `absoft-purchases-${state.from}-to-${state.to}.csv`,
@@ -175,15 +181,17 @@ function showPurchase(p) {
   });
 }
 
-/** Multi-line stock-in document builder. */
-export async function newPurchase(onSaved) {
-  // Only a count, to refuse an empty catalogue. Lines are searched, not preloaded.
-  if (!(await api.products({})).length) return toast(t('buy.need_product'), 'warn');
-  const supplierNames = await suggestions('supplier');
+/** The stock-in document builder, as a full page. */
+async function renderForm(root, ctx) {
+  const back = () => ctx.navigate('purchases');
 
+  // Only a count, to refuse an empty catalogue. Lines are searched, not preloaded.
+  if (!(await api.products({ limit: 1 })).length) {
+    toast(t('buy.need_product'), 'warn');
+    return back();
+  }
+  const supplierNames = await suggestions('supplier');
   const lines = [];
-  // Assigned once the modal body exists; called however the modal is dismissed.
-  let dropPickers = () => {};
 
   const linesHtml = () =>
     lines.length
@@ -213,13 +221,15 @@ export async function newPurchase(onSaved) {
         </table>`
       : emptyState(t('buy.no_lines'), t('buy.no_lines_sub'), 'package');
 
-  await modal({
-    title: t('buy.title'),
-    subtitle: t('buy.sub'),
-    wide: true,
-    body: `
-      <form id="purchase-form">
-        <div class="form-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px">
+  root.innerHTML = `
+    <form id="purchase-form" class="card" style="max-width:1000px">
+      <div class="card-head">
+        <button type="button" class="btn btn-ghost btn-icon" data-cancel
+                aria-label="${esc(t('common.back'))}">${icon('back')}</button>
+        <div><h3>${esc(t('buy.title'))}</h3><div class="sub">${esc(t('buy.sub'))}</div></div>
+      </div>
+      <div class="card-body">
+        <div class="form-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
           <div class="field"><label>${esc(t('common.supplier'))}</label>
             <input class="input" name="supplier" list="supplier-names" placeholder="${esc(
               t('buy.supplier_placeholder'),
@@ -232,115 +242,119 @@ export async function newPurchase(onSaved) {
           <div class="field"><label>${esc(t('buy.ref'))}</label>
             <input class="input" name="note" placeholder="${esc(t('buy.ref_placeholder'))}" autocomplete="off"/></div>
         </div>
-        <div class="card"><div class="card-head">
-            <div><h3>${esc(t('buy.items'))}</h3></div><div class="spacer"></div>
-            <button type="button" class="btn btn-sm" id="add-line">${icon('plus')} ${esc(t('buy.add_line'))}</button>
-          </div>
-          <div class="card-body flush"><div class="table-wrap" id="lines">${linesHtml()}</div></div>
-        </div>
-      </form>`,
-    footer: `<button class="btn" data-close>${esc(t('common.cancel'))}</button>
-             <button class="btn btn-primary" id="save-purchase">${icon('check')} ${esc(t('buy.save'))}</button>`,
-    setup: (rootEl, close) => {
-      const linesEl = rootEl.querySelector('#lines');
+      </div>
+      <div class="card-head" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div><h3>${esc(t('buy.items'))}</h3></div><div class="spacer"></div>
+        <button type="button" class="btn btn-sm" id="add-line">${icon('plus')} ${esc(t('buy.add_line'))}</button>
+      </div>
+      <div class="table-wrap" id="lines">${linesHtml()}</div>
+      <div class="card-head form-actions">
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-cancel>${esc(t('common.cancel'))}</button>
+        <button type="button" class="btn btn-primary" id="save-purchase">${icon('check')} ${esc(t('buy.save'))}</button>
+      </div>
+    </form>`;
 
-      // The line table is re-rendered on every add, remove and pick, so the
-      // pickers attached to the old rows must be torn down or their menus leak.
-      let pickers = [];
-      dropPickers = () => {
-        pickers.forEach((p) => p.destroy());
-        pickers = [];
-      };
+  const form = root.querySelector('#purchase-form');
+  const linesEl = root.querySelector('#lines');
 
-      const redraw = () => {
-        dropPickers();
-        linesEl.innerHTML = linesHtml();
-        wire();
-      };
+  // The line table is re-rendered on every add, remove and pick, so the pickers
+  // attached to the old rows must be torn down or their menus leak.
+  let pickers = [];
+  const dropPickers = () => {
+    pickers.forEach((p) => p.destroy());
+    pickers = [];
+  };
 
-      const wire = () => {
-        linesEl.querySelectorAll('[data-product]').forEach((input) => {
-          const line = lines[+input.dataset.product];
-          pickers.push(attachPicker(input, {
-            search: (q) => api.products({ search: q, limit: 25 }),
-            render: productOption,
-            emptyText: t('buy.no_product_match'),
-            onPick: (p) => {
-              line.product_id = p.id;
-              line.name = p.name;
-              line.barcode = p.barcode || '';
-              // Default to what it last cost, unless the buyer already typed a price.
-              if (!line.touchedCost) line.unit_cost = Number(p.cost) || 0;
-              redraw();
-              // Keep the flow moving: land on the quantity for the line just filled.
-              linesEl.querySelector(`[data-qty="${input.dataset.product}"]`)?.focus();
-            },
-          }));
-        });
-        linesEl.querySelectorAll('[data-qty]').forEach((input) =>
-          input.addEventListener('input', () => {
-            lines[+input.dataset.qty].qty = Number(input.value) || 0;
-            updateTotals();
-          }),
-        );
-        linesEl.querySelectorAll('[data-cost]').forEach((input) =>
-          input.addEventListener('input', () => {
-            const line = lines[+input.dataset.cost];
-            line.unit_cost = Number(input.value) || 0;
-            line.touchedCost = true;
-            updateTotals();
-          }),
-        );
-        linesEl.querySelectorAll('[data-remove]').forEach((btn) =>
-          btn.addEventListener('click', () => {
-            lines.splice(+btn.dataset.remove, 1);
+  const redraw = () => {
+    dropPickers();
+    linesEl.innerHTML = linesHtml();
+    wire();
+  };
+
+  // Cheap in-place total refresh so typing does not steal focus.
+  const updateTotals = () => {
+    lines.forEach((l, i) => {
+      const cell = linesEl.querySelector(`tbody tr:nth-child(${i + 1}) td:nth-child(4) b`);
+      if (cell) cell.textContent = money(l.qty * l.unit_cost);
+    });
+    const foot = linesEl.querySelector('tfoot td.right');
+    if (foot) foot.textContent = money(lines.reduce((s, l) => s + l.qty * l.unit_cost, 0));
+  };
+
+  const wire = () => {
+    linesEl.querySelectorAll('[data-product]').forEach((input) => {
+      const line = lines[+input.dataset.product];
+      pickers.push(
+        attachPicker(input, {
+          search: (q) => api.products({ search: q, limit: 25 }),
+          render: productOption,
+          emptyText: t('buy.no_product_match'),
+          onPick: (p) => {
+            line.product_id = p.id;
+            line.name = p.name;
+            line.barcode = p.barcode || '';
+            // Default to what it last cost, unless the buyer already typed a price.
+            if (!line.touchedCost) line.unit_cost = Number(p.cost) || 0;
             redraw();
-          }),
-        );
-      };
-
-      // Cheap in-place total refresh so typing does not steal focus.
-      const updateTotals = () => {
-        lines.forEach((l, i) => {
-          const cell = linesEl.querySelector(`tbody tr:nth-child(${i + 1}) td:nth-child(4) b`);
-          if (cell) cell.textContent = money(l.qty * l.unit_cost);
-        });
-        const foot = linesEl.querySelector('tfoot td.right');
-        if (foot) foot.textContent = money(lines.reduce((s, l) => s + l.qty * l.unit_cost, 0));
-      };
-
-      rootEl.querySelector('#add-line').addEventListener('click', () => {
-        lines.push({ product_id: 0, name: '', barcode: '', qty: 1, unit_cost: 0, touchedCost: false });
+            // Keep the flow moving: land on the quantity for the line just filled.
+            linesEl.querySelector(`[data-qty="${input.dataset.product}"]`)?.focus();
+          },
+        }),
+      );
+    });
+    linesEl.querySelectorAll('[data-qty]').forEach((input) =>
+      input.addEventListener('input', () => {
+        lines[+input.dataset.qty].qty = Number(input.value) || 0;
+        updateTotals();
+      }),
+    );
+    linesEl.querySelectorAll('[data-cost]').forEach((input) =>
+      input.addEventListener('input', () => {
+        const line = lines[+input.dataset.cost];
+        line.unit_cost = Number(input.value) || 0;
+        line.touchedCost = true;
+        updateTotals();
+      }),
+    );
+    linesEl.querySelectorAll('[data-remove]').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        lines.splice(+btn.dataset.remove, 1);
         redraw();
-        // Focus the new line's search box so you can just start typing.
-        linesEl.querySelector(`[data-product="${lines.length - 1}"]`)?.focus();
-      });
+      }),
+    );
+  };
 
-      rootEl.querySelector('#save-purchase').addEventListener('click', async () => {
-        const form = rootEl.querySelector('#purchase-form');
-        const valid = lines.filter((l) => l.product_id && l.qty > 0);
-        if (!valid.length) return toast(t('buy.need_line'), 'warn');
-        try {
-          const saved = await api.createPurchase({
-            supplier: form.supplier.value.trim(),
-            date: form.date.value,
-            note: form.note.value.trim(),
-            items: valid.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_cost: l.unit_cost })),
-          });
-          toast(t('buy.saved', { doc: saved.doc_no, v: money(saved.total) }), 'success');
-          if (saved.supplier) forgetSuggestions('supplier');
-          dropPickers();
-          close(true);
-          onSaved?.();
-        } catch (err) {
-          toast(errorText(err), 'error');
-        }
-      });
-
-      // Start with one empty line so the form is immediately usable.
-      rootEl.querySelector('#add-line').click();
-    },
+  root.querySelector('#add-line').addEventListener('click', () => {
+    lines.push({ product_id: 0, name: '', barcode: '', qty: 1, unit_cost: 0, touchedCost: false });
+    redraw();
+    // Focus the new line's search box so you can just start typing.
+    linesEl.querySelector(`[data-product="${lines.length - 1}"]`)?.focus();
   });
 
-  dropPickers(); // cancelled, saved or dismissed - the menus go either way
+  root.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', back));
+
+  root.querySelector('#save-purchase').addEventListener('click', async () => {
+    const valid = lines.filter((l) => l.product_id && l.qty > 0);
+    if (!valid.length) return toast(t('buy.need_line'), 'warn');
+    try {
+      const saved = await api.createPurchase({
+        supplier: form.supplier.value.trim(),
+        date: form.date.value,
+        note: form.note.value.trim(),
+        items: valid.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_cost: l.unit_cost })),
+      });
+      toast(t('buy.saved', { doc: saved.doc_no, v: money(saved.total) }), 'success');
+      if (saved.supplier) forgetSuggestions('supplier');
+      back();
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  });
+
+  // Start with one empty line so the form is immediately usable.
+  root.querySelector('#add-line').click();
+
+  // main.js calls this when navigating away.
+  return dropPickers;
 }

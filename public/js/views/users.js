@@ -1,11 +1,19 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { errorText, roleText, t } from '../i18n.js';
-import { confirmDialog, dateText, emptyState, esc, formModal, initials, number, store, toast } from '../ui.js';
+import { confirmDialog, dateText, emptyState, esc, formPage, initials, number, store, toast } from '../ui.js';
 
+/** #/users, #/users/new, #/users/<id>/edit */
 export async function render(root, ctx) {
+  const [first, second] = ctx.params;
+  if (first === 'new') return renderForm(root, ctx, null);
+  if (second === 'edit') return renderForm(root, ctx, Number(first));
+  return renderList(root, ctx);
+}
+
+async function renderList(root, ctx) {
   ctx.actions.innerHTML = `<button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('users.new'))}</button>`;
-  ctx.actions.querySelector('#new').addEventListener('click', () => edit(null));
+  ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('users/new'));
 
   async function load() {
     root.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
@@ -52,7 +60,7 @@ export async function render(root, ctx) {
       </div></div>`;
 
     root.querySelectorAll('[data-edit]').forEach((b) =>
-      b.addEventListener('click', () => edit(rows.find((u) => u.id === Number(b.dataset.edit)))),
+      b.addEventListener('click', () => ctx.navigate(`users/${b.dataset.edit}/edit`)),
     );
     root.querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -75,61 +83,74 @@ export async function render(root, ctx) {
     );
   }
 
-  async function edit(user) {
-    const isNew = !user;
-    const data = await formModal({
-      title: isNew ? t('users.new') : t('users.edit', { name: user.username }),
-      subtitle: isNew ? t('users.add_sub') : '',
-      submitLabel: isNew ? t('users.create') : t('common.save_changes'),
-      fields: [
-        ...(isNew
-          ? [
-              {
-                name: 'username',
-                label: t('login.username'),
-                required: true,
-                autofocus: true,
-                placeholder: t('users.username_placeholder'),
-              },
-            ]
-          : [
-              {
-                type: 'static',
-                html: `<label>${esc(t('login.username'))}</label><input class="input" value="${esc(
-                  user.username,
-                )}" disabled/>`,
-              },
-            ]),
-        { name: 'full_name', label: t('users.full_name'), value: user?.full_name || '', placeholder: t('users.name_placeholder') },
-        {
-          name: 'role',
-          label: t('users.role'),
-          type: 'select',
-          value: user?.role || 'cashier',
-          options: [
-            { value: 'cashier', label: roleText('cashier') },
-            { value: 'admin', label: roleText('admin') },
-          ],
-        },
-        {
-          name: 'password',
-          label: isNew ? t('login.password') : t('users.new_password'),
-          type: 'password',
-          required: isNew,
-          help: isNew ? t('users.password_help') : t('users.password_keep'),
-        },
-        ...(isNew ? [] : [{ name: 'active', label: t('users.active_label'), type: 'checkbox', value: !!user.active, span: 2 }]),
-      ],
-    });
-    if (!data) return;
-    try {
-      await api.saveUser({ ...data, id: user?.id });
-      toast(isNew ? t('users.created') : t('users.updated'), 'success');
-      load();
-    } catch (err) {
-      toast(errorText(err), 'error');
-    }
-  }
-
   await load();
+}
+
+/** The user form on its own page. */
+async function renderForm(root, ctx, id) {
+  const user = id ? (await api.users()).find((u) => u.id === id) : null;
+  const isNew = !user;
+  const back = () => ctx.navigate('users');
+  if (id && !user) return back();
+
+  formPage(root, {
+    title: isNew ? t('users.new') : t('users.edit', { name: user.username }),
+    subtitle: isNew ? t('users.add_sub') : '',
+    submitLabel: isNew ? t('users.create') : t('common.save_changes'),
+    fields: [
+      ...(isNew
+        ? [
+            {
+              name: 'username',
+              label: t('login.username'),
+              required: true,
+              autofocus: true,
+              placeholder: t('users.username_placeholder'),
+            },
+          ]
+        : [
+            {
+              type: 'static',
+              html: `<label>${esc(t('login.username'))}</label>
+                     <input class="input" value="${esc(user.username)}" disabled/>`,
+            },
+          ]),
+      {
+        name: 'full_name',
+        label: t('users.full_name'),
+        value: user?.full_name || '',
+        placeholder: t('users.name_placeholder'),
+      },
+      {
+        name: 'role',
+        label: t('users.role'),
+        type: 'select',
+        value: user?.role || 'cashier',
+        options: [
+          { value: 'cashier', label: roleText('cashier') },
+          { value: 'admin', label: roleText('admin') },
+        ],
+      },
+      {
+        name: 'password',
+        label: isNew ? t('login.password') : t('users.new_password'),
+        type: 'password',
+        required: isNew,
+        help: isNew ? t('users.password_help') : t('users.password_keep'),
+      },
+      ...(isNew
+        ? []
+        : [{ name: 'active', label: t('users.active_label'), type: 'checkbox', value: !!user.active, span: 2 }]),
+    ],
+    onCancel: back,
+    onSubmit: async (data) => {
+      try {
+        await api.saveUser({ ...data, id: user?.id });
+        toast(isNew ? t('users.created') : t('users.updated'), 'success');
+        back();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    },
+  });
 }

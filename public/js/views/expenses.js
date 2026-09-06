@@ -10,7 +10,7 @@ import {
   emptyState,
   esc,
   forgetSuggestions,
-  formModal,
+  formPage,
   money,
   monthStart,
   rangeBar,
@@ -24,7 +24,15 @@ const categorySuggestions = (used) => [
   ...new Set([...DEFAULT_EXPENSE_CATEGORIES.map((c) => t(`exp.cat.${c}`)), ...used]),
 ];
 
+/** #/expenses, #/expenses/new, #/expenses/<id>/edit */
 export async function render(root, ctx) {
+  const [first, second] = ctx.params;
+  if (first === 'new') return renderForm(root, ctx, null);
+  if (second === 'edit') return renderForm(root, ctx, Number(first));
+  return renderList(root, ctx);
+}
+
+async function renderList(root, ctx) {
   const state = { from: monthStart(), to: todayISO(), search: '' };
   let rows = [];
   let used = await suggestions('expense_category');
@@ -32,7 +40,7 @@ export async function render(root, ctx) {
   ctx.actions.innerHTML = `
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('exp.new'))}</button>`;
-  ctx.actions.querySelector('#new').addEventListener('click', () => edit(null));
+  ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('expenses/new'));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       `absoft-expenses-${state.from}-to-${state.to}.csv`,
@@ -135,7 +143,7 @@ export async function render(root, ctx) {
       </div>`;
 
     body.querySelectorAll('[data-edit]').forEach((b) =>
-      b.addEventListener('click', () => edit(rows.find((e) => e.id === Number(b.dataset.edit)))),
+      b.addEventListener('click', () => ctx.navigate(`expenses/${b.dataset.edit}/edit`)),
     );
     body.querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -153,58 +161,52 @@ export async function render(root, ctx) {
     );
   }
 
-  async function edit(expense) {
-    const isNew = !expense;
-    const data = await formModal({
-      title: isNew ? t('exp.new') : t('exp.edit'),
-      submitLabel: isNew ? t('exp.save') : t('common.save_changes'),
-      fields: [
-        {
-          name: 'amount',
-          label: t('common.amount'),
-          type: 'number',
-          step: '0.01',
-          min: 0,
-          value: expense?.amount ?? '',
-          required: true,
-          autofocus: true,
-        },
-        { name: 'date', label: t('common.date'), type: 'date', value: expense?.date || todayISO() },
-        {
-          name: 'category',
-          label: t('common.category'),
-          value: expense?.category || t('exp.cat.general'),
-          list: 'exp-cats',
-          datalist: categorySuggestions(used),
-        },
-        {
-          name: 'method',
-          label: t('exp.paid_by'),
-          type: 'select',
-          value: expense?.method || 'cash',
-          options: EXPENSE_METHODS.map((m) => ({ value: m, label: methodText(m) })),
-        },
-        {
-          name: 'note',
-          label: t('common.note'),
-          type: 'textarea',
-          span: 2,
-          value: expense?.note || '',
-          placeholder: t('exp.note_placeholder'),
-        },
-      ],
-    });
-    if (!data) return;
-    try {
-      await api.saveExpense({ ...data, id: expense?.id });
-      toast(isNew ? t('exp.saved') : t('exp.updated'), 'success');
-      forgetSuggestions('expense_category');
-      used = await suggestions('expense_category');
-      load();
-    } catch (err) {
-      toast(errorText(err), 'error');
-    }
-  }
-
   await load();
+}
+
+/** The expense form on its own page. */
+async function renderForm(root, ctx, id) {
+  const [expense, used] = await Promise.all([
+    id ? api.expense(id) : null,
+    suggestions('expense_category'),
+  ]);
+  const isNew = !expense;
+  const back = () => ctx.navigate('expenses');
+
+  formPage(root, {
+    title: isNew ? t('exp.new') : t('exp.edit'),
+    submitLabel: isNew ? t('exp.save') : t('common.save_changes'),
+    fields: [
+      {
+        name: 'amount', label: t('common.amount'), type: 'number', step: '0.01', min: 0,
+        value: expense?.amount ?? '', required: true, autofocus: true,
+      },
+      { name: 'date', label: t('common.date'), type: 'date', value: expense?.date || todayISO() },
+      {
+        name: 'category', label: t('common.category'),
+        value: expense?.category || t('exp.cat.general'),
+        list: 'exp-cats', datalist: categorySuggestions(used),
+      },
+      {
+        name: 'method', label: t('exp.paid_by'), type: 'select',
+        value: expense?.method || 'cash',
+        options: EXPENSE_METHODS.map((m) => ({ value: m, label: methodText(m) })),
+      },
+      {
+        name: 'note', label: t('common.note'), type: 'textarea', span: 2,
+        value: expense?.note || '', placeholder: t('exp.note_placeholder'),
+      },
+    ],
+    onCancel: back,
+    onSubmit: async (data) => {
+      try {
+        await api.saveExpense({ ...data, id: expense?.id });
+        toast(isNew ? t('exp.saved') : t('exp.updated'), 'success');
+        forgetSuggestions('expense_category');
+        back();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    },
+  });
 }

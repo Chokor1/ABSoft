@@ -9,7 +9,7 @@ import {
   emptyState,
   esc,
   forgetSuggestions,
-  formModal,
+  formPage,
   number,
   store,
   toast,
@@ -24,8 +24,17 @@ const KINDS = [
   { kind: 'expense_category', contact: false },
 ];
 
+/** #/lists, #/lists/<kind>, #/lists/<kind>/new, #/lists/<kind>/<id>/edit */
 export async function render(root, ctx) {
-  const state = { kind: 'customer', search: '', rows: [] };
+  const [kind, second, third] = ctx.params;
+  const known = KINDS.some((k) => k.kind === kind);
+  if (known && second === 'new') return renderForm(root, ctx, kind, null);
+  if (known && third === 'edit') return renderForm(root, ctx, kind, Number(second));
+  return renderList(root, ctx, known ? kind : 'customer');
+}
+
+async function renderList(root, ctx, startKind) {
+  const state = { kind: startKind, search: '', rows: [] };
   const isAdmin = store.user.role === 'admin';
   const meta = () => KINDS.find((k) => k.kind === state.kind);
   const one = () => t(`lists.one.${state.kind}`);
@@ -66,7 +75,7 @@ export async function render(root, ctx) {
     }, 220),
   );
 
-  ctx.actions.querySelector('#new').addEventListener('click', () => edit(null));
+  ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate(`lists/${state.kind}/new`));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       `absoft-${state.kind}.csv`,
@@ -163,7 +172,7 @@ export async function render(root, ctx) {
     body.querySelectorAll('[data-edit]').forEach((tr) =>
       tr.addEventListener('click', (e) => {
         if (e.target.closest('[data-del]')) return;
-        edit(state.rows.find((r) => r.id === Number(tr.dataset.edit)));
+        ctx.navigate(`lists/${state.kind}/${tr.dataset.edit}/edit`);
       }),
     );
     body.querySelectorAll('[data-del]').forEach((b) =>
@@ -172,53 +181,6 @@ export async function render(root, ctx) {
         remove(state.rows.find((r) => r.id === Number(b.dataset.del)));
       }),
     );
-  }
-
-  async function edit(entry) {
-    const isNew = !entry;
-    const showContact = meta().contact;
-
-    const data = await formModal({
-      title: isNew ? t('lists.add', { one: one() }) : t('lists.edit', { one: one() }),
-      subtitle: isNew ? '' : entry.name,
-      submitLabel: isNew ? t('common.save') : t('common.save_changes'),
-      fields: [
-        { name: 'name', label: t('lists.name'), required: true, span: 2, value: entry?.name, autofocus: true },
-        ...(showContact
-          ? [
-              { name: 'phone', label: t('lists.phone'), value: entry?.phone || '' },
-              { name: 'email', label: t('lists.email'), type: 'email', value: entry?.email || '' },
-              { name: 'address', label: t('lists.address'), span: 2, value: entry?.address || '' },
-              { name: 'tax_id', label: t('lists.tax_id'), span: 2, value: entry?.tax_id || '' },
-            ]
-          : []),
-        { name: 'note', label: t('common.note'), type: 'textarea', span: 2, value: entry?.note || '' },
-        ...(isNew
-          ? []
-          : [{ name: 'active', label: t('lists.active'), type: 'checkbox', value: !!entry.active, span: 2 }]),
-        ...(!isNew && entry.in_use
-          ? [
-              {
-                type: 'static',
-                span: 2,
-                html: `<div class="help" style="color:var(--info)">${esc(
-                  t('lists.rename_note', { n: entry.in_use }),
-                )}</div>`,
-              },
-            ]
-          : []),
-      ],
-    });
-    if (!data) return;
-
-    try {
-      await api.saveEntity(state.kind, { ...data, id: entry?.id });
-      toast(isNew ? t('lists.created') : t('lists.updated'), 'success');
-      forgetSuggestions(state.kind);
-      load();
-    } catch (err) {
-      toast(errorText(err), 'error');
-    }
   }
 
   async function remove(entry) {
@@ -240,4 +202,58 @@ export async function render(root, ctx) {
   }
 
   await load();
+}
+
+/** A directory entry on its own page; contact fields only where they make sense. */
+async function renderForm(root, ctx, kind, id) {
+  const rows = await api.entities(kind, { all: '1' });
+  const entry = id ? rows.find((r) => r.id === id) : null;
+  const isNew = !entry;
+  const showContact = KINDS.find((k) => k.kind === kind)?.contact;
+  const one = t(`lists.one.${kind}`);
+  const back = () => ctx.navigate(`lists/${kind}`);
+  if (id && !entry) return back();
+
+  formPage(root, {
+    title: isNew ? t('lists.add', { one }) : t('lists.edit', { one }),
+    subtitle: isNew ? '' : entry.name,
+    submitLabel: isNew ? t('common.save') : t('common.save_changes'),
+    fields: [
+      { name: 'name', label: t('lists.name'), required: true, span: 2, value: entry?.name, autofocus: true },
+      ...(showContact
+        ? [
+            { name: 'phone', label: t('lists.phone'), value: entry?.phone || '' },
+            { name: 'email', label: t('lists.email'), type: 'email', value: entry?.email || '' },
+            { name: 'address', label: t('lists.address'), span: 2, value: entry?.address || '' },
+            { name: 'tax_id', label: t('lists.tax_id'), span: 2, value: entry?.tax_id || '' },
+          ]
+        : []),
+      { name: 'note', label: t('common.note'), type: 'textarea', span: 2, value: entry?.note || '' },
+      ...(isNew
+        ? []
+        : [{ name: 'active', label: t('lists.active'), type: 'checkbox', value: !!entry.active, span: 2 }]),
+      ...(!isNew && entry.in_use
+        ? [
+            {
+              type: 'static',
+              span: 2,
+              html: `<div class="help" style="color:var(--info)">${esc(
+                t('lists.rename_note', { n: entry.in_use }),
+              )}</div>`,
+            },
+          ]
+        : []),
+    ],
+    onCancel: back,
+    onSubmit: async (data) => {
+      try {
+        await api.saveEntity(kind, { ...data, id: entry?.id });
+        toast(isNew ? t('lists.created') : t('lists.updated'), 'success');
+        forgetSuggestions(kind);
+        back();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    },
+  });
 }

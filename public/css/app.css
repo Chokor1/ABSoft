@@ -185,7 +185,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-inline-end: 1px solid var(--border);
 }
 
-.brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 20px; }
+.brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 4px; min-width: 0; }
+.brand > div:last-child { min-width: 0; }
+.brand strong, .brand small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+#nav-collapse { margin: 2px 4px 12px; align-self: flex-start; }
+.nav-collapsed #nav-collapse { align-self: center; margin-inline: 0; }
 .brand .mark {
   width: 36px; height: 36px; border-radius: 11px;
   display: grid; place-items: center;
@@ -447,6 +451,12 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 
 .pos { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 18px; align-items: start; }
 
+/* Collapsing the menu at the till is meant to benefit the sale being rung up,
+   so the width it frees goes to the cart rather than to more product tiles. */
+@media (min-width: 901px) {
+  .nav-collapsed .pos { grid-template-columns: minmax(0, 1fr) 490px; }
+}
+
 .scan-bar { display: flex; gap: 10px; margin-bottom: 14px; }
 .scan-bar .input-icon { flex: 1; }
 .scan-bar .input { height: 46px; font-size: 15px; }
@@ -519,6 +529,40 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
   font-size: 16px; font-weight: 700; color: var(--text);
 }
 .sum-row.total .v { font-size: 23px; letter-spacing: -0.03em; }
+
+/* ==========================================================================
+   collapsed sidebar (icon rail)
+   ========================================================================== */
+
+/* Only above the mobile breakpoint: below it the sidebar is already off-canvas. */
+@media (min-width: 901px) {
+  .shell.nav-collapsed { grid-template-columns: 68px 1fr; }
+  .nav-collapsed .sidebar { padding-inline: 10px; }
+  .nav-collapsed .brand { justify-content: center; padding-inline: 0; }
+  .nav-collapsed .brand > div:last-child,
+  .nav-collapsed .nav-item span,
+  .nav-collapsed .nav-item .kbd,
+  .nav-collapsed .user-chip > div:last-child,
+  .nav-collapsed .sidebar-foot .credit { display: none; }
+  .nav-collapsed .nav-label {
+    /* keep the grouping as a rule rather than a word */
+    height: 1px; padding: 10px 0 0; overflow: hidden; color: transparent;
+    border-top: 1px solid var(--border); margin: 6px 4px 0;
+  }
+  .nav-collapsed .nav-item { justify-content: center; padding: 10px; }
+  .nav-collapsed .user-chip { justify-content: center; padding-inline: 0; }
+}
+
+.nav-toggle { display: none; }
+@media (min-width: 901px) { .nav-toggle { display: inline-flex; } }
+
+/* ==========================================================================
+   full-page forms
+   ========================================================================== */
+
+.form-page { max-width: 760px; }
+.form-page .form-actions { border-top: 1px solid var(--border); border-bottom: 0; }
+.form-page .card-head h3 { font-size: 16px; }
 
 /* ==========================================================================
    type-ahead picker

@@ -65,6 +65,7 @@ export const api = {
   deleteSale: (id) => api.del(`/api/sales/${id}`),
 
   expenses: (query) => api.get('/api/expenses', query),
+  expense: (id) => api.get(`/api/expenses/${id}`),
   saveExpense: (e) => (e.id ? api.put(`/api/expenses/${e.id}`, e) : api.post('/api/expenses', e)),
   deleteExpense: (id) => api.del(`/api/expenses/${id}`),
   expenseCategories: () => api.get('/api/expense-categories'),

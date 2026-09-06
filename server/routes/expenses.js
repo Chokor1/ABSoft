@@ -22,6 +22,12 @@ export function register(router) {
     return db.prepare(sql).all(...args);
   });
 
+  router.get('/api/expenses/:id', (ctx) => {
+    const row = db.prepare(`${SELECT} WHERE e.id = ?`).get(ctx.params.id);
+    if (!row) throw notFound('Expense not found', 'EXPENSE_NOT_FOUND');
+    return row;
+  });
+
   router.post('/api/expenses', (ctx) => {
     const amount = money(num(ctx.body.amount));
     if (!(amount > 0)) throw badRequest('Expense amount must be greater than zero', 'EXPENSE_POSITIVE');

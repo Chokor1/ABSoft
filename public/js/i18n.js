@@ -63,6 +63,9 @@ const DICT = {
     'common.page_error': 'Could not load this page',
     'common.language': 'Language',
     'common.description': 'Description',
+    'common.back': 'Back',
+    'common.collapse_nav': 'Collapse menu',
+    'common.expand_nav': 'Expand menu',
     'common.fullscreen': 'Full screen',
     'common.exit_fullscreen': 'Leave full screen',
 
@@ -614,6 +617,9 @@ const DICT = {
     'common.page_error': 'تعذّر تحميل هذه الصفحة',
     'common.language': 'اللغة',
     'common.description': 'الوصف',
+    'common.back': 'رجوع',
+    'common.collapse_nav': 'طيّ القائمة',
+    'common.expand_nav': 'توسيع القائمة',
     'common.fullscreen': 'ملء الشاشة',
     'common.exit_fullscreen': 'إنهاء ملء الشاشة',
 

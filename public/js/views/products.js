@@ -10,6 +10,7 @@ import {
   esc,
   forgetSuggestions,
   formModal,
+  formPage,
   modal,
   money,
   pct,
@@ -18,7 +19,15 @@ import {
   toast,
 } from '../ui.js';
 
+/** #/products, #/products/new, #/products/<id>/edit */
 export async function render(root, ctx) {
+  const [first, second] = ctx.params;
+  if (first === 'new') return renderForm(root, ctx, null);
+  if (second === 'edit') return renderForm(root, ctx, Number(first));
+  return renderList(root, ctx);
+}
+
+async function renderList(root, ctx) {
   const state = { search: '', showInactive: false, lowOnly: false, rows: [] };
   let categories = [];
   let units = [];
@@ -26,7 +35,7 @@ export async function render(root, ctx) {
   ctx.actions.innerHTML = `
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('prod.new'))}</button>`;
-  ctx.actions.querySelector('#new').addEventListener('click', () => editProduct(null));
+  ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('products/new'));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       'absoft-products.csv',
@@ -159,7 +168,7 @@ export async function render(root, ctx) {
       }),
     );
     list.querySelectorAll('[data-edit]').forEach((b) =>
-      b.addEventListener('click', () => editProduct(rows.find((p) => p.id === Number(b.dataset.edit)))),
+      b.addEventListener('click', () => ctx.navigate(`products/${b.dataset.edit}/edit`)),
     );
     list.querySelectorAll('[data-adjust]').forEach((b) =>
       b.addEventListener('click', () => adjustStock(rows.find((p) => p.id === Number(b.dataset.adjust)))),
@@ -167,79 +176,6 @@ export async function render(root, ctx) {
     list.querySelectorAll('[data-del]').forEach((b) =>
       b.addEventListener('click', () => removeProduct(rows.find((p) => p.id === Number(b.dataset.del)))),
     );
-  }
-
-  async function editProduct(product) {
-    const isNew = !product;
-    const data = await formModal({
-      title: isNew ? t('prod.new') : t('prod.edit'),
-      subtitle: isNew ? t('prod.new_sub') : product.name,
-      submitLabel: isNew ? t('prod.create') : t('common.save_changes'),
-      fields: [
-        { name: 'name', label: t('prod.name'), required: true, span: 2, value: product?.name, autofocus: true },
-        {
-          name: 'description',
-          label: t('common.description'),
-          type: 'textarea',
-          span: 2,
-          value: product?.description || '',
-          placeholder: t('prod.description_placeholder'),
-          help: t('prod.description_help'),
-        },
-        { name: 'barcode', label: t('common.barcode'), value: product?.barcode || '', placeholder: t('prod.barcode_placeholder') },
-        {
-          name: 'category',
-          label: t('common.category'),
-          value: product?.category || '',
-          list: 'cat-list',
-          datalist: categories,
-          placeholder: t('prod.category_placeholder'),
-        },
-        { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
-        { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
-        {
-          name: 'unit',
-          label: t('common.unit'),
-          value: product?.unit || 'pcs',
-          placeholder: t('prod.unit_placeholder'),
-          list: 'unit-list',
-          datalist: units,
-        },
-        {
-          name: 'min_stock',
-          label: t('prod.min_stock'),
-          type: 'number',
-          step: 'any',
-          min: 0,
-          value: product?.min_stock ?? 0,
-        },
-        ...(isNew
-          ? [
-              {
-                name: 'opening_stock',
-                label: t('prod.opening'),
-                type: 'number',
-                step: 'any',
-                min: 0,
-                value: 0,
-                span: 2,
-                help: t('prod.opening_help'),
-              },
-            ]
-          : [{ name: 'active', label: t('prod.active'), type: 'checkbox', value: !!product.active, span: 2 }]),
-      ],
-    });
-    if (!data) return;
-    try {
-      await api.saveProduct({ ...data, id: product?.id });
-      toast(isNew ? t('prod.created') : t('prod.updated'), 'success');
-      // A new category or unit typed here is now saved for next time.
-      forgetSuggestions('category');
-      forgetSuggestions('unit');
-      load();
-    } catch (err) {
-      toast(errorText(err), 'error');
-    }
   }
 
   async function adjustStock(product) {
@@ -347,4 +283,68 @@ export async function render(root, ctx) {
   }
 
   await load();
+}
+
+/** The product form on its own page, so the sidebar and context stay visible. */
+async function renderForm(root, ctx, id) {
+  const [product, categories, units] = await Promise.all([
+    id ? api.product(id) : null,
+    suggestions('category'),
+    suggestions('unit'),
+  ]);
+  const isNew = !product;
+  const back = () => ctx.navigate('products');
+
+  formPage(root, {
+    title: isNew ? t('prod.new') : t('prod.edit'),
+    subtitle: isNew ? t('prod.new_sub') : product.name,
+    submitLabel: isNew ? t('prod.create') : t('common.save_changes'),
+    fields: [
+      { name: 'name', label: t('prod.name'), required: true, span: 2, value: product?.name, autofocus: true },
+      {
+        name: 'description',
+        label: t('common.description'),
+        type: 'textarea',
+        span: 2,
+        value: product?.description || '',
+        placeholder: t('prod.description_placeholder'),
+        help: t('prod.description_help'),
+      },
+      { name: 'barcode', label: t('common.barcode'), value: product?.barcode || '', placeholder: t('prod.barcode_placeholder') },
+      {
+        name: 'category',
+        label: t('common.category'),
+        value: product?.category || '',
+        list: 'cat-list',
+        datalist: categories,
+        placeholder: t('prod.category_placeholder'),
+      },
+      { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
+      { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
+      {
+        name: 'unit',
+        label: t('common.unit'),
+        value: product?.unit || 'pcs',
+        placeholder: t('prod.unit_placeholder'),
+        list: 'unit-list',
+        datalist: units,
+      },
+      { name: 'min_stock', label: t('prod.min_stock'), type: 'number', step: 'any', min: 0, value: product?.min_stock ?? 0 },
+      ...(isNew
+        ? [{ name: 'opening_stock', label: t('prod.opening'), type: 'number', step: 'any', min: 0, value: 0, span: 2, help: t('prod.opening_help') }]
+        : [{ name: 'active', label: t('prod.active'), type: 'checkbox', value: !!product.active, span: 2 }]),
+    ],
+    onCancel: back,
+    onSubmit: async (data) => {
+      try {
+        await api.saveProduct({ ...data, id: product?.id });
+        toast(isNew ? t('prod.created') : t('prod.updated'), 'success');
+        forgetSuggestions('category');
+        forgetSuggestions('unit');
+        back();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    },
+  });
 }

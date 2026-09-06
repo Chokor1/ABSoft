@@ -165,20 +165,66 @@ export function formModal({ title, subtitle, fields, submitLabel = t('common.sav
     setup: (root, close) => {
       root.querySelector('#modal-form').addEventListener('submit', (e) => {
         e.preventDefault();
-        const data = {};
-        for (const f of fields) {
-          if (f.type === 'static') continue;
-          const el = root.querySelector(`[name="${f.name}"]`);
-          if (!el) continue;
-          data[f.name] = f.type === 'checkbox' ? el.checked : f.type === 'number' ? Number(el.value) : el.value.trim();
-        }
-        close(data);
+        close(readFields(root, fields));
       });
       root.querySelectorAll('[data-action]').forEach((btn) =>
         btn.addEventListener('click', () => close({ __action: btn.dataset.action })),
       );
     },
   });
+}
+
+/** Collect a field spec's values out of a rendered form. */
+export function readFields(root, fields) {
+  const data = {};
+  for (const f of fields) {
+    if (f.type === 'static') continue;
+    const el = root.querySelector(`[name="${f.name}"]`);
+    if (!el) continue;
+    data[f.name] = f.type === 'checkbox' ? el.checked : f.type === 'number' ? Number(el.value) : el.value.trim();
+  }
+  return data;
+}
+
+export const renderFields = (fields) => fields.map(fieldHtml).join('');
+
+/**
+ * The same field spec as formModal, rendered as an ordinary page instead of an
+ * overlay. Records are edited on their own screen — the sidebar stays put, the
+ * form can breathe, and a long one scrolls the page rather than a dialog.
+ */
+export function formPage(container, { title, subtitle = '', fields, submitLabel = t('common.save'), onSubmit, onCancel }) {
+  container.innerHTML = `
+    <form class="card form-page" id="page-form" novalidate>
+      <div class="card-head">
+        <button type="button" class="btn btn-ghost btn-icon" data-cancel
+                aria-label="${esc(t('common.back'))}">${icon('back')}</button>
+        <div><h3>${esc(title)}</h3>${subtitle ? `<div class="sub">${esc(subtitle)}</div>` : ''}</div>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">${renderFields(fields)}</div>
+      </div>
+      <div class="card-head form-actions">
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-cancel>${esc(t('common.cancel'))}</button>
+        <button type="submit" class="btn btn-primary">${icon('check')} ${esc(submitLabel)}</button>
+      </div>
+    </form>`;
+
+  const form = container.querySelector('#page-form');
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    // novalidate above, so required fields are reported without blocking a
+    // programmatic submit; report here instead.
+    if (!form.checkValidity()) return form.reportValidity();
+    onSubmit(readFields(container, fields));
+  });
+  container.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', () => onCancel?.()));
+
+  const first = container.querySelector('[autofocus], input:not([type=hidden]), select, textarea');
+  first?.focus();
+  first?.select?.();
+  return form;
 }
 
 function fieldHtml(f) {
