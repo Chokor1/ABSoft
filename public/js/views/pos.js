@@ -362,6 +362,7 @@ export async function render(root, ctx) {
         },
         { name: 'method', label: t('pos.payment_method'), type: 'select', value: $('#method').value, options: methodOptions() },
         { name: 'note', label: t('pos.note_optional'), type: 'text', span: 2, placeholder: t('pos.note_placeholder') },
+        { type: 'static', span: 2, html: `<div class="help">${esc(t('pay.partial_help'))}</div>` },
       ],
     });
     if (!data) return;
@@ -382,12 +383,23 @@ export async function render(root, ctx) {
       });
 
       const change = (Number(data.paid) || 0) - sale.total;
-      toast(
-        change > 0.004
-          ? t('pos.completed_change', { doc: sale.doc_no, t: money(sale.total), c: money(change) })
-          : t('pos.completed', { doc: sale.doc_no, t: money(sale.total) }),
-        'success',
-      );
+      if (sale.balance > 0.004) {
+        // Under-paying is deliberate, not an error: the rest stays on the invoice.
+        toast(
+          `${t('pos.completed', { doc: sale.doc_no, t: money(sale.total) })} · ${t('pay.due', {
+            v: money(sale.balance),
+          })}`,
+          'warn',
+          5200,
+        );
+      } else {
+        toast(
+          change > 0.004
+            ? t('pos.completed_change', { doc: sale.doc_no, t: money(sale.total), c: money(change) })
+            : t('pos.completed', { doc: sale.doc_no, t: money(sale.total) }),
+          'success',
+        );
+      }
       if (sale.shortages?.length) {
         toast(t('pos.shortage', { names: sale.shortages.map((s) => s.name).join(', ') }), 'warn', 5200);
       }

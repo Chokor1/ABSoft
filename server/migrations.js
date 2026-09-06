@@ -76,6 +76,38 @@ const MIGRATIONS = [
       seed('expense_category', 'expenses', 'category');
     },
   },
+  {
+    // Partial payments. An invoice can be settled over several instalments, so
+    // the amounts live in their own ledger and sales.paid becomes the running
+    // total of that ledger rather than a single figure typed at the till.
+    name: 'sale-payments',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS payments (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          sale_id    INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+          amount     REAL    NOT NULL,
+          method     TEXT    NOT NULL DEFAULT 'cash',
+          date       TEXT    NOT NULL,
+          note       TEXT    NOT NULL DEFAULT '',
+          user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_payments_sale ON payments(sale_id);
+        CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(date);
+      `);
+
+      // Every sale already settled becomes its own first instalment, so history
+      // reads the same before and after the update.
+      db.exec(`
+        INSERT INTO payments (sale_id, amount, method, date, note, user_id, created_at)
+        SELECT s.id, s.paid, s.method, s.date, '', s.user_id, s.created_at
+        FROM sales s
+        WHERE s.paid > 0
+          AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.sale_id = s.id)
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

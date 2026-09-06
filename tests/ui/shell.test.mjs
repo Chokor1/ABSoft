@@ -1,0 +1,270 @@
+/** Collapsible sidebar, POS auto-collapse, and forms as pages instead of modals. */
+import { chromium } from 'playwright-core';
+import { spawn } from 'node:child_process';
+import { mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+// Anchored to this file, so the suite runs from any clone on any machine.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const APP = resolve(HERE, '../..');
+const WORK = resolve(APP, '.test-run');
+
+
+const SHOTS = resolve(WORK, 'shots');
+const DATA = resolve(WORK, 'shelldata');
+const PORT = 4509;
+const BASE = `http://127.0.0.1:${PORT}`;
+mkdirSync(SHOTS, { recursive: true });
+
+let pass = 0, fail = 0;
+const check = (l, c, d = '') => { if (c) { pass++; console.log(`  PASS  ${l}`); } else { fail++; console.log(`  FAIL  ${l} ${d}`); } };
+
+rmSync(DATA, { recursive: true, force: true });
+const seed = spawn('node', ['--no-warnings', 'server/tools/seed.js'], { cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA } });
+await new Promise((r) => seed.on('exit', r));
+const server = spawn('node', ['--no-warnings', 'server/index.js'], {
+  cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'],
+});
+const wait = async (fn, ms = 12000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { try { if (await fn()) return true; } catch { /* retry */ } await new Promise((r) => setTimeout(r, 200)); }
+  return false;
+};
+if (!(await wait(async () => (await fetch(BASE + '/')).ok))) { console.log('server failed'); process.exit(1); }
+
+const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const page = await browser.newPage({ viewport: { width: 1500, height: 980 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+const shot = (n) => page.screenshot({ path: `${SHOTS}\\${n}.png` });
+
+const signIn = async () => {
+  await page.goto(BASE);
+  await page.waitForSelector('#login-form');
+  await page.fill('input[name=username]', 'admin');
+  await page.fill('input[name=password]', 'admin');
+  await page.click('button[type=submit]');
+  await page.waitForSelector('.shell');
+};
+const collapsed = () => page.evaluate(() => document.querySelector('.shell').classList.contains('nav-collapsed'));
+const sidebarWidth = () => page.evaluate(() => Math.round(document.querySelector('.sidebar').getBoundingClientRect().width));
+
+await signIn();
+
+/* --------------------------------------------------------- collapsing */
+console.log('\n[the sidebar collapses]');
+check('it starts expanded', !(await collapsed()));
+const wideNav = await sidebarWidth();
+check('a collapse button is offered', await page.isVisible('#nav-collapse'));
+
+await page.click('#nav-collapse');
+await page.waitForTimeout(400);
+check('clicking it collapses the sidebar', await collapsed());
+const railNav = await sidebarWidth();
+check('the rail is much narrower', railNav < wideNav / 2, `${railNav} vs ${wideNav}`);
+check('the icons are still there', (await page.$$('.nav-item svg')).length > 5);
+check('but the labels are hidden', await page.evaluate(
+  () => getComputedStyle(document.querySelector('.nav-item span')).display === 'none'));
+await shot('70-nav-collapsed');
+
+await page.click('#nav-collapse');
+await page.waitForTimeout(400);
+check('clicking again expands it', !(await collapsed()));
+
+await page.click('#nav-collapse');
+await page.waitForTimeout(300);
+await page.reload();
+await page.waitForSelector('.shell');
+check('the choice survives a reload', await collapsed());
+await page.click('#nav-collapse');
+await page.waitForTimeout(300);
+
+/* ------------------------------------------------------ POS auto-collapse */
+console.log('\n[the till takes the space]');
+check('expanded on the dashboard', !(await collapsed()));
+await page.click('a[data-route=pos]');
+await page.waitForSelector('.tile');
+await page.waitForTimeout(400);
+check('opening the till collapses the menu by itself', await collapsed());
+
+const cartCollapsed = await page.evaluate(() => Math.round(document.querySelector('.cart').getBoundingClientRect().width));
+await shot('71-pos-collapsed');
+
+// Force the menu open at the till to compare like for like. This also leaves the
+// stored preference at "expanded", which the next check relies on.
+await page.click('#nav-collapse');
+await page.waitForTimeout(400);
+const cartExpanded = await page.evaluate(() => Math.round(document.querySelector('.cart').getBoundingClientRect().width));
+check('the freed width goes to the sale panel, not the tiles',
+  cartCollapsed > cartExpanded, `collapsed ${cartCollapsed} vs expanded ${cartExpanded}`);
+check('the sale panel is comfortably wide', cartCollapsed >= 480, String(cartCollapsed));
+check('a manual choice overrides the route at the till', !(await collapsed()));
+
+await page.click('a[data-route=dashboard]');
+await page.waitForSelector('.stat');
+await page.waitForTimeout(400);
+check('leaving the till restores the menu', !(await collapsed()));
+
+await page.click('a[data-route=pos]');
+await page.waitForSelector('.tile');
+await page.waitForTimeout(400);
+check('returning to the till collapses it again', await collapsed());
+
+/* ------------------------------------------------- forms are pages now */
+console.log('\n[forms open as pages, not dialogs]');
+const noDialog = async () => (await page.$$('.modal-backdrop')).length === 0;
+
+for (const [route, label] of [
+  ['products', 'product'],
+  ['expenses', 'expense'],
+  ['purchases', 'purchase'],
+  ['users', 'user'],
+]) {
+  await page.goto(`${BASE}#/${route}`);
+  await page.waitForTimeout(900);
+  await page.click('#new');
+  await page.waitForTimeout(1000);
+  check(`the new ${label} form is a page, not a dialog`, await noDialog());
+  check(`the sidebar stays visible on the new ${label} form`, await page.isVisible('.sidebar'));
+  check(`the URL says so for ${label}`, page.url().includes(`${route}/new`), page.url());
+  check(`the ${label} form has a Cancel that returns`, await page.isVisible('[data-cancel]'));
+}
+await shot('72-form-page');
+
+/* ------------------------------------------------------ they still work */
+console.log('\n[and they still save]');
+await page.goto(`${BASE}#/products/new`);
+await page.waitForSelector('#page-form');
+await page.fill('input[name=name]', 'Page Form Product');
+await page.fill('input[name=barcode]', 'PAGE-1');
+await page.fill('input[name=cost]', '3');
+await page.fill('input[name=price]', '7');
+await page.fill('input[name=opening_stock]', '12');
+await page.click('#page-form button[type=submit]');
+await page.waitForTimeout(1200);
+check('saving returns to the list', page.url().endsWith('#/products'), page.url());
+check('the product is there', (await page.textContent('.page')).includes('Page Form Product'));
+
+await page.click('tr:has-text("Page Form Product") [data-edit]');
+await page.waitForSelector('#page-form');
+check('editing opens a page with the record loaded',
+  (await page.inputValue('input[name=name]')) === 'Page Form Product');
+check('the edit URL identifies the record', /products\/\d+\/edit/.test(page.url()), page.url());
+await page.fill('input[name=price]', '9');
+await page.click('#page-form button[type=submit]');
+await page.waitForTimeout(1200);
+check('the edit saved', (await page.textContent('tr:has-text("Page Form Product")')).includes('9.00'));
+
+await page.goto(`${BASE}#/expenses/new`);
+await page.waitForSelector('#page-form');
+await page.fill('input[name=amount]', '42.50');
+await page.fill('textarea[name=note]', 'Page form expense');
+await page.click('#page-form button[type=submit]');
+await page.waitForTimeout(1200);
+check('an expense saves from its page', (await page.textContent('.page')).includes('Page form expense'));
+
+await page.goto(`${BASE}#/purchases/new`);
+await page.waitForSelector('#purchase-form');
+check('the purchase builder is a page too', await noDialog());
+check('with the sidebar still there', await page.isVisible('.sidebar'));
+await page.fill('input[name=supplier]', 'Page Supplier');
+await page.fill('[data-product="0"]', 'Croissant');
+await page.waitForSelector('.combo-menu .combo-item', { timeout: 6000 });
+await page.click('.combo-menu .combo-item');
+await page.waitForTimeout(500);
+await page.fill('[data-qty="0"]', '4');
+await page.waitForTimeout(300);
+await shot('73-purchase-page');
+await page.click('#save-purchase');
+await page.waitForTimeout(1500);
+check('the purchase saves and returns to the list', page.url().endsWith('#/purchases'), page.url());
+check('it is listed', (await page.textContent('.page')).includes('Page Supplier'));
+
+await page.goto(`${BASE}#/lists/customer/new`);
+await page.waitForSelector('#page-form');
+await page.fill('input[name=name]', 'Page Customer');
+await page.fill('input[name=phone]', '01 234 567');
+await page.click('#page-form button[type=submit]');
+await page.waitForTimeout(1200);
+check('a list entry saves from its page', (await page.textContent('.page')).includes('Page Customer'));
+
+/* -------------------------------------------------------------- cancel */
+console.log('\n[cancelling]');
+await page.goto(`${BASE}#/products/new`);
+await page.waitForSelector('#page-form');
+await page.fill('input[name=name]', 'Never Saved');
+await page.click('.form-actions [data-cancel]');
+await page.waitForTimeout(900);
+check('cancel returns to the list', page.url().endsWith('#/products'));
+check('and nothing was created', !(await page.textContent('.page')).includes('Never Saved'));
+
+/* ------------------------------------------------------- validation */
+await page.goto(`${BASE}#/products/new`);
+await page.waitForSelector('#page-form');
+await page.click('#page-form button[type=submit]');
+await page.waitForTimeout(700);
+check('an empty required field blocks the save', page.url().includes('products/new'), page.url());
+
+/* ------------------------------------------------------- forms fill the page */
+console.log('');
+console.log('[form pages use the width available]');
+// #page is padded, so compare against its content box, not its border box.
+const contentWidth = () =>
+  page.evaluate(() => {
+    const el = document.querySelector('#page');
+    const cs = getComputedStyle(el);
+    return Math.round(el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+  });
+const widths = {
+  form: await page.evaluate(() => Math.round(document.querySelector('#page-form').getBoundingClientRect().width)),
+  page: await contentWidth(),
+  cols: await page.evaluate(
+    () => getComputedStyle(document.querySelector('#page-form .form-grid')).gridTemplateColumns.split(' ').length,
+  ),
+};
+check('the product form fills the page width', widths.form >= widths.page - 2, JSON.stringify(widths));
+check('and lays fields out in several columns', widths.cols >= 3, JSON.stringify(widths));
+await shot('75-product-form-page');
+
+await page.goto(`${BASE}#/purchases/new`);
+await page.waitForSelector('#purchase-form');
+await page.waitForTimeout(400);
+const buyWidths = {
+  form: await page.evaluate(() => Math.round(document.querySelector('#purchase-form').getBoundingClientRect().width)),
+  page: await contentWidth(),
+  table: await page.evaluate(() => Math.round(document.querySelector('#lines table')?.getBoundingClientRect().width || 0)),
+};
+check('the purchase builder fills the page width', buyWidths.form >= buyWidths.page - 2, JSON.stringify(buyWidths));
+check('its line table uses that width too', buyWidths.table >= buyWidths.page - 60, JSON.stringify(buyWidths));
+await shot('76-purchase-form-page');
+
+/* ------------------------------------------------------------- Arabic */
+console.log('\n[Arabic]');
+await page.click('.topbar [data-lang="ar"]');
+await page.waitForTimeout(800);
+await page.goto(`${BASE}#/products/new`);
+await page.waitForSelector('#page-form');
+check('the form page is translated', (await page.textContent('#page-form')).includes('اسم المنتج'));
+check('no horizontal overflow in RTL', await page.evaluate(
+  () => document.body.scrollWidth <= document.documentElement.clientWidth + 1));
+await page.goto(`${BASE}#/pos`);
+await page.waitForSelector('.tile');
+await page.waitForTimeout(500);
+check('the till still collapses the menu in RTL', await collapsed());
+const railSide = await page.evaluate(() => {
+  const r = document.querySelector('.sidebar').getBoundingClientRect();
+  return { right: Math.round(r.right), vw: document.documentElement.clientWidth };
+});
+check('the rail stays on the right in RTL', railSide.right >= railSide.vw - 1, JSON.stringify(railSide));
+await shot('74-pos-collapsed-ar');
+await page.click('.topbar [data-lang="en"]');
+await page.waitForTimeout(600);
+
+check('no uncaught JavaScript errors', errors.length === 0, errors.join(' || '));
+await browser.close();
+server.kill();
+console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}`);
+process.exit(fail ? 1 : 0);

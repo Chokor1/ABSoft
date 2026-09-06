@@ -63,6 +63,9 @@ export const api = {
   sale: (id) => api.get(`/api/sales/${id}`),
   createSale: (s) => api.post('/api/sales', s),
   deleteSale: (id) => api.del(`/api/sales/${id}`),
+  addPayment: (saleId, payment) => api.post(`/api/sales/${saleId}/payments`, payment),
+  deletePayment: (id) => api.del(`/api/payments/${id}`),
+  receivables: () => api.get('/api/reports/receivables'),
 
   expenses: (query) => api.get('/api/expenses', query),
   expense: (id) => api.get(`/api/expenses/${id}`),

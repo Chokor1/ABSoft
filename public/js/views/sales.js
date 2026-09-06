@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { count, errorText, methodText, t } from '../i18n.js';
+import { PAYMENT_METHODS, count, errorText, methodText, t } from '../i18n.js';
 import {
   confirmDialog,
   dateText,
@@ -9,6 +9,7 @@ import {
   downloadCsv,
   emptyState,
   esc,
+  formModal,
   modal,
   money,
   monthStart,
@@ -21,10 +22,11 @@ import {
 } from '../ui.js';
 
 /** Printable receipt / invoice for a completed sale. */
-export function showReceipt(sale, { change = 0 } = {}) {
+export function showReceipt(sale, { change = 0, onChanged } = {}) {
   const cfg = sale.settings || store.settings;
   const line = (label, value, cls = '') =>
     `<div class="r-line ${cls}"><span>${esc(label)}</span><span>${value}</span></div>`;
+  const owing = sale.balance > 0.004;
 
   return modal({
     title: t('receipt.title', { doc: sale.doc_no }),
@@ -49,19 +51,145 @@ export function showReceipt(sale, { change = 0 } = {}) {
         ${sale.discount ? line(t('common.discount'), `−${money(sale.discount)}`) : ''}
         ${sale.tax ? line(t('common.tax'), money(sale.tax)) : ''}
         ${line(t('receipt.total'), money(sale.total), 'r-total')}
-        ${line(t('receipt.paid', { method: methodText(sale.method) }), money(sale.paid))}
+        ${line(t('pay.paid'), money(sale.paid))}
         ${change > 0.004 ? line(t('receipt.change'), money(change)) : ''}
+        ${sale.balance > 0.004 ? line(t('pay.balance'), money(sale.balance), 'r-total') : ''}
         <div class="r-rule"></div>
         <div class="r-center">${esc(cfg.receipt_footer || '')}</div>
-      </div>`,
+      </div>
+      ${paymentsHtml(sale)}`,
     footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
-             <button class="btn btn-primary" data-print>${icon('print')} ${esc(t('common.print'))}</button>`,
-    setup: (root) => root.querySelector('[data-print]').addEventListener('click', () => window.print()),
+             ${
+               owing
+                 ? `<button class="btn btn-primary no-print" data-pay>${icon('coins')} ${esc(t('pay.record'))}</button>`
+                 : ''
+             }
+             <button class="btn ${owing ? '' : 'btn-primary'} no-print" data-print>${icon('print')} ${esc(
+               t('common.print'),
+             )}</button>`,
+    setup: (root, close) => {
+      root.querySelector('[data-print]').addEventListener('click', () => window.print());
+      root.querySelector('[data-pay]')?.addEventListener('click', async () => {
+        close();
+        const updated = await recordPayment(sale);
+        if (updated) {
+          onChanged?.();
+          showReceipt(updated, { onChanged });
+        }
+      });
+      root.querySelectorAll('[data-del-pay]').forEach((b) =>
+        b.addEventListener('click', async () => {
+          const ok = await confirmDialog({
+            title: t('pay.delete_title'),
+            message: t('pay.delete_msg'),
+            confirmLabel: t('common.remove'),
+            danger: true,
+          });
+          if (!ok) return;
+          try {
+            const updated = await api.deletePayment(b.dataset.delPay);
+            toast(t('pay.removed'), 'success');
+            close();
+            onChanged?.();
+            showReceipt(updated, { onChanged });
+          } catch (err) {
+            toast(errorText(err), 'error');
+          }
+        }),
+      );
+    },
   });
 }
 
+/** The instalments recorded against an invoice, newest last. */
+function paymentsHtml(sale) {
+  const rows = sale.payments || [];
+  return `<div class="no-print" style="margin-top:16px">
+    <div class="card-head" style="padding:0 0 8px;border-bottom:0">
+      <div><h3 style="font-size:14px">${esc(t('pay.history'))}</h3></div>
+      <div class="spacer"></div>
+      <span class="badge ${sale.balance > 0.004 ? 'warn' : 'success'}">${esc(
+        sale.balance > 0.004 ? t('pay.due', { v: money(sale.balance) }) : t('pay.status_paid'),
+      )}</span>
+    </div>
+    ${
+      rows.length
+        ? `<div class="table-wrap"><table class="data"><tbody>${rows
+            .map(
+              (r) => `<tr>
+                <td class="nowrap">${dateText(r.date)}</td>
+                <td><span class="badge">${esc(methodText(r.method))}</span></td>
+                <td class="muted">${esc(r.note || '')}</td>
+                <td class="right"><b>${money(r.amount)}</b></td>
+                <td class="right">${
+                  store.user.role === 'admin'
+                    ? `<button class="btn btn-sm btn-ghost" data-del-pay="${r.id}" title="${esc(
+                        t('common.remove'),
+                      )}">${icon('trash')}</button>`
+                    : ''
+                }</td>
+              </tr>`,
+            )
+            .join('')}</tbody></table></div>`
+        : `<p class="muted" style="font-size:12.5px">${esc(t('pay.no_payments'))}</p>`
+    }
+  </div>`;
+}
+
+/** Take an instalment against an invoice. Resolves with the updated sale. */
+export async function recordPayment(sale) {
+  const data = await formModal({
+    title: t('pay.record_title', { doc: sale.doc_no }),
+    subtitle: t('pay.record_sub', { balance: money(sale.balance), total: money(sale.total) }),
+    submitLabel: t('pay.record'),
+    fields: [
+      {
+        name: 'amount',
+        label: t('pay.amount'),
+        type: 'number',
+        step: '0.01',
+        min: 0,
+        // Pre-filled with the whole balance: settling in full is the common case,
+        // and anything less is just a smaller number typed over it.
+        value: sale.balance.toFixed(2),
+        required: true,
+        autofocus: true,
+        help: t('pay.amount_help'),
+      },
+      {
+        name: 'method',
+        label: t('pos.payment_method'),
+        type: 'select',
+        value: 'cash',
+        options: PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) })),
+      },
+      { name: 'date', label: t('common.date'), type: 'date', value: todayISO() },
+      { name: 'note', label: t('common.note'), span: 2 },
+    ],
+  });
+  if (!data) return null;
+  try {
+    const updated = await api.addPayment(sale.id, data);
+    toast(
+      updated.balance > 0.004 ? t('pay.added', { balance: money(updated.balance) }) : t('pay.settled'),
+      'success',
+    );
+    return updated;
+  } catch (err) {
+    toast(errorText(err), 'error');
+    return null;
+  }
+}
+
+/** paid / part paid / unpaid, from the balance rather than a stored flag. */
+function payStatus(sale) {
+  if (sale.balance <= 0.004) return `<span class="badge success">${esc(t('pay.status_paid'))}</span>`;
+  if (sale.paid > 0.004) return `<span class="badge warn">${esc(t('pay.status_partial'))}</span>`;
+  return `<span class="badge danger">${esc(t('pay.status_unpaid'))}</span>`;
+}
+
 export async function render(root, ctx) {
-  const state = { from: monthStart(), to: todayISO(), search: '' };
+  const state = { from: monthStart(), to: todayISO(), search: '', unpaid: false };
 
   const bar = rangeBar(state, (r) => {
     Object.assign(state, r);
@@ -80,6 +208,15 @@ export async function render(root, ctx) {
     }, 250),
   );
   bar.appendChild(searchWrap);
+
+  const unpaidWrap = document.createElement('label');
+  unpaidWrap.className = 'check';
+  unpaidWrap.innerHTML = `<input type="checkbox" id="unpaid-only"/> ${esc(t('pay.unpaid_only'))}`;
+  unpaidWrap.querySelector('input').addEventListener('change', (e) => {
+    state.unpaid = e.target.checked;
+    load();
+  });
+  bar.appendChild(unpaidWrap);
 
   const body = document.createElement('div');
   root.innerHTML = '';
@@ -113,7 +250,7 @@ export async function render(root, ctx) {
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;
-    rows = await api.sales({ from: state.from, to: state.to, search: state.search });
+    rows = await api.sales({ from: state.from, to: state.to, search: state.search, unpaid: state.unpaid ? '1' : '' });
 
     const sum = rows.reduce(
       (a, s) => ({
@@ -121,8 +258,9 @@ export async function render(root, ctx) {
         profit: a.profit + s.profit,
         cogs: a.cogs + s.cogs,
         qty: a.qty + s.total_qty,
+        balance: a.balance + s.balance,
       }),
-      { total: 0, profit: 0, cogs: 0, qty: 0 },
+      { total: 0, profit: 0, cogs: 0, qty: 0, balance: 0 },
     );
 
     body.innerHTML = `
@@ -135,6 +273,11 @@ export async function render(root, ctx) {
           <span class="badge ${sum.profit >= 0 ? 'success' : 'danger'}">${esc(
             t('sales.profit_badge', { v: money(sum.profit) }),
           )}</span>
+          ${
+            sum.balance > 0.004
+              ? `<span class="badge warn">${esc(t('pay.owed_badge', { v: money(sum.balance) }))}</span>`
+              : ''
+          }
         </div>
         <div class="card-body flush">
           ${
@@ -145,7 +288,10 @@ export async function render(root, ctx) {
                     <th>${esc(t('common.customer'))}</th><th class="right">${esc(t('common.items'))}</th>
                     <th class="right">${esc(t('common.total'))}</th><th class="right">${esc(t('common.cost'))}</th>
                     <th class="right">${esc(t('common.profit'))}</th>
-                    <th>${esc(t('sales.payment'))}</th><th>${esc(t('sales.cashier'))}</th><th></th>
+                    <th class="right">${esc(t('pay.paid'))}</th>
+                    <th class="right">${esc(t('pay.balance'))}</th>
+                    <th>${esc(t('pay.status'))}</th>
+                    <th>${esc(t('sales.cashier'))}</th><th></th>
                   </tr></thead>
                   <tbody>${rows
                     .map(
@@ -157,7 +303,9 @@ export async function render(root, ctx) {
                         <td class="right"><b>${money(s.total)}</b></td>
                         <td class="right muted">${money(s.cogs)}</td>
                         <td class="right ${signClass(s.profit)}">${money(s.profit)}</td>
-                        <td><span class="badge">${esc(methodText(s.method))}</span></td>
+                        <td class="right muted">${money(s.paid)}</td>
+                        <td class="right ${s.balance > 0.004 ? 'money-neg' : 'muted'}">${money(s.balance)}</td>
+                        <td>${payStatus(s)}</td>
                         <td class="muted">${esc(s.username || t('common.none'))}</td>
                         <td class="right">${
                           store.user.role === 'admin'
@@ -174,6 +322,8 @@ export async function render(root, ctx) {
                     <td class="right">${money(sum.total)}</td>
                     <td class="right">${money(sum.cogs)}</td>
                     <td class="right ${signClass(sum.profit)}">${money(sum.profit)}</td>
+                    <td class="right">${money(sum.total - sum.balance)}</td>
+                    <td class="right ${sum.balance > 0.004 ? 'money-neg' : ''}">${money(sum.balance)}</td>
                     <td colspan="3"></td>
                   </tr></tfoot>
                 </table></div>`
@@ -185,7 +335,7 @@ export async function render(root, ctx) {
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {
         if (e.target.closest('[data-void]')) return;
-        showReceipt(await api.sale(tr.dataset.open));
+        showReceipt(await api.sale(tr.dataset.open), { onChanged: load });
       }),
     );
 

@@ -116,6 +116,12 @@ export function register(router) {
            ORDER BY (COALESCE(s.stock, 0) - p.min_stock) LIMIT 8`,
         )
         .all(),
+      receivable: db
+        .prepare(
+          `SELECT COUNT(*) AS invoices, ROUND(COALESCE(SUM(total - paid), 0), 2) AS balance
+           FROM sales WHERE ROUND(total - paid, 2) > 0.005`,
+        )
+        .get(),
       recent_sales: db
         .prepare(
           `SELECT s.id, s.doc_no, s.customer, s.date, s.total, s.method, u.username
@@ -222,6 +228,37 @@ export function register(router) {
          GROUP BY p.id ORDER BY revenue DESC`,
       )
       .all(from, to);
+  });
+
+  // What customers still owe, newest first. Accrual accounting means these sales
+  // are already counted as revenue; this is the cash not yet collected.
+  router.get('/api/reports/receivables', () => {
+    const rows = db
+      .prepare(
+        `SELECT s.id, s.doc_no, s.date, s.customer, s.total, s.paid,
+                ROUND(s.total - s.paid, 2) AS balance
+         FROM sales s
+         WHERE ROUND(s.total - s.paid, 2) > 0.005
+         ORDER BY s.date DESC, s.id DESC`,
+      )
+      .all();
+    const byCustomer = db
+      .prepare(
+        `SELECT CASE WHEN s.customer = '' THEN NULL ELSE s.customer END AS customer,
+                COUNT(*) AS invoices,
+                ROUND(SUM(s.total - s.paid), 2) AS balance
+         FROM sales s
+         WHERE ROUND(s.total - s.paid, 2) > 0.005
+         GROUP BY s.customer COLLATE NOCASE
+         ORDER BY balance DESC`,
+      )
+      .all();
+    return {
+      total: round(rows.reduce((sum, r) => sum + r.balance, 0)),
+      count: rows.length,
+      rows,
+      by_customer: byCustomer,
+    };
   });
 
   // Sales per cashier — useful for shift reconciliation.

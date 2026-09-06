@@ -150,6 +150,33 @@ instead of deleted, so past reports never change. Voiding a sale or deleting a p
 
 ---
 
+## Payments, in full or in instalments
+
+A sale does not have to be paid all at once. At the till, type any amount into
+**Amount received** — less than the total leaves the rest owing on the invoice,
+more is simply change. Entering nothing records a sale on account.
+
+Everything owed is then visible where you would look for it:
+
+- **Sales History** shows *Paid*, *Balance* and a status of paid / part paid /
+  unpaid, with an **Unpaid only** filter and the outstanding total in the header.
+- Opening an invoice lists every instalment taken against it and offers
+  **Record payment**. Each instalment keeps its own date, method and note, so
+  "$50 cash on the 3rd, $30 by card on the 11th" is exactly what you see.
+- The dashboard flags the total owed next to recent sales.
+
+Cashiers can take payments; only an administrator can remove one, which puts the
+amount back on the invoice as owed and leaves the sale itself untouched.
+
+Two rules the system enforces: you cannot pay more than is owed (the excess is
+change at the counter, not money held against the invoice), and **an unpaid sale
+still counts as revenue**. That is deliberate — profit is earned when the goods
+leave, not when the cash arrives. What has not been collected is a separate
+figure, which is why it has its own column rather than being deducted from
+profit.
+
+---
+
 ## Backups
 
 Everything the business owns is in one file: **`data/absoft.db`**. Three ways to copy it:
@@ -246,6 +273,26 @@ noting that neither command touches `data/`.
 **No Git on that machine?** Download the ZIP, unzip it over the folder replacing everything,
 and **keep the `data` folder exactly as it is**. Run `npm run backup` first.
 
+### Running the tests
+
+```
+npm test        server-side suites - no dependencies, works anywhere
+npm run test:ui     browser suites - needs Edge and playwright-core
+npm run test:all    both
+```
+
+Each suite starts its own copy of ABSoft on its own port against a throwaway
+database under `.test-run/`, so running them never touches `data/`. The browser
+suites need one test-only package:
+
+```
+npm install --no-save playwright-core
+```
+
+`tests/migrate-payments.test.mjs` is the one worth running before you ship: it
+builds a database on the previous schema, updates it, and checks that settled
+invoices are still settled and stock never moved.
+
 ### Changing the database shape safely
 
 `server/db.js` creates the schema with `CREATE TABLE IF NOT EXISTS`. That is enough for a new
@@ -304,6 +351,7 @@ public/
   css/app.css       design tokens, light + dark themes, RTL rules
   js/i18n.js        English + Arabic strings, direction, error-code lookup
   js/               api.js, ui.js, icons.js, main.js, views/
+tests/              npm test - each suite runs its own server on a scratch database
 data/absoft.db      your database (created on first run)
 data/backups/       local snapshots (kept out of Git)
 start.cmd           run ABSoft

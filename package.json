@@ -1,6 +1,6 @@
 {
   "name": "absoft",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "ABSoft — a small, modern point of sale system with inventory, expenses and profit & loss reporting.",
   "author": "Abbass Chokor",
   "type": "module",
@@ -10,7 +10,10 @@
     "dev": "node --no-warnings --watch server/index.js",
     "seed": "node --no-warnings server/tools/seed.js",
     "backup": "node --no-warnings server/tools/backup.js",
-    "reset": "node --no-warnings server/tools/reset.js"
+    "reset": "node --no-warnings server/tools/reset.js",
+    "test": "node --no-warnings tests/run.mjs server",
+    "test:ui": "node --no-warnings tests/run.mjs ui",
+    "test:all": "node --no-warnings tests/run.mjs all"
   },
   "engines": {
     "node": ">=22.5.0"

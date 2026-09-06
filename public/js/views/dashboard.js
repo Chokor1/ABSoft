@@ -98,6 +98,11 @@ export async function render(root, ctx) {
     <div class="grid cols-3">
       <div class="card">
         <div class="card-head"><div><h3>${esc(t('dash.recent_sales'))}</h3></div><div class="spacer"></div>
+          ${
+            d.receivable?.balance > 0.004
+              ? `<span class="badge warn">${esc(t('pay.owed_badge', { v: money(d.receivable.balance) }))}</span>`
+              : ''
+          }
           <button class="btn btn-sm btn-ghost" data-go="sales">${esc(t('dash.view_all'))}</button></div>
         <div class="card-body flush">
           ${

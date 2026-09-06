@@ -1,3 +1,6 @@
 data/
 node_modules/
 *.log
+
+# test scratch
+.test-run/

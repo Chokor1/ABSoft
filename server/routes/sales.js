@@ -7,8 +7,33 @@ const LIST_SQL = `
   SELECT s.*, u.username,
          (SELECT COUNT(*) FROM sale_items i WHERE i.sale_id = s.id) AS line_count,
          (SELECT COALESCE(SUM(i.qty), 0) FROM sale_items i WHERE i.sale_id = s.id) AS total_qty,
-         ROUND(s.total - s.tax - s.cogs, 2) AS profit
+         ROUND(s.total - s.tax - s.cogs, 2) AS profit,
+         ROUND(s.total - s.paid, 2) AS balance
   FROM sales s LEFT JOIN users u ON u.id = s.user_id`;
+
+/**
+ * `sales.paid` is the running total of the payments ledger.
+ *
+ * The ledger is the source of truth; this keeps the cached total on the sale in
+ * step so every existing query and report that reads `paid` stays correct. It is
+ * the only place that writes the column, and it always runs inside the same
+ * transaction as the payment it follows.
+ */
+function recalcPaid(saleId) {
+  db.prepare(
+    `UPDATE sales SET paid = COALESCE((SELECT ROUND(SUM(amount), 2) FROM payments WHERE sale_id = ?), 0)
+     WHERE id = ?`,
+  ).run(saleId, saleId);
+}
+
+const paymentsOf = (saleId) =>
+  db
+    .prepare(
+      `SELECT p.*, u.username FROM payments p
+       LEFT JOIN users u ON u.id = p.user_id
+       WHERE p.sale_id = ? ORDER BY p.date, p.id`,
+    )
+    .all(saleId);
 
 export function loadSale(id) {
   const head = db.prepare(`${LIST_SQL} WHERE s.id = ?`).get(id);
@@ -19,7 +44,7 @@ export function loadSale(id) {
        JOIN products p ON p.id = i.product_id WHERE i.sale_id = ? ORDER BY i.id`,
     )
     .all(id);
-  return { ...head, items };
+  return { ...head, items, payments: paymentsOf(id) };
 }
 
 export function register(router) {
@@ -29,6 +54,9 @@ export function register(router) {
     if (str(ctx.query.from)) (where.push('s.date >= ?'), args.push(str(ctx.query.from)));
     if (str(ctx.query.to)) (where.push('s.date <= ?'), args.push(str(ctx.query.to)));
     if (str(ctx.query.user_id)) (where.push('s.user_id = ?'), args.push(num(ctx.query.user_id)));
+    // Anything still owed, however small the remainder.
+    if (ctx.query.unpaid === '1') where.push('ROUND(s.total - s.paid, 2) > 0.005');
+    if (str(ctx.query.customer)) (where.push('s.customer = ? COLLATE NOCASE'), args.push(str(ctx.query.customer)));
     if (str(ctx.query.search)) {
       where.push('(s.doc_no LIKE ? OR s.customer LIKE ?)');
       const like = `%${str(ctx.query.search)}%`;
@@ -134,12 +162,57 @@ export function register(router) {
           `${date} ${new Date().toISOString().slice(11, 19)}`,
         );
       }
+      // The amount handed over at the till is simply the first instalment.
+      // Anything above the total is change, not an overpayment, so it is capped.
+      const firstPayment = money(Math.min(paid, total));
+      if (firstPayment > 0) {
+        db.prepare(
+          `INSERT INTO payments (sale_id, amount, method, date, note, user_id) VALUES (?, ?, ?, ?, '', ?)`,
+        ).run(saleId, firstPayment, str(ctx.body.method) || 'cash', date, ctx.user.id);
+      }
+      recalcPaid(saleId);
+
       // A customer typed on the invoice joins the directory for next time.
       rememberEntity('customer', customer);
       return loadSale(saleId);
     });
 
     return { ...sale, shortages, settings };
+  });
+
+  // Record another instalment against an invoice.
+  router.post('/api/sales/:id/payments', (ctx) => {
+    const sale = loadSale(ctx.params.id);
+    if (!sale) throw notFound('Sale not found', 'SALE_NOT_FOUND');
+
+    const amount = money(num(ctx.body.amount));
+    if (!(amount > 0)) throw badRequest('Payment amount must be greater than zero', 'PAYMENT_POSITIVE');
+    // Refuse to record more than is owed: the excess is change at the counter,
+    // not money the business is holding for this invoice.
+    if (amount > sale.balance + 0.005) {
+      throw badRequest(`That is more than the ${sale.balance} still owed`, 'PAYMENT_TOO_LARGE', {
+        balance: sale.balance,
+      });
+    }
+
+    return transact(() => {
+      db.prepare(
+        `INSERT INTO payments (sale_id, amount, method, date, note, user_id) VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(sale.id, amount, str(ctx.body.method) || 'cash', isoDate(ctx.body.date), str(ctx.body.note), ctx.user.id);
+      recalcPaid(sale.id);
+      return loadSale(sale.id);
+    });
+  });
+
+  router.delete('/api/payments/:id', (ctx) => {
+    if (ctx.user.role !== 'admin') throw badRequest('Only an administrator can remove a payment', 'PAYMENT_ADMIN_ONLY');
+    const row = db.prepare(`SELECT * FROM payments WHERE id = ?`).get(ctx.params.id);
+    if (!row) throw notFound('Payment not found', 'PAYMENT_NOT_FOUND');
+    return transact(() => {
+      db.prepare(`DELETE FROM payments WHERE id = ?`).run(row.id);
+      recalcPaid(row.sale_id);
+      return loadSale(row.sale_id);
+    });
   });
 
   router.delete('/api/sales/:id', (ctx) => {
