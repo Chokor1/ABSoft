@@ -1,4 +1,6 @@
 import { api } from '../api.js';
+import { attachPicker } from '../picker.js';
+import { productOption } from '../product-option.js';
 import { icon } from '../icons.js';
 import { PAYMENT_METHODS, errorText, methodText, t } from '../i18n.js';
 import {
@@ -31,7 +33,7 @@ export async function render(root, ctx) {
     <div class="pos">
       <section>
         <div class="scan-bar">
-          <div class="input-icon">
+          <div class="input-icon combo">
             ${icon('barcode')}
             <input class="input" id="scan" data-search placeholder="${esc(
               t('pos.scan_placeholder'),
@@ -133,27 +135,44 @@ export async function render(root, ctx) {
   }, 220);
 
   scan.addEventListener('input', search);
+
+  // Results drop down under the box as you type; the tile grid filters alongside.
+  const picker = attachPicker(scan, {
+    search: (q) => (q ? api.products({ search: q, limit: 25 }) : []),
+    render: productOption,
+    emptyText: t('pos.no_match'),
+    openOnFocus: false,
+    onPick: (product) => {
+      addToCart(product);
+      resetSearch();
+    },
+  });
+
+  function resetSearch() {
+    scan.value = '';
+    state.filter = '';
+    loadProducts();
+    scan.focus();
+  }
+
   scan.addEventListener('keydown', async (e) => {
-    if (e.key !== 'Enter') return;
+    // The picker consumes Enter when something is highlighted.
+    if (e.key !== 'Enter' || (picker.isOpen() && picker.activeItem())) return;
     e.preventDefault();
     const code = scan.value.trim();
     if (!code) return;
     try {
-      // A barcode scanner types the code then hits Enter — resolve it straight to the cart.
-      const product = await api.lookup(code);
-      addToCart(product);
-      scan.value = '';
-      state.filter = '';
-      loadProducts();
+      // A barcode scanner types the code then hits Enter before any search has
+      // returned, so resolve the exact code straight to the cart.
+      addToCart(await api.lookup(code));
+      resetSearch();
     } catch (err) {
       toast(errorText(err), 'error');
     }
   });
   $('#clear-search').addEventListener('click', () => {
-    scan.value = '';
-    state.filter = '';
-    loadProducts();
-    scan.focus();
+    picker.close();
+    resetSearch();
   });
 
   /* ----------------------------------------------------------------- cart -- */
@@ -398,4 +417,7 @@ export async function render(root, ctx) {
   await loadProducts();
   drawCart();
   scan.focus();
+
+  // main.js calls this when navigating away.
+  return () => picker.destroy();
 }

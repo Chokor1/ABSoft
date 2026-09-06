@@ -521,6 +521,44 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .sum-row.total .v { font-size: 23px; letter-spacing: -0.03em; }
 
 /* ==========================================================================
+   type-ahead picker
+   ========================================================================== */
+
+.combo { position: relative; }
+
+.combo-menu {
+  /* fixed, and on <body>, so a scrolling table or modal cannot clip it.
+     Position and width are set from the input's box by picker.js. */
+  position: fixed; z-index: 300;
+  max-height: 320px; overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 5px;
+}
+
+.combo-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 8px 10px;
+  border-radius: 8px; cursor: pointer;
+  text-align: start;
+}
+.combo-item:hover { background: var(--surface-3); }
+.combo-item.active { background: var(--accent-soft); }
+.combo-item.active .ci-name { color: var(--accent-text); }
+
+.ci-main { min-width: 0; flex: 1; }
+.ci-name { font-weight: 600; font-size: 13.5px; unicode-bidi: plaintext; }
+.ci-sub { font-size: 11.5px; color: var(--muted); unicode-bidi: plaintext; }
+.ci-side { text-align: end; white-space: nowrap; }
+.ci-price { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.ci-stock { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ci-stock.out { color: var(--danger); }
+
+.combo-empty { padding: 14px 12px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ==========================================================================
    chart
    ========================================================================== */
 

@@ -49,21 +49,27 @@ export function register(router) {
       args.push(like, like, like, like);
     }
     if (lowStock) where.push('COALESCE(s.stock, 0) <= p.min_stock');
-    const sql = `${SELECT_PRODUCT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY p.name COLLATE NOCASE`;
+    // `limit` keeps the type-ahead pickers light on a large catalogue; the
+    // management screens omit it and get everything.
+    const limit = num(ctx.query.limit, 0);
+    const sql = `${SELECT_PRODUCT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                 ORDER BY p.name COLLATE NOCASE
+                 ${limit > 0 ? `LIMIT ${Math.min(200, limit)}` : ''}`;
     return db.prepare(sql).all(...args);
   });
 
-  // Barcode scanner endpoint: exact barcode first, then a forgiving name match.
+  // Barcode scanner endpoint.
   router.get('/api/products/lookup', (ctx) => {
     const code = str(ctx.query.code);
     if (!code) throw badRequest('code is required', 'CODE_REQUIRED');
-    const exact = db.prepare(`${SELECT_PRODUCT} WHERE p.barcode = ? AND p.active = 1`).get(code);
-    if (exact) return exact;
-    const fuzzy = db
-      .prepare(`${SELECT_PRODUCT} WHERE p.active = 1 AND p.name LIKE ? ORDER BY p.name LIMIT 1`)
-      .get(`%${code}%`);
-    if (!fuzzy) throw notFound(`No product matches "${code}"`, 'NO_PRODUCT_MATCH', { code });
-    return fuzzy;
+    // Exact matches only. This is the scanner path: a partial match here would
+    // silently ring up the wrong item. Typed searches go through /api/products,
+    // which shows the candidates and lets the cashier choose.
+    const found =
+      db.prepare(`${SELECT_PRODUCT} WHERE p.barcode = ? AND p.active = 1`).get(code) ||
+      db.prepare(`${SELECT_PRODUCT} WHERE p.name = ? COLLATE NOCASE AND p.active = 1`).get(code);
+    if (!found) throw notFound(`No product matches "${code}"`, 'NO_PRODUCT_MATCH', { code });
+    return found;
   });
 
   router.get('/api/products/:id', (ctx) => {

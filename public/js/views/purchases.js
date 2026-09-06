@@ -1,4 +1,6 @@
 import { api } from '../api.js';
+import { attachPicker } from '../picker.js';
+import { productOption } from '../product-option.js';
 import { icon } from '../icons.js';
 import { count, errorText, t } from '../i18n.js';
 import {
@@ -175,11 +177,13 @@ function showPurchase(p) {
 
 /** Multi-line stock-in document builder. */
 export async function newPurchase(onSaved) {
-  const products = await api.products({});
-  if (!products.length) return toast(t('buy.need_product'), 'warn');
+  // Only a count, to refuse an empty catalogue. Lines are searched, not preloaded.
+  if (!(await api.products({})).length) return toast(t('buy.need_product'), 'warn');
   const supplierNames = await suggestions('supplier');
 
   const lines = [];
+  // Assigned once the modal body exists; called however the modal is dismissed.
+  let dropPickers = () => {};
 
   const linesHtml = () =>
     lines.length
@@ -191,16 +195,11 @@ export async function newPurchase(onSaved) {
             .map(
               (l, i) => `<tr>
                 <td>
-                  <select class="select" data-product="${i}">
-                    ${products
-                      .map(
-                        (p) =>
-                          `<option value="${p.id}" ${p.id === l.product_id ? 'selected' : ''}>${esc(p.name)}${
-                            p.barcode ? ` · ${esc(p.barcode)}` : ''
-                          }</option>`,
-                      )
-                      .join('')}
-                  </select>
+                  <div class="combo">
+                    <input class="input" data-product="${i}" value="${esc(l.name || '')}"
+                           placeholder="${esc(t('buy.find_product'))}"/>
+                  </div>
+                  ${l.barcode ? `<div class="cell-sub mono">${esc(l.barcode)}</div>` : ''}
                 </td>
                 <td><input class="input" type="number" step="any" min="0" value="${l.qty}" data-qty="${i}" style="text-align:end"/></td>
                 <td><input class="input" type="number" step="0.01" min="0" value="${l.unit_cost}" data-cost="${i}" style="text-align:end"/></td>
@@ -245,21 +244,39 @@ export async function newPurchase(onSaved) {
     setup: (rootEl, close) => {
       const linesEl = rootEl.querySelector('#lines');
 
+      // The line table is re-rendered on every add, remove and pick, so the
+      // pickers attached to the old rows must be torn down or their menus leak.
+      let pickers = [];
+      dropPickers = () => {
+        pickers.forEach((p) => p.destroy());
+        pickers = [];
+      };
+
       const redraw = () => {
+        dropPickers();
         linesEl.innerHTML = linesHtml();
         wire();
       };
 
       const wire = () => {
-        linesEl.querySelectorAll('[data-product]').forEach((sel) =>
-          sel.addEventListener('change', () => {
-            const line = lines[+sel.dataset.product];
-            line.product_id = Number(sel.value);
-            const product = products.find((p) => p.id === line.product_id);
-            if (product && !line.touchedCost) line.unit_cost = Number(product.cost) || 0;
-            redraw();
-          }),
-        );
+        linesEl.querySelectorAll('[data-product]').forEach((input) => {
+          const line = lines[+input.dataset.product];
+          pickers.push(attachPicker(input, {
+            search: (q) => api.products({ search: q, limit: 25 }),
+            render: productOption,
+            emptyText: t('buy.no_product_match'),
+            onPick: (p) => {
+              line.product_id = p.id;
+              line.name = p.name;
+              line.barcode = p.barcode || '';
+              // Default to what it last cost, unless the buyer already typed a price.
+              if (!line.touchedCost) line.unit_cost = Number(p.cost) || 0;
+              redraw();
+              // Keep the flow moving: land on the quantity for the line just filled.
+              linesEl.querySelector(`[data-qty="${input.dataset.product}"]`)?.focus();
+            },
+          }));
+        });
         linesEl.querySelectorAll('[data-qty]').forEach((input) =>
           input.addEventListener('input', () => {
             lines[+input.dataset.qty].qty = Number(input.value) || 0;
@@ -293,14 +310,15 @@ export async function newPurchase(onSaved) {
       };
 
       rootEl.querySelector('#add-line').addEventListener('click', () => {
-        const first = products[0];
-        lines.push({ product_id: first.id, qty: 1, unit_cost: Number(first.cost) || 0, touchedCost: false });
+        lines.push({ product_id: 0, name: '', barcode: '', qty: 1, unit_cost: 0, touchedCost: false });
         redraw();
+        // Focus the new line's search box so you can just start typing.
+        linesEl.querySelector(`[data-product="${lines.length - 1}"]`)?.focus();
       });
 
       rootEl.querySelector('#save-purchase').addEventListener('click', async () => {
         const form = rootEl.querySelector('#purchase-form');
-        const valid = lines.filter((l) => l.qty > 0);
+        const valid = lines.filter((l) => l.product_id && l.qty > 0);
         if (!valid.length) return toast(t('buy.need_line'), 'warn');
         try {
           const saved = await api.createPurchase({
@@ -311,6 +329,7 @@ export async function newPurchase(onSaved) {
           });
           toast(t('buy.saved', { doc: saved.doc_no, v: money(saved.total) }), 'success');
           if (saved.supplier) forgetSuggestions('supplier');
+          dropPickers();
           close(true);
           onSaved?.();
         } catch (err) {
@@ -322,4 +341,6 @@ export async function newPurchase(onSaved) {
       rootEl.querySelector('#add-line').click();
     },
   });
+
+  dropPickers(); // cancelled, saved or dismissed - the menus go either way
 }
