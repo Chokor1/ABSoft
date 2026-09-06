@@ -560,9 +560,18 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
    full-page forms
    ========================================================================== */
 
-.form-page { max-width: 760px; }
+/* Form pages fill the page. Fields flow into more columns as the width allows
+   rather than stretching into a few very long inputs; anything marked span-2
+   (names, descriptions, notes) still takes a full row. */
 .form-page .form-actions { border-top: 1px solid var(--border); border-bottom: 0; }
 .form-page .card-head h3 { font-size: 16px; }
+
+@media (min-width: 1150px) {
+  .form-page .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1650px) {
+  .form-page .form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 
 /* ==========================================================================
    type-ahead picker

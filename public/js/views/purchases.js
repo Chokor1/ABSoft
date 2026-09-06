@@ -222,7 +222,7 @@ async function renderForm(root, ctx) {
       : emptyState(t('buy.no_lines'), t('buy.no_lines_sub'), 'package');
 
   root.innerHTML = `
-    <form id="purchase-form" class="card" style="max-width:1000px">
+    <form id="purchase-form" class="card form-page">
       <div class="card-head">
         <button type="button" class="btn btn-ghost btn-icon" data-cancel
                 aria-label="${esc(t('common.back'))}">${icon('back')}</button>
