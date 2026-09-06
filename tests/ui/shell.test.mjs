@@ -66,8 +66,18 @@ check('clicking it collapses the sidebar', await collapsed());
 const railNav = await sidebarWidth();
 check('the rail is much narrower', railNav < wideNav / 2, `${railNav} vs ${wideNav}`);
 check('the icons are still there', (await page.$$('.nav-item svg')).length > 5);
-check('but the labels are hidden', await page.evaluate(
-  () => getComputedStyle(document.querySelector('.nav-item span')).display === 'none'));
+// Labels fade and collapse to zero width rather than snapping to display:none,
+// so the rail can animate. Either way they must not be visible or take space.
+const label = await page.evaluate(() => {
+  const el = document.querySelector('.nav-item span');
+  const cs = getComputedStyle(el);
+  return { opacity: Number(cs.opacity), width: Math.round(el.getBoundingClientRect().width) };
+});
+check('but the labels are hidden', label.opacity === 0 && label.width === 0, JSON.stringify(label));
+check('the rail animates rather than snapping', await page.evaluate(
+  () => getComputedStyle(document.querySelector('.shell')).transitionDuration !== '0s'));
+check('the collapse button sits with the brand at the top', await page.evaluate(
+  () => !!document.querySelector('.brand #nav-collapse')));
 await shot('70-nav-collapsed');
 
 await page.click('#nav-collapse');

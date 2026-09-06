@@ -9,7 +9,7 @@
  * under .test-run/, so running them never touches data/.
  */
 import { spawn } from 'node:child_process';
-import { readdirSync, existsSync, rmSync } from 'node:fs';
+import { readdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -54,10 +54,12 @@ for (const file of suites) {
   if (!(await run(file))) failed++;
 }
 
-// Leave nothing behind; each suite recreates what it needs.
-rmSync(join(APP, '.test-run'), { recursive: true, force: true });
+// Kept, not cleaned: the browser suites leave screenshots under .test-run/shots,
+// which are the quickest way to see why one failed. Each suite wipes its own
+// scratch database on the way in, so nothing here goes stale.
 
 console.log(`\n${'='.repeat(46)}`);
 console.log(failed ? `  ${failed} of ${suites.length} suite(s) FAILED` : `  all ${suites.length} suite(s) passed`);
+if (suites.some((f) => f.includes('ui'))) console.log('  screenshots: .test-run/shots');
 console.log(`${'='.repeat(46)}\n`);
 process.exit(failed ? 1 : 0);

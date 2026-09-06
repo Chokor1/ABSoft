@@ -196,9 +196,11 @@ function renderShell() {
       <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="mark">AB</div>
-          <div><strong>${esc(t('app.name'))}</strong><small>${esc(store.settings.store_name || t('app.tagline'))}</small></div>
+          <div class="brand-text"><strong>${esc(t('app.name'))}</strong><small>${esc(
+            store.settings.store_name || t('app.tagline'),
+          )}</small></div>
+          <button class="btn btn-ghost btn-icon nav-toggle" id="nav-collapse">${icon('panelLeft')}</button>
         </div>
-        <button class="btn btn-ghost btn-icon nav-toggle" id="nav-collapse">${icon('panelLeft')}</button>
         <nav class="nav">${navHtml()}</nav>
         <div class="sidebar-foot">
           <button class="user-chip" id="user-menu">
