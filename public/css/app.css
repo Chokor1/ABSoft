@@ -189,6 +189,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand-text { min-width: 0; flex: 1; }
 .brand strong, .brand small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .brand .nav-toggle { flex: none; margin-inline-start: auto; }
+
+/* The chevrons point at the edge the sidebar will move toward, and turn to face
+   the other way once it has. Rotating one icon reads as the same control moving,
+   where swapping two icons reads as two different buttons. */
+.nav-toggle svg { transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1); }
+.nav-collapsed .nav-toggle svg { transform: rotate(180deg); }
+[dir="rtl"] .nav-toggle svg { transform: rotate(180deg); }
+[dir="rtl"] .nav-collapsed .nav-toggle svg { transform: rotate(0deg); }
+.nav-toggle:hover svg { transform: scale(1.08) rotate(var(--chev, 0deg)); }
+.nav-collapsed .nav-toggle:hover svg { --chev: 180deg; }
+[dir="rtl"] .nav-toggle:hover svg { --chev: 180deg; }
+[dir="rtl"] .nav-collapsed .nav-toggle:hover svg { --chev: 0deg; }
 .brand .mark {
   width: 36px; height: 36px; border-radius: 11px;
   display: grid; place-items: center;
@@ -580,7 +592,8 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
   .nav-item,
   .nav-item span,
   .user-chip,
-  .user-chip > div:last-child { transition: none; }
+  .user-chip > div:last-child,
+  .nav-toggle svg { transition: none; }
 }
 
 .nav-toggle { display: none; }
@@ -602,6 +615,36 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 @media (min-width: 1650px) {
   .form-page .form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* ==========================================================================
+   till payment step
+   ========================================================================== */
+
+.pay-due {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); color: var(--accent-text);
+  font-weight: 650;
+}
+.pay-due .amount { font-size: 26px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+
+.pay-quick { display: flex; gap: 8px; flex-wrap: wrap; }
+.pay-quick .btn { flex: 1; min-width: 96px; }
+
+/* The running result of what has been typed: change owed back, or money still
+   owing. It is the whole point of the screen, so it is the loudest thing on it. */
+.pay-result {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 13px 16px; border-radius: var(--radius-sm);
+  font-weight: 650;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.pay-result .amount { font-size: 21px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.pay-result.settled { background: var(--success-soft); color: var(--success); }
+.pay-result.change { background: var(--info-soft); color: var(--info); }
+.pay-result.owing { background: var(--warn-soft); color: var(--warn); }
+
+.pay-amount { font-size: 20px; font-weight: 700; height: 52px; text-align: end; font-variant-numeric: tabular-nums; }
 
 /* ==========================================================================
    type-ahead picker

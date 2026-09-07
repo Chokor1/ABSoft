@@ -61,13 +61,29 @@ await page.waitForSelector('.cart-line');
 await page.fill('#customer', 'Part Payer');
 await page.click('#checkout');
 await page.waitForSelector('.modal-backdrop');
-check('the payment dialog explains you can pay part',
-  (await page.textContent('.modal-body')).includes('Enter less than the total'));
-const due = await page.inputValue('input[name=paid]');
+check('the payment step shows what is due up front',
+  (await page.textContent('.pay-due')).includes('$18.00'), await page.textContent('.pay-due'));
+const due = await page.inputValue('#pay-amount');
 check('it offers the full amount by default', Number(due) === 18, due);
+check('and says the sale is settled at that amount',
+  (await page.textContent('#pay-result')).includes('Settled'), await page.textContent('#pay-result'));
 
-await page.fill('input[name=paid]', '5');
-await page.click('.modal-foot button[type=submit]');
+// Typing more shows change owed back...
+await page.fill('#pay-amount', '20');
+await page.waitForTimeout(200);
+check('overpaying shows the change to hand back',
+  (await page.textContent('#pay-result')).includes('Change') &&
+  (await page.textContent('#pay-result')).includes('$2.00'), await page.textContent('#pay-result'));
+
+// ...and typing less shows what stays owing, live.
+await page.fill('#pay-amount', '5');
+await page.waitForTimeout(200);
+check('underpaying shows the balance live',
+  (await page.textContent('#pay-result')).includes('$13.00'), await page.textContent('#pay-result'));
+check('quick amounts are offered', (await page.$$('[data-quick]')).length === 3);
+await shot('79-payment-step');
+
+await page.click('#pay-confirm');
 await page.waitForSelector('.receipt', { timeout: 8000 });
 const receipt = await page.textContent('.receipt');
 check('the receipt shows what was paid', receipt.includes('$5.00'));
@@ -88,6 +104,9 @@ check('the row shows the paid amount', row.includes('$5.00'), row.replace(/\s+/g
 check('the row shows the balance', row.includes('$13.00'), row.replace(/\s+/g, ' '));
 check('and is marked part paid', row.includes('part paid'), row.replace(/\s+/g, ' '));
 check('the header totals what is owed', (await page.textContent('.card-head')).includes('Owed'));
+check('rows that owe offer to take payment directly',
+  await page.isVisible('tr:has-text("Part Payer") [data-pay-row]'));
+check('settled rows do not', (await page.$$('tr:has-text("Walk-in") [data-pay-row]')).length === 0);
 await shot('81-sales-balances');
 
 await page.check('#unpaid-only');

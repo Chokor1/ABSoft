@@ -307,13 +307,22 @@ export async function render(root, ctx) {
                         <td class="right ${s.balance > 0.004 ? 'money-neg' : 'muted'}">${money(s.balance)}</td>
                         <td>${payStatus(s)}</td>
                         <td class="muted">${esc(s.username || t('common.none'))}</td>
-                        <td class="right">${
-                          store.user.role === 'admin'
-                            ? `<button class="btn btn-sm btn-ghost" data-void="${s.id}" title="${esc(
-                                t('sales.void_tip'),
-                              )}">${icon('trash')}</button>`
-                            : ''
-                        }</td>
+                        <td class="right nowrap">
+                          ${
+                            s.balance > 0.004
+                              ? `<button class="btn btn-sm" data-pay-row="${s.id}" title="${esc(
+                                  t('pay.record'),
+                                )}">${icon('coins')} ${esc(t('pay.take'))}</button>`
+                              : ''
+                          }
+                          ${
+                            store.user.role === 'admin'
+                              ? `<button class="btn btn-sm btn-ghost" data-void="${s.id}" title="${esc(
+                                  t('sales.void_tip'),
+                                )}">${icon('trash')}</button>`
+                              : ''
+                          }
+                        </td>
                       </tr>`,
                     )
                     .join('')}</tbody>
@@ -334,8 +343,18 @@ export async function render(root, ctx) {
 
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {
-        if (e.target.closest('[data-void]')) return;
+        if (e.target.closest('[data-void]') || e.target.closest('[data-pay-row]')) return;
         showReceipt(await api.sale(tr.dataset.open), { onChanged: load });
+      }),
+    );
+
+    // Taking money owed is a one-click job from the list; no need to open the
+    // invoice first.
+    body.querySelectorAll('[data-pay-row]').forEach((btn) =>
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const sale = await api.sale(btn.dataset.payRow);
+        if (await recordPayment(sale)) load();
       }),
     );
 

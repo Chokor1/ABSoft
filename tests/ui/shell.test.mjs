@@ -78,6 +78,14 @@ check('the rail animates rather than snapping', await page.evaluate(
   () => getComputedStyle(document.querySelector('.shell')).transitionDuration !== '0s'));
 check('the collapse button sits with the brand at the top', await page.evaluate(
   () => !!document.querySelector('.brand #nav-collapse')));
+const chevron = await page.evaluate(() => {
+  const svg = document.querySelector('#nav-collapse svg');
+  const cs = getComputedStyle(svg);
+  return { transform: cs.transform, transition: cs.transitionDuration };
+});
+check('the chevron turns to face the other way when collapsed',
+  chevron.transform !== 'none' && chevron.transform !== 'matrix(1, 0, 0, 1, 0, 0)', JSON.stringify(chevron));
+check('and it turns smoothly', chevron.transition !== '0s', JSON.stringify(chevron));
 await shot('70-nav-collapsed');
 
 await page.click('#nav-collapse');

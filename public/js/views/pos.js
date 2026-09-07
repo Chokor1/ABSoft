@@ -9,6 +9,7 @@ import {
   esc,
   forgetSuggestions,
   formModal,
+  modal,
   money,
   qtyText,
   store,
@@ -320,51 +321,123 @@ export async function render(root, ctx) {
 
   /* ------------------------------------------------------------- checkout -- */
 
-  $('#checkout').addEventListener('click', async () => {
-    const tot = totals();
-    const data = await formModal({
+  /**
+   * The payment step.
+   *
+   * Built by hand rather than with formModal because the useful part is live:
+   * as the cashier types, the screen says either how much change to hand back or
+   * how much is still owed. That is what makes taking part of the money an
+   * ordinary action rather than a hidden trick.
+   */
+  async function takePayment(tot) {
+    const quick = [
+      { label: t('pay.full'), value: tot.total },
+      { label: t('pay.half'), value: Math.round((tot.total / 2) * 100) / 100 },
+      { label: t('pay.nothing'), value: 0 },
+    ];
+
+    return modal({
       title: t('pos.take_payment'),
       subtitle: t('pos.payment_sub', { n: state.cart.length, t: money(tot.total) }),
-      submitLabel: t('pos.confirm_sale'),
-      fields: [
-        {
-          type: 'static',
-          span: 2,
-          html: `<div class="pnl" style="margin-bottom:4px">
-            <div class="pnl-row"><span>${esc(t('common.subtotal'))}</span><span class="v">${money(
-              tot.subtotal,
-            )}</span></div>
-            ${
-              tot.discount
-                ? `<div class="pnl-row"><span>${esc(t('common.discount'))}</span><span class="v">−${money(
-                    tot.discount,
-                  )}</span></div>`
-                : ''
-            }
-            ${
-              taxRate
-                ? `<div class="pnl-row"><span>${esc(t('common.tax'))}</span><span class="v">${money(tot.tax)}</span></div>`
-                : ''
-            }
-            <div class="pnl-row final"><span>${esc(t('pos.amount_due'))}</span><span class="v">${money(
-              tot.total,
-            )}</span></div>
-          </div>`,
-        },
-        {
-          name: 'paid',
-          label: t('pos.amount_received'),
-          type: 'number',
-          step: '0.01',
-          min: 0,
-          value: tot.total.toFixed(2),
-          autofocus: true,
-        },
-        { name: 'method', label: t('pos.payment_method'), type: 'select', value: $('#method').value, options: methodOptions() },
-        { name: 'note', label: t('pos.note_optional'), type: 'text', span: 2, placeholder: t('pos.note_placeholder') },
-        { type: 'static', span: 2, html: `<div class="help">${esc(t('pay.partial_help'))}</div>` },
-      ],
+      body: `
+        <div style="display:grid;gap:14px;padding:6px 0 12px">
+          <div class="pay-due">
+            <span>${esc(t('pos.amount_due'))}</span>
+            <span class="amount">${money(tot.total)}</span>
+          </div>
+
+          <div class="field">
+            <label>${esc(t('pos.amount_received'))}</label>
+            <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0"
+                   value="${tot.total.toFixed(2)}" autofocus/>
+          </div>
+
+          <div class="pay-quick">
+            ${quick
+              .map(
+                (q) =>
+                  `<button type="button" class="btn" data-quick="${q.value}">${esc(q.label)}</button>`,
+              )
+              .join('')}
+          </div>
+
+          <div class="pay-result" id="pay-result"></div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label>${esc(t('pos.payment_method'))}</label>
+              <select class="select" id="pay-method">
+                ${methodOptions()
+                  .map(
+                    (o) =>
+                      `<option value="${o.value}" ${o.value === $('#method').value ? 'selected' : ''}>${esc(
+                        o.label,
+                      )}</option>`,
+                  )
+                  .join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label>${esc(t('pos.note_optional'))}</label>
+              <input class="input" id="pay-note" placeholder="${esc(t('pos.note_placeholder'))}" autocomplete="off"/>
+            </div>
+          </div>
+
+          <p class="muted" style="font-size:12.5px">${esc(t('pay.tip'))}</p>
+        </div>`,
+      footer: `<button class="btn" data-close>${esc(t('common.cancel'))}</button>
+               <button class="btn btn-primary btn-lg" id="pay-confirm">${icon('check')} ${esc(
+                 t('pos.confirm_sale'),
+               )}</button>`,
+      setup: (root, close) => {
+        const amount = root.querySelector('#pay-amount');
+        const result = root.querySelector('#pay-result');
+
+        const paint = () => {
+          const paid = Math.max(0, Number(amount.value) || 0);
+          const diff = Math.round((paid - tot.total) * 100) / 100;
+          if (diff > 0.004) {
+            result.className = 'pay-result change';
+            result.innerHTML = `<span>${esc(t('receipt.change'))}</span><span class="amount">${money(diff)}</span>`;
+          } else if (diff < -0.004) {
+            result.className = 'pay-result owing';
+            result.innerHTML = `<span>${esc(t('pay.balance'))}</span><span class="amount">${money(-diff)}</span>`;
+          } else {
+            result.className = 'pay-result settled';
+            result.innerHTML = `<span>${esc(t('pay.settled_now'))}</span><span class="amount">${money(0)}</span>`;
+          }
+        };
+
+        amount.addEventListener('input', paint);
+        root.querySelectorAll('[data-quick]').forEach((b) =>
+          b.addEventListener('click', () => {
+            amount.value = Number(b.dataset.quick).toFixed(2);
+            paint();
+            amount.focus();
+            amount.select();
+          }),
+        );
+        amount.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            root.querySelector('#pay-confirm').click();
+          }
+        });
+        root.querySelector('#pay-confirm').addEventListener('click', () =>
+          close({
+            paid: Math.max(0, Number(amount.value) || 0),
+            method: root.querySelector('#pay-method').value,
+            note: root.querySelector('#pay-note').value.trim(),
+          }),
+        );
+        paint();
+      },
     });
+  }
+
+  $('#checkout').addEventListener('click', async () => {
+    const tot = totals();
+    const data = await takePayment(tot);
     if (!data) return;
 
     try {
