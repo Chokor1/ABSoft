@@ -59,13 +59,44 @@ await page.fill('#scan', '5901234123457');   // Espresso Beans, 18.00
 await page.keyboard.press('Enter');
 await page.waitForSelector('.cart-line');
 await page.fill('#customer', 'Part Payer');
+
+// The cart itself must say what is being handed over and what is left, without
+// opening anything: that is where a cashier looks first.
+console.log('');
+console.log('[the cart shows what is paid and what is left]');
+check('the cart has a "paying now" field', await page.isVisible('#paid-now'));
+check('it starts at the full total', Number(await page.inputValue('#paid-now')) === 18,
+  await page.inputValue('#paid-now'));
+check('and says the sale is settled', (await page.textContent('#rest-row')).includes('Settled'),
+  await page.textContent('#rest-row'));
+
+await page.fill('#paid-now', '5');
+await page.waitForTimeout(250);
+check('typing a smaller amount shows the remainder in the cart',
+  (await page.textContent('#rest-row')).includes('Remaining') &&
+  (await page.textContent('#rest-row')).includes('$13.00'), await page.textContent('#rest-row'));
+
+await page.fill('#paid-now', '20');
+await page.waitForTimeout(250);
+check('typing more shows the change instead',
+  (await page.textContent('#rest-row')).includes('Change') &&
+  (await page.textContent('#rest-row')).includes('$2.00'), await page.textContent('#rest-row'));
+check('paying now is separate from the discount, which is untouched',
+  (await page.inputValue('#discount')) === '', await page.inputValue('#discount'));
+
+await page.fill('#paid-now', '5');
+await page.waitForTimeout(250);
+await shot('78-cart-partial');
+
 await page.click('#checkout');
 await page.waitForSelector('.modal-backdrop');
+check('the payment step opens on what the cart already said',
+  Number(await page.inputValue('#pay-amount')) === 5, await page.inputValue('#pay-amount'));
 check('the payment step shows what is due up front',
   (await page.textContent('.pay-due')).includes('$18.00'), await page.textContent('.pay-due'));
-const due = await page.inputValue('#pay-amount');
-check('it offers the full amount by default', Number(due) === 18, due);
-check('and says the sale is settled at that amount',
+await page.fill('#pay-amount', '18');
+await page.waitForTimeout(200);
+check('the full amount reads as settled',
   (await page.textContent('#pay-result')).includes('Settled'), await page.textContent('#pay-result'));
 
 // Typing more shows change owed back...

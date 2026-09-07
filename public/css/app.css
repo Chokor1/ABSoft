@@ -541,6 +541,15 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 }
 .sum-row.total .v { font-size: 23px; letter-spacing: -0.03em; }
 
+/* What is actually being handed over, and what is left. Sits under the total so
+   the cashier can set it before opening the payment step at all. */
+.sum-row.pay-row { margin-top: 6px; }
+.sum-row.rest-row { font-weight: 650; }
+.sum-row.rest-row.owing { color: var(--warn); }
+.sum-row.rest-row.change { color: var(--info); }
+.sum-row.rest-row.settled { color: var(--muted); font-weight: 550; }
+.sum-input { width: 118px; height: 32px; text-align: end; padding: 4px 9px; font-variant-numeric: tabular-nums; }
+
 /* ==========================================================================
    collapsed sidebar (icon rail)
    ========================================================================== */

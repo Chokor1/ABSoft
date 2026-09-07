@@ -26,6 +26,10 @@ export async function render(root, ctx) {
     filter: '',
     cart: [],
     discount: 0,
+    // What the customer is handing over. Left alone it follows the total, so the
+    // ordinary "paid in full" sale needs no thought; typed into, it sticks.
+    paid: 0,
+    paidTouched: false,
   };
 
   const taxRate = Number(store.settings.tax_rate) || 0;
@@ -253,13 +257,53 @@ export async function render(root, ctx) {
             )}</span></div>`
           : ''
       }
-      <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v">${money(tot.total)}</span></div>`;
+      <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v">${money(tot.total)}</span></div>
+      <div class="sum-row pay-row">
+        <span>${esc(t('pay.paid_now'))}</span>
+        <span class="v"><input class="input sum-input" id="paid-now" type="number" step="0.01" min="0"
+          value="${paidNow(tot).toFixed(2)}"/></span>
+      </div>
+      <div class="sum-row rest-row" id="rest-row"></div>`;
 
     $('#discount').addEventListener('change', (e) => {
       state.discount = Number(e.target.value) || 0;
       drawTotals();
     });
+
+    const paidInput = $('#paid-now');
+    paidInput.addEventListener('input', () => {
+      state.paidTouched = true;
+      state.paid = Math.max(0, Number(paidInput.value) || 0);
+      // Repaint only the remainder, so typing does not rebuild the field underneath.
+      paintRest();
+    });
+    paidInput.addEventListener('focus', () => paidInput.select());
+
+    paintRest();
     $('#checkout').disabled = state.cart.length === 0;
+  }
+
+  /** The amount being handed over: whatever was typed, otherwise the full total. */
+  function paidNow(tot = totals()) {
+    return state.paidTouched ? state.paid : tot.total;
+  }
+
+  /** Change owed back, money still owing, or nothing — updated as they type. */
+  function paintRest() {
+    const tot = totals();
+    const diff = Math.round((paidNow(tot) - tot.total) * 100) / 100;
+    const row = $('#rest-row');
+    if (!row) return;
+    if (diff > 0.004) {
+      row.className = 'sum-row rest-row change';
+      row.innerHTML = `<span>${esc(t('receipt.change'))}</span><span class="v">${money(diff)}</span>`;
+    } else if (diff < -0.004) {
+      row.className = 'sum-row rest-row owing';
+      row.innerHTML = `<span>${esc(t('pay.remaining'))}</span><span class="v">${money(-diff)}</span>`;
+    } else {
+      row.className = 'sum-row rest-row settled';
+      row.innerHTML = `<span>${esc(t('pay.settled_now'))}</span><span class="v">${money(0)}</span>`;
+    }
   }
 
   $('#cart-lines').addEventListener('click', async (e) => {
@@ -315,6 +359,8 @@ export async function render(root, ctx) {
     if (!state.cart.length) return;
     state.cart = [];
     state.discount = 0;
+    state.paid = 0;
+    state.paidTouched = false;
     drawCart();
     scan.focus();
   });
@@ -329,7 +375,8 @@ export async function render(root, ctx) {
    * how much is still owed. That is what makes taking part of the money an
    * ordinary action rather than a hidden trick.
    */
-  async function takePayment(tot) {
+  async function takePayment(tot, opening) {
+    const start = opening ?? tot.total;
     const quick = [
       { label: t('pay.full'), value: tot.total },
       { label: t('pay.half'), value: Math.round((tot.total / 2) * 100) / 100 },
@@ -349,7 +396,7 @@ export async function render(root, ctx) {
           <div class="field">
             <label>${esc(t('pos.amount_received'))}</label>
             <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0"
-                   value="${tot.total.toFixed(2)}" autofocus/>
+                   value="${start.toFixed(2)}" autofocus/>
           </div>
 
           <div class="pay-quick">
@@ -437,7 +484,7 @@ export async function render(root, ctx) {
 
   $('#checkout').addEventListener('click', async () => {
     const tot = totals();
-    const data = await takePayment(tot);
+    const data = await takePayment(tot, paidNow(tot));
     if (!data) return;
 
     try {
@@ -485,6 +532,8 @@ export async function render(root, ctx) {
 
       state.cart = [];
       state.discount = 0;
+      state.paid = 0;
+      state.paidTouched = false;
       $('#customer').value = '';
       drawCart();
       loadProducts();
