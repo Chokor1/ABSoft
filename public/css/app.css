@@ -197,6 +197,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .brand strong { font-size: 15.5px; letter-spacing: -0.02em; display: block; }
 .brand small { font-size: 11px; color: var(--muted); }
+.brand-version {
+  display: inline-block; margin-inline-start: 5px; padding: 1px 6px; vertical-align: 2px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0; color: var(--accent-text);
+  background: var(--accent-soft); border-radius: 999px; font-variant-numeric: tabular-nums;
+}
 
 .nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
 .nav-label {

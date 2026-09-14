@@ -43,7 +43,7 @@ router.post('/api/auth/login', async (ctx) => {
     'Set-Cookie',
     `${COOKIE}=${result.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${14 * 24 * 3600}`,
   );
-  return { user: result.user, settings: getSettings(), restart_needed: diskVersion() !== VERSION };
+  return { user: result.user, settings: getSettings(), version: VERSION, restart_needed: diskVersion() !== VERSION };
 });
 
 router.post('/api/auth/logout', (ctx) => {
@@ -55,7 +55,7 @@ router.post('/api/auth/logout', (ctx) => {
 router.get('/api/auth/me', (ctx) => {
   if (!ctx.user) throw new HttpError(401, 'Not signed in', 'NOT_SIGNED_IN');
   // The files were updated but this process still runs the old code.
-  return { user: ctx.user, settings: getSettings(), restart_needed: diskVersion() !== VERSION };
+  return { user: ctx.user, settings: getSettings(), version: VERSION, restart_needed: diskVersion() !== VERSION };
 });
 
 registerProducts(router);

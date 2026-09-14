@@ -142,10 +142,11 @@ function renderLogin(message = '') {
     btn.disabled = true;
     btn.textContent = t('login.submitting');
     try {
-      const { user, settings: cfg, restart_needed } = await api.login(form.username.value, form.password.value);
+      const { user, settings: cfg, restart_needed, version } = await api.login(form.username.value, form.password.value);
       store.user = user;
       store.settings = cfg;
       store.restartNeeded = !!restart_needed;
+    store.version = version || '';
       startApp();
     } catch (err) {
       document.getElementById('login-error').textContent = errorText(err);
@@ -184,7 +185,9 @@ function renderShell() {
       <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="mark">AB</div>
-          <div class="brand-text"><strong>${esc(t('app.name'))}</strong><small>${esc(
+          <div class="brand-text"><strong>${esc(t('app.name'))}${
+            store.version ? ` <span class="brand-version" title="${esc(t('app.version', { v: store.version }))}">v${esc(store.version)}</span>` : ''
+          }</strong><small>${esc(
             store.settings.store_name || t('app.tagline'),
           )}</small></div>
         </div>
@@ -382,10 +385,11 @@ setUnauthorizedHandler(() => {
 
 (async function boot() {
   try {
-    const { user, settings: cfg, restart_needed } = await api.me();
+    const { user, settings: cfg, restart_needed, version } = await api.me();
     store.user = user;
     store.settings = cfg;
     store.restartNeeded = !!restart_needed;
+    store.version = version || '';
     startApp();
   } catch {
     renderLogin();

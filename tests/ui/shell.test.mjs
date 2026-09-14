@@ -78,6 +78,13 @@ check('and it is still full width after a reload', (await sidebarWidth()) === na
 console.log('\n[forms open as pages, not dialogs]');
 const noDialog = async () => (await page.$$('.modal-backdrop')).length === 0;
 
+console.log('\n[the version sits beside the name]');
+{
+  const pkg = JSON.parse((await import('node:fs')).readFileSync(resolve(APP, 'package.json'), 'utf8').replace(/^﻿/, ''));
+  const brand = (await page.textContent('.sidebar .brand strong')).replace(/\s+/g, ' ').trim();
+  check('the sidebar says ABSoft and its version', brand === `ABSoft v${pkg.version}`, brand);
+}
+
 for (const [route, label] of [
   ['products', 'product'],
   ['expenses', 'expense'],
