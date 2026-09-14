@@ -461,6 +461,25 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .pos > .cart { grid-area: cart; }
 .pos > .product-grid { grid-area: tiles; }
 
+/* Desktop: the till is one screen that does not scroll. The search bar stays at
+   the top, the product cards scroll inside their own section, and the cart sits
+   beside them at full height. */
+@media (min-width: 1181px) {
+  .shell:has(.pos) .main { height: 100vh; }
+  .shell:has(.pos) .page { flex: 1; min-height: 0; padding-bottom: 22px; }
+  .pos { height: 100%; min-height: 420px; align-items: stretch; }
+  .pos > .cart { position: static; height: 100%; min-height: 0; }
+  .pos > .product-grid {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    align-content: start;
+    /* room for the lift and shadow a card gets on hover, so they are not clipped */
+    padding: 3px 6px 12px 3px;
+    margin: -3px -6px 0 -3px;
+  }
+}
+
 .scan-bar { display: flex; gap: 10px; margin-bottom: 14px; }
 .scan-bar .input-icon { flex: 1; }
 .scan-bar .input { height: 46px; font-size: 15px; }
@@ -846,6 +865,13 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
   }
   .cart { position: static; height: auto; min-height: 0; }
   .cart-lines { max-height: 46vh; min-height: 120px; }
+  /* Stacked, the page scrolls; the search bar sticks just under the top bar. */
+  .pos > .scan-bar {
+    position: sticky; top: var(--topbar-h, 0px); z-index: 15;
+    margin: -8px -4px 0; padding: 8px 4px;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(10px);
+  }
   .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

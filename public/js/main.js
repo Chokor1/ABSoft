@@ -205,6 +205,14 @@ function renderShell() {
     </div>`;
 
   wireLanguagePicker(app);
+
+  // Anything that sticks under the top bar needs its height, which changes when
+  // it wraps on a narrow screen.
+  const topbar = app.querySelector('.topbar');
+  new ResizeObserver(() =>
+    document.documentElement.style.setProperty('--topbar-h', `${topbar.offsetHeight}px`),
+  ).observe(topbar);
+
   paintFullscreenButton();
   document.getElementById('fullscreen-toggle').addEventListener('click', toggleFullscreen);
   document.getElementById('theme-toggle').addEventListener('click', (e) => {

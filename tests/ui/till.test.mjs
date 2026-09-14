@@ -23,6 +23,9 @@ const check = (l, c, d = '') => { if (c) { pass++; console.log(`  PASS  ${l}`); 
 rmSync(DATA, { recursive: true, force: true });
 const seed = spawn('node', ['--no-warnings', 'server/tools/seed.js'], { cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA } });
 await new Promise((r) => seed.on('exit', r));
+// Enough products that the card section has to scroll.
+const demo = spawn('node', ['--no-warnings', 'server/tools/demo-products.js'], { cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA } });
+await new Promise((r) => demo.on('exit', r));
 const server = spawn('node', ['--no-warnings', 'server/index.js'], {
   cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -85,6 +88,42 @@ const emptyCart = await page.evaluate(() => ({
 }));
 check('an empty cart already fills the height of the screen', emptyCart.cart >= emptyCart.vh - 140,
   JSON.stringify(emptyCart));
+
+/* ------------------------------------------------- cards scroll, search stays */
+console.log('\n[the product cards scroll inside their own section]');
+// Let fonts and the top bar settle before measuring positions.
+await page.evaluate(() => document.fonts.ready);
+await page.waitForTimeout(600);
+const scroll = await page.evaluate(() => {
+  const grid = document.querySelector('#tiles');
+  return {
+    pageScrolls: document.scrollingElement.scrollHeight > window.innerHeight + 1,
+    gridScrolls: grid.scrollHeight > grid.clientHeight + 1,
+    overflow: getComputedStyle(grid).overflowY,
+  };
+});
+check('the page itself does not scroll', !scroll.pageScrolls, JSON.stringify(scroll));
+check('the card section scrolls instead', scroll.gridScrolls && scroll.overflow === 'auto', JSON.stringify(scroll));
+
+const before = await page.evaluate(() => ({
+  scan: Math.round(document.querySelector('.scan-bar').getBoundingClientRect().top),
+  cart: Math.round(document.querySelector('.cart').getBoundingClientRect().top),
+}));
+await page.hover('#tiles .tile');
+await page.mouse.wheel(0, 1500);
+await page.waitForTimeout(400);
+const after = await page.evaluate(() => ({
+  scan: Math.round(document.querySelector('.scan-bar').getBoundingClientRect().top),
+  cart: Math.round(document.querySelector('.cart').getBoundingClientRect().top),
+  gridTop: document.querySelector('#tiles').scrollTop,
+  windowY: window.scrollY,
+}));
+check('scrolling the cards moves the cards', after.gridTop > 0, JSON.stringify(after));
+check('the barcode search stays exactly where it was', after.scan === before.scan, JSON.stringify({ before, after }));
+check('so does the cart', after.cart === before.cart, JSON.stringify({ before, after }));
+check('and the window has not moved', after.windowY === 0, JSON.stringify(after));
+await shot('89-till-scrolled-cards');
+await page.evaluate(() => { document.querySelector('#tiles').scrollTop = 0; });
 
 /* ------------------------------------------------------- newest line first */
 console.log('\n[a new item goes on top]');
@@ -280,6 +319,17 @@ for (const [w, h, label] of [[1024, 800, 'tablet'], [390, 844, 'phone']]) {
   check(`${label}: products follow the cart`, layout.tilesBelowCart, JSON.stringify(layout));
   check(`${label}: the cart fits the screen`, layout.cartFits, JSON.stringify(layout));
   check(`${label}: line fields fit inside the cart`, layout.fieldsFit, JSON.stringify(layout));
+
+  await page.evaluate(() => window.scrollTo(0, 1200));
+  await page.waitForTimeout(300);
+  const stuck = await page.evaluate(() => {
+    const bar = document.querySelector('.scan-bar').getBoundingClientRect();
+    const top = document.querySelector('.topbar').getBoundingClientRect();
+    return { scanTop: Math.round(bar.top), topbarBottom: Math.round(top.bottom), y: Math.round(window.scrollY) };
+  });
+  check(`${label}: after scrolling down, the search bar is still on screen under the top bar`,
+    stuck.y > 0 && Math.abs(stuck.scanTop - stuck.topbarBottom) <= 12, JSON.stringify(stuck));
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   if (label === 'phone') {
     const topbar = await page.evaluate(() => Math.round(document.querySelector('.topbar').getBoundingClientRect().height));
