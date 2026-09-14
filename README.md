@@ -246,6 +246,13 @@ blending the average cost always uses — rather than a replay of every sale sin
 
 ## At the till
 
+**Pictures on the cards.** A product with a picture shows it as a soft background on its till
+card. The picture button beside the search box turns this on or off (remembered per device; also
+under **Settings → Till**). No photos yet? `npm run demo:images` draws a picture for every product
+that has none — a coloured card with a matching emoji — and `npm run demo:products` gives its demo
+catalogue pictures straight away. `npm run demo:images -- --remove` takes the drawn ones out again
+and never touches real photos.
+
 Typing in the search box filters the product cards as you type — by name, barcode, category or
 description, every word counting — with the remaining cards sliding into place. Enter adds a
 scanned barcode straight away, or the product itself when only one card is left; Escape or

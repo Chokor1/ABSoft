@@ -162,6 +162,9 @@ export function register(router) {
       'Content-Type': row.mime,
       'Content-Length': body.length,
       'Cache-Control': 'private, max-age=31536000, immutable',
+      // A picture is only ever a picture: nothing in it may run, even opened on its own.
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      'X-Content-Type-Options': 'nosniff',
     });
     ctx.res.end(body);
   });

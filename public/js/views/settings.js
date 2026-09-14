@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { playSaleChime, setSoundEnabled, soundEnabled } from '../feedback.js';
+import { playSaleChime, setSoundEnabled, setTileImages, soundEnabled, tileImagesEnabled } from '../feedback.js';
 import { icon } from '../icons.js';
 import { LANGUAGES, errorText, lang, t } from '../i18n.js';
 import { dateTimeText, esc, money, number, store, toast } from '../ui.js';
@@ -118,6 +118,10 @@ export async function render(root, ctx) {
             <label class="check">
               <input type="checkbox" id="sound-toggle" ${soundEnabled() ? 'checked' : ''}/>
               ${esc(t('set.sound'))}
+            </label>
+            <label class="check">
+              <input type="checkbox" id="images-toggle" ${tileImagesEnabled() ? 'checked' : ''}/>
+              ${esc(t('set.tile_images'))}
             </label>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <button type="button" class="btn btn-sm" id="sound-test">${esc(t('set.sound_test'))}</button>
@@ -295,6 +299,7 @@ export async function render(root, ctx) {
   });
 
   root.querySelector('#sound-toggle').addEventListener('change', (e) => setSoundEnabled(e.target.checked));
+  root.querySelector('#images-toggle').addEventListener('change', (e) => setTileImages(e.target.checked));
   root.querySelector('#sound-test').addEventListener('click', () => {
     const was = soundEnabled();
     setSoundEnabled(true);

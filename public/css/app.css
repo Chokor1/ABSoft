@@ -1244,10 +1244,11 @@ table.data.compact td { padding: 8px 14px; }
 .pay-due {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 18px 20px; border-radius: 16px;
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #7c3aed));
-  color: #fff; box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--accent) 80%, transparent);
+  background: var(--surface-3); color: var(--text);
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--text-2);
 }
-.pay-due-label { font-size: 13px; font-weight: 600; opacity: 0.9; }
+.pay-due-label { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .pay-due .amount { display: flex; flex-direction: column; align-items: flex-end; font-size: 32px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .pay-due2 { font-size: 14px; font-weight: 600; opacity: 0.85; letter-spacing: 0; }
 .pay-due2:empty { display: none; }
@@ -1290,4 +1291,22 @@ table.data.compact td { padding: 8px 14px; }
 #pay-amount2 { border-color: color-mix(in srgb, var(--money2) 35%, var(--border)); background: color-mix(in srgb, var(--money2-soft) 55%, var(--surface)); }
 #pay-amount2:focus { border-color: var(--money2); box-shadow: 0 0 0 3px color-mix(in srgb, var(--money2) 18%, transparent); }
 .btn.pay-all2 { color: var(--money2); background: var(--money2-soft); }
-.pay-due2 { color: #d8fbfd; opacity: 1; }
+.pay-due2 { color: var(--money2); opacity: 1; }
+
+/* Till cards with the product's picture as a soft background */
+.tile.has-bg { position: relative; overflow: hidden; isolation: isolate; }
+.tile.has-bg::before {
+  content: ''; position: absolute; inset: 0; z-index: -2;
+  background: var(--tile-img) center / cover no-repeat;
+  opacity: 0.42; transition: opacity 0.2s, transform 0.35s ease;
+}
+/* A wash of the card colour, lighter at the top, so the text stays easy to read */
+.tile.has-bg::after {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface) 55%, transparent) 0%,
+    color-mix(in srgb, var(--surface) 15%, transparent) 55%,
+    color-mix(in srgb, var(--surface) 70%, transparent) 100%);
+}
+.tile.has-bg:hover::before { opacity: 0.58; transform: scale(1.05); }
+#toggle-images[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }

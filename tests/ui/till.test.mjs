@@ -72,6 +72,28 @@ const text = (sel) => page.textContent(sel);
 await page.goto(`${BASE}#/pos`);
 await page.waitForSelector('.tile');
 
+/* ------------------------------------------------- pictures on the cards */
+console.log('\n[product pictures as card backgrounds]');
+const pictured = await page.$$eval('.tile.has-bg', (t) => t.length);
+check('demo products come with pictures, shown behind their cards', pictured >= 100, String(pictured));
+const bg = await page.$eval('.tile.has-bg', (el) => getComputedStyle(el, '::before').backgroundImage);
+check('as a background image', bg.includes('/api/products/'), bg);
+const headers = await page.evaluate(async () => {
+  const el = document.querySelector('.tile.has-bg');
+  const res = await fetch(`/api/products/${el.dataset.add}/image`);
+  return { type: res.headers.get('content-type'), csp: res.headers.get('content-security-policy') || '' };
+});
+check('pictures are served so nothing inside them can run', headers.type === 'image/svg+xml' && headers.csp.includes('sandbox'), JSON.stringify(headers));
+await page.click('#toggle-images');
+await page.waitForTimeout(200);
+check('the picture button turns them off', (await page.$$('.tile.has-bg')).length === 0 && (await page.getAttribute('#toggle-images', 'aria-pressed')) === 'false');
+await page.reload();
+await page.waitForSelector('.tile');
+check('and the choice is remembered on this device', (await page.$$('.tile.has-bg')).length === 0);
+await page.click('#toggle-images');
+await page.waitForTimeout(200);
+check('turning them back on shows them again', (await page.$$('.tile.has-bg')).length === pictured);
+
 /* ----------------------------------------------------- the cart is simple */
 console.log('\n[the cart is only what is being sold]');
 check('no customer field in the cart', (await page.$$('.cart #customer')).length === 0);

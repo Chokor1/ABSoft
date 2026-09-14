@@ -11,6 +11,23 @@ import { t } from './i18n.js';
 const SOUND_KEY = 'absoft-sound';
 let audio = null;
 
+/** Product pictures as the background of the till's cards (per device, on by default). */
+const IMAGES_KEY = 'absoft-pos-images';
+export function tileImagesEnabled() {
+  try {
+    return localStorage.getItem(IMAGES_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+export function setTileImages(on) {
+  try {
+    localStorage.setItem(IMAGES_KEY, on ? '1' : '0');
+  } catch {
+    /* private window: the choice lasts until reload */
+  }
+}
+
 export function soundEnabled() {
   try {
     return localStorage.getItem(SOUND_KEY) !== 'off';

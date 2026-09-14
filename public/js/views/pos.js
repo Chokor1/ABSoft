@@ -9,13 +9,12 @@ import {
   forgetSuggestions,
   modal,
   money,
-  productThumb,
   qtyText,
   store,
   toast,
 } from '../ui.js';
 import { showReceipt } from './sales.js';
-import { celebrateSale, playSaleChime, primeAudio } from '../feedback.js';
+import { celebrateSale, playSaleChime, primeAudio, setTileImages, tileImagesEnabled } from '../feedback.js';
 import { money2, money2Html, onRateChange, second, toBase, toSecond } from '../currency.js';
 
 const methodOptions = () => PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) }));
@@ -53,6 +52,8 @@ export async function render(root, ctx) {
             t('pos.scan_placeholder'),
           )}" autocomplete="off"/>
         </div>
+        <button class="btn btn-icon" id="toggle-images" aria-pressed="${tileImagesEnabled()}"
+                title="${esc(t('pos.show_images'))}">${icon('image')}</button>
         <button class="btn" id="clear-search">${esc(t('pos.clear'))}</button>
       </div>
 
@@ -99,6 +100,15 @@ export async function render(root, ctx) {
    * type: no dropdown, no round trip per keystroke. Cards that stay glide to
    * their new places, cards that come back fade in.
    */
+  let showImages = tileImagesEnabled();
+  $('#toggle-images').addEventListener('click', (e) => {
+    showImages = !showImages;
+    setTileImages(showImages);
+    e.currentTarget.setAttribute('aria-pressed', String(showImages));
+    drawTiles();
+    applyFilter({ animate: false });
+  });
+
   async function loadProducts() {
     if (!state.products.length) {
       tiles.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>${esc(t('pos.loading_products'))}</p></div>`;
@@ -114,16 +124,20 @@ export async function render(root, ctx) {
     tiles.innerHTML =
       state.products
         .map(
-          (p) => `<button class="tile ${p.stock <= 0 ? 'out' : ''} ${p.image_at ? 'has-image' : ''}" data-add="${p.id}"
-                   data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}>
-            ${p.image_at ? productThumb(p, 'tile') : ''}
+          (p) => {
+            // With pictures on, a product's picture is the card's soft background.
+            const picture = showImages && p.image_at ? `/api/products/${p.id}/image?v=${encodeURIComponent(p.image_at)}` : '';
+            return `<button class="tile ${p.stock <= 0 ? 'out' : ''} ${picture ? 'has-bg' : ''}" data-add="${p.id}"
+                   data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}
+                   ${picture ? `style="--tile-img: url('${esc(picture)}')"` : ''}>
             <div class="t-name">${esc(p.name)}</div>
             ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
             <div class="t-meta">
               <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
               <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
             </div>
-          </button>`,
+          </button>`;
+          },
         )
         .join('') + `<div class="tiles-empty" id="tiles-empty" hidden></div>`;
   }

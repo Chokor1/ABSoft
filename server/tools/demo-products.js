@@ -16,6 +16,7 @@
 import { db, transact, lastId } from '../db.js';
 import { rememberAll } from '../entities.js';
 import { money } from '../util.js';
+import { addDemoPictures } from './demo-images.js';
 
 // [category, unit, [ [arabic name, english description, price], ... ]]
 const CATALOGUE = [
@@ -263,6 +264,7 @@ if (remove) {
 
 let added = 0;
 let skipped = 0;
+const addedIds = [];
 transact(() => {
   const insert = db.prepare(
     `INSERT INTO products (name, description, barcode, category, unit, cost, price, min_stock, active)
@@ -281,6 +283,7 @@ transact(() => {
       insert.run(p.name, p.description, p.barcode, p.category, p.unit, p.cost, p.price, p.min_stock),
     );
     opening.run(id, p.opening, p.cost, admin?.id ?? null);
+    addedIds.push(id);
     rememberAll([
       ['category', p.category],
       ['unit', p.unit],
@@ -289,6 +292,10 @@ transact(() => {
   }
 });
 
+// Each new demo product gets a drawn picture, for the till's picture cards.
+const pictures = addedIds.length ? addDemoPictures({ ids: addedIds }) : 0;
+
 const categories = new Set(products.map((p) => p.category)).size;
+if (pictures) console.log(`Demo pictures: ${pictures} drawn.`);
 console.log(`Demo products: ${added} added, ${skipped} already there (${products.length} in the set, ${categories} categories).`);
 console.log('Remove them again with:  npm run demo:products -- --remove');
