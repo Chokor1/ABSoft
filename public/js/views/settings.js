@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { playSaleChime, setSoundEnabled, soundEnabled } from '../feedback.js';
 import { icon } from '../icons.js';
 import { LANGUAGES, errorText, lang, t } from '../i18n.js';
 import { dateTimeText, esc, money, number, store, toast } from '../ui.js';
@@ -70,6 +71,20 @@ export async function render(root, ctx) {
               ).join('')}
             </div>
             <p class="muted" style="font-size:12.5px">${esc(t('set.language_help'))}</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><div><h3>${esc(t('set.till'))}</h3></div></div>
+          <div class="card-body" style="display:grid;gap:10px">
+            <label class="check">
+              <input type="checkbox" id="sound-toggle" ${soundEnabled() ? 'checked' : ''}/>
+              ${esc(t('set.sound'))}
+            </label>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <button type="button" class="btn btn-sm" id="sound-test">${esc(t('set.sound_test'))}</button>
+              <span class="muted" style="font-size:12.5px">${esc(t('set.sound_help'))}</span>
+            </div>
           </div>
         </div>
 
@@ -210,6 +225,14 @@ export async function render(root, ctx) {
       }
     });
   }
+
+  root.querySelector('#sound-toggle').addEventListener('change', (e) => setSoundEnabled(e.target.checked));
+  root.querySelector('#sound-test').addEventListener('click', () => {
+    const was = soundEnabled();
+    setSoundEnabled(true);
+    playSaleChime();
+    setSoundEnabled(was);
+  });
 
   root.querySelectorAll('#settings-lang [data-lang]').forEach((btn) =>
     btn.addEventListener('click', async () => {

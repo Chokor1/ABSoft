@@ -31,11 +31,17 @@ Requires Node.js 22.5 or newer (tested on Node 24).
 ### Try it with demo data
 
 ```
-npm run seed     # ~10 products, 3 restocks, a month of sales and expenses
-npm run reset    # wipe all business data, keep users and settings
+npm run seed                          # ~10 products, 3 restocks, a month of sales and expenses
+npm run demo:products                 # 131 products in 20 categories, with opening stock
+npm run demo:products -- --remove     # take those 131 out again
+npm run reset                         # wipe all business data, keep users and settings
 ```
 
-`seed` only does anything on an empty catalogue.
+`seed` only does anything on an empty catalogue. `demo:products` can be added to a
+database that already has real products: it skips anything already there, and its
+barcodes sit in the 200 in-store range, so they never collide with a real item. Removing
+them deletes the untouched ones and archives any that were already sold or bought, so no
+invoice loses a line.
 
 ---
 
@@ -44,7 +50,7 @@ npm run reset    # wipe all business data, keep users and settings
 | Screen | What it is for |
 | --- | --- |
 | **Dashboard** | Today and this month at a glance: sales, profit, stock value, low-stock warnings, 30-day trend. |
-| **Sell** (`F2`) | The till. Scan a barcode or tap a product, adjust quantities, discount, take payment, print the receipt. |
+| **Sell** (`F2`) | The till. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
 | **Buy — Stock In** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
 | **Products** (`F3`) | Define what you sell: name, optional description, barcode, category, cost, default price, unit, low-stock level. Click any row for its full movement history. |
@@ -150,6 +156,23 @@ instead of deleted, so past reports never change. Voiding a sale or deleting a p
 
 ---
 
+## At the till
+
+The cart is only what is being sold. The newest item goes on top, scanning an item that is
+already there adds one to its line, and each line's quantity, unit price and discount are
+edited right where they sit.
+
+**Make payment** opens the payment dialog: customer, payment method, an invoice discount
+(separate from the line discounts), the amount handed over and — as you type — the change to
+give back or the amount still owing. Confirming saves the sale, plays a short chime with a
+check mark, and opens the receipt to print or close. The chime can be switched off per device
+under **Settings → Till**.
+
+On a phone the search, the cart and the products stack in that order, and a bar at the bottom
+keeps the total and **Make payment** in reach while you scroll.
+
+---
+
 ## Payments, in full or in instalments
 
 A sale does not have to be paid all at once. At the till, type any amount into
@@ -160,8 +183,9 @@ Everything owed is then visible where you would look for it:
 
 - **Sales History** shows *Paid*, *Balance* and a status of paid / part paid /
   unpaid, with an **Unpaid only** filter and the outstanding total in the header.
-- Opening an invoice lists every instalment taken against it and offers
-  **Record payment**. Each instalment keeps its own date, method and note, so
+- Opening an invoice from Sales History lists every instalment taken against it and offers
+  **Record payment** — that is for collecting the rest when the customer comes back, so it
+  does not appear on the receipt shown the moment a sale is made. Each instalment keeps its own date, method and note, so
   "$50 cash on the 3rd, $30 by card on the 11th" is exactly what you see.
 - The dashboard flags the total owed next to recent sales.
 

@@ -188,19 +188,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 16px; min-width: 0; }
 .brand-text { min-width: 0; flex: 1; }
 .brand strong, .brand small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
-.brand .nav-toggle { flex: none; margin-inline-start: auto; }
-
-/* The chevrons point at the edge the sidebar will move toward, and turn to face
-   the other way once it has. Rotating one icon reads as the same control moving,
-   where swapping two icons reads as two different buttons. */
-.nav-toggle svg { transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1); }
-.nav-collapsed .nav-toggle svg { transform: rotate(180deg); }
-[dir="rtl"] .nav-toggle svg { transform: rotate(180deg); }
-[dir="rtl"] .nav-collapsed .nav-toggle svg { transform: rotate(0deg); }
-.nav-toggle:hover svg { transform: scale(1.08) rotate(var(--chev, 0deg)); }
-.nav-collapsed .nav-toggle:hover svg { --chev: 180deg; }
-[dir="rtl"] .nav-toggle:hover svg { --chev: 180deg; }
-[dir="rtl"] .nav-collapsed .nav-toggle:hover svg { --chev: 0deg; }
 .brand .mark {
   width: 36px; height: 36px; border-radius: 11px;
   display: grid; place-items: center;
@@ -460,13 +447,19 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
    POS
    ========================================================================== */
 
-.pos { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 18px; align-items: start; }
-
-/* Collapsing the menu at the till is meant to benefit the sale being rung up,
-   so the width it frees goes to the cart rather than to more product tiles. */
-@media (min-width: 901px) {
-  .nav-collapsed .pos { grid-template-columns: minmax(0, 1fr) 490px; }
+.pos {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 32vw, 460px);
+  grid-template-areas:
+    "scan  cart"
+    "tiles cart";
+  grid-template-rows: auto 1fr;
+  gap: 14px 18px;
+  align-items: start;
 }
+.pos > .scan-bar { grid-area: scan; margin-bottom: 0; }
+.pos > .cart { grid-area: cart; }
+.pos > .product-grid { grid-area: tiles; }
 
 .scan-bar { display: flex; gap: 10px; margin-bottom: 14px; }
 .scan-bar .input-icon { flex: 1; }
@@ -506,33 +499,64 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .cart-head h3 { font-size: 14.5px; flex: 1; }
 .cart-lines { flex: 1; overflow-y: auto; padding: 8px; min-height: 140px; }
 .cart-line {
-  display: grid; grid-template-columns: 1fr auto; gap: 4px 10px;
-  padding: 10px; border-radius: 10px;
+  padding: 11px 10px;
+  border-radius: 10px;
 }
-.cart-line:hover { background: var(--surface-2); }
-.cart-line + .cart-line { border-top: 1px solid var(--border); }
-.cl-name { font-weight: 600; font-size: 13px; }
-.cl-total { font-weight: 700; font-variant-numeric: tabular-nums; }
-.cl-controls { display: flex; align-items: center; gap: 6px; }
-.qty-box { display: flex; align-items: center; gap: 0; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.cart-line + .cart-line { border-top: 1px solid var(--border); border-radius: 0; }
+.cart-line.flash { animation: line-in 1s ease-out; }
+@keyframes line-in {
+  from { background: var(--accent-soft); }
+  to { background: transparent; }
+}
+
+.cl-top { display: flex; align-items: flex-start; gap: 8px; }
+.cl-name { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; line-height: 1.35; }
+
+.cl-fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+  align-items: end;
+}
+.cl-field { min-width: 0; }
+.cl-field > label {
+  display: block; margin-bottom: 3px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted);
+}
+.cl-field .input {
+  height: 32px; padding: 4px 8px;
+  text-align: end; font-size: 13px; font-variant-numeric: tabular-nums;
+}
+
+.qty-box { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden; background: var(--surface); }
 .qty-box button {
-  width: 26px; height: 26px; border: 0; background: var(--surface-2);
-  color: var(--text-2); cursor: pointer; font-size: 15px; line-height: 1;
+  width: 30px; height: 30px; border: 0; background: var(--surface-2);
+  color: var(--text-2); cursor: pointer; font-size: 16px; line-height: 1;
   display: grid; place-items: center;
 }
 .qty-box button:hover { background: var(--surface-3); color: var(--text); }
 .qty-box input {
-  width: 48px; height: 26px; border: 0; text-align: center;
-  background: var(--surface); font-size: 12.5px; font-variant-numeric: tabular-nums;
+  width: 46px; height: 30px; border: 0; text-align: center;
+  background: var(--surface); font-size: 13px; font-variant-numeric: tabular-nums;
   outline: none; -moz-appearance: textfield;
 }
+.qty-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .qty-box input::-webkit-outer-spin-button, .qty-box input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.cl-price { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.cl-remove { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 3px; border-radius: 6px; display: grid; place-items: center; }
+.cl-field .input::-webkit-outer-spin-button, .cl-field .input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.cl-bottom { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 7px; }
+.cl-stock { font-size: 11.5px; color: var(--muted); }
+.cl-stock.short { color: var(--danger); font-weight: 600; }
+.cl-total { font-weight: 750; font-size: 15px; font-variant-numeric: tabular-nums; }
+
+.cl-remove { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 7px; display: grid; place-items: center; flex: none; }
 .cl-remove:hover { background: var(--danger-soft); color: var(--danger); }
-.cl-remove svg { width: 15px; height: 15px; }
+.cl-remove svg { width: 16px; height: 16px; }
 
 .cart-foot { padding: 14px 16px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.cart-foot .btn-block { margin-top: 12px; }
 .sum-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; font-size: 13px; color: var(--text-2); }
 .sum-row .v { font-variant-numeric: tabular-nums; font-weight: 600; }
 .sum-row.total {
@@ -541,72 +565,7 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 }
 .sum-row.total .v { font-size: 23px; letter-spacing: -0.03em; }
 
-/* What is actually being handed over, and what is left. Sits under the total so
-   the cashier can set it before opening the payment step at all. */
-.sum-row.pay-row { margin-top: 6px; }
-.sum-row.rest-row { font-weight: 650; }
-.sum-row.rest-row.owing { color: var(--warn); }
-.sum-row.rest-row.change { color: var(--info); }
-.sum-row.rest-row.settled { color: var(--muted); font-weight: 550; }
 .sum-input { width: 118px; height: 32px; text-align: end; padding: 4px 9px; font-variant-numeric: tabular-nums; }
-
-/* ==========================================================================
-   collapsed sidebar (icon rail)
-   ========================================================================== */
-
-/* Only above the mobile breakpoint: below it the sidebar is already off-canvas.
-   The rail slides rather than snapping: the grid track animates, and the labels
-   fade while their width collapses so the icons stay centred throughout. */
-@media (min-width: 901px) {
-  .shell { transition: grid-template-columns 240ms cubic-bezier(0.4, 0, 0.2, 1); }
-  .sidebar { overflow-x: hidden; }
-  .shell.nav-collapsed { grid-template-columns: 68px 1fr; }
-
-  .brand-text,
-  .nav-item span,
-  .user-chip > div:last-child {
-    white-space: nowrap;
-    transition: opacity 130ms ease, width 220ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .nav-item,
-  .nav-label,
-  .user-chip,
-  .sidebar { transition: padding 220ms cubic-bezier(0.4, 0, 0.2, 1); }
-
-  .nav-collapsed .sidebar { padding-inline: 10px; }
-  .nav-collapsed .brand-text,
-  .nav-collapsed .nav-item span,
-  .nav-collapsed .user-chip > div:last-child { opacity: 0; width: 0; overflow: hidden; }
-  .nav-collapsed .nav-item .kbd,
-  .nav-collapsed .sidebar-foot .credit { display: none; }
-
-  /* The brand stacks so both the mark and the toggle fit the rail. */
-  .nav-collapsed .brand { flex-direction: column; gap: 8px; padding-inline: 0; }
-  .nav-collapsed .brand .nav-toggle { margin-inline-start: 0; }
-
-  .nav-collapsed .nav-label {
-    /* keep the grouping as a rule rather than a word */
-    height: 1px; padding: 10px 0 0; overflow: hidden; color: transparent;
-    border-top: 1px solid var(--border); margin: 6px 4px 0;
-  }
-  .nav-collapsed .nav-item { justify-content: center; padding: 10px; }
-  .nav-collapsed .user-chip { justify-content: center; padding-inline: 0; }
-}
-
-/* Anyone who has asked their system to stop animating gets the end state at once. */
-@media (prefers-reduced-motion: reduce) {
-  .shell,
-  .sidebar,
-  .brand-text,
-  .nav-item,
-  .nav-item span,
-  .user-chip,
-  .user-chip > div:last-child,
-  .nav-toggle svg { transition: none; }
-}
-
-.nav-toggle { display: none; }
-@media (min-width: 901px) { .nav-toggle { display: inline-flex; } }
 
 /* ==========================================================================
    full-page forms
@@ -654,6 +613,74 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .pay-result.owing { background: var(--warn-soft); color: var(--warn); }
 
 .pay-amount { font-size: 20px; font-weight: 700; height: 52px; text-align: end; font-variant-numeric: tabular-nums; }
+
+.pay-form { display: grid; gap: 14px; padding: 6px 0 12px; }
+.pay-summary { padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+
+/* phones only: the running total and the pay button stay on screen */
+.pos-bar { display: none; }
+
+/* ==========================================================================
+   sale complete
+   ========================================================================== */
+
+.sale-done {
+  position: fixed; inset: 0; z-index: 250;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(6px);
+  animation: sale-fade 180ms ease-out both;
+  cursor: pointer;
+}
+.sale-done.leaving { animation: sale-fade-out 220ms ease-in both; }
+
+.sale-done-card {
+  display: grid; justify-items: center; gap: 6px;
+  padding: 30px 44px 26px; min-width: 260px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 24px; box-shadow: var(--shadow-lg);
+  animation: sale-pop 420ms cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+
+.sale-done-check { width: 86px; height: 86px; margin-bottom: 8px; overflow: visible; }
+.sale-done-check .ring {
+  fill: var(--success-soft); stroke: var(--success); stroke-width: 2.5;
+  stroke-dasharray: 151; stroke-dashoffset: 151;
+  transform-origin: center;
+  animation: sale-ring 520ms cubic-bezier(0.65, 0, 0.35, 1) 60ms forwards,
+             sale-pulse 700ms ease-out 540ms;
+}
+.sale-done-check .tick {
+  fill: none; stroke: var(--success); stroke-width: 4;
+  stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 36; stroke-dashoffset: 36;
+  animation: sale-tick 340ms cubic-bezier(0.65, 0, 0.35, 1) 460ms forwards;
+}
+
+.sale-done-title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.sale-done-amount {
+  font-size: 30px; font-weight: 800; letter-spacing: -0.03em;
+  color: var(--success); font-variant-numeric: tabular-nums;
+  animation: sale-rise 380ms ease-out 380ms both;
+}
+.sale-done-doc { color: var(--muted); animation: sale-rise 380ms ease-out 460ms both; }
+
+@keyframes sale-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sale-fade-out { to { opacity: 0; } }
+@keyframes sale-pop { from { opacity: 0; transform: scale(0.86) translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes sale-ring { to { stroke-dashoffset: 0; } }
+@keyframes sale-tick { to { stroke-dashoffset: 0; } }
+@keyframes sale-pulse {
+  0% { filter: drop-shadow(0 0 0 color-mix(in srgb, var(--success) 60%, transparent)); }
+  100% { filter: drop-shadow(0 0 14px transparent); }
+}
+@keyframes sale-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sale-done, .sale-done.leaving, .sale-done-card,
+  .sale-done-amount, .sale-done-doc { animation: none; }
+  .sale-done-check .ring, .sale-done-check .tick { animation: none; stroke-dashoffset: 0; }
+}
 
 /* ==========================================================================
    type-ahead picker
@@ -800,8 +827,14 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 /* `minmax(0, …)` everywhere below, so a wide table scrolls inside its card
    instead of stretching the whole grid track past the viewport. */
 @media (max-width: 1180px) {
-  .pos { grid-template-columns: minmax(0, 1fr); }
+  /* Stack: search, then what is being sold, then the products to add. */
+  .pos {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "scan" "cart" "tiles";
+    grid-template-rows: auto;
+  }
   .cart { position: static; max-height: none; }
+  .cart-lines { max-height: 46vh; min-height: 0; }
   .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -826,6 +859,42 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
   .topbar .theme-toggle { order: 3; }
   .topbar .page-actions { order: 4; width: 100%; }
   .topbar .page-actions .btn { flex: 1; }
+}
+
+/* Phones: the top bar keeps to one row. Full screen means little on a phone, and
+   hints aimed at keyboard and scanner users only take room from the page. */
+.page-actions:empty { display: none; }
+@media (max-width: 760px) {
+  .topbar { gap: 8px; }
+  .topbar #fullscreen-toggle,
+  .hide-mobile { display: none !important; }
+  .topbar .page-actions:not(:has(> :not(.hide-mobile))) { display: none; }
+}
+
+@media (max-width: 760px) {
+  .pos { padding-bottom: 84px; }
+  .cart-foot .btn-block { display: none; }
+  .product-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+
+  .pos-bar.has-items {
+    display: flex; align-items: center; gap: 12px;
+    position: fixed; z-index: 40; inset-inline: 0; bottom: 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -10px 30px rgba(16, 21, 40, 0.1);
+  }
+  .pos-bar-total { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+  .pos-bar-total small { color: var(--muted); font-size: 11.5px; }
+  .pos-bar-total strong { font-size: 20px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+}
+
+@media (max-width: 420px) {
+  /* Too narrow for three fields side by side: quantity gets its own row. */
+  .cl-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .cl-fields .cl-field:first-child { grid-column: 1 / -1; }
+  .cl-fields .qty-box { width: max-content; }
+  .scan-bar .btn { padding-inline: 10px; }
 }
 
 @media (max-width: 560px) {

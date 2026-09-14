@@ -58,58 +58,27 @@ await page.waitForSelector('.tile');
 await page.fill('#scan', '5901234123457');   // Espresso Beans, 18.00
 await page.keyboard.press('Enter');
 await page.waitForSelector('.cart-line');
-await page.fill('#customer', 'Part Payer');
-
-// The cart itself must say what is being handed over and what is left, without
-// opening anything: that is where a cashier looks first.
-console.log('');
-console.log('[the cart shows what is paid and what is left]');
-check('the cart has a "paying now" field', await page.isVisible('#paid-now'));
-check('it starts at the full total', Number(await page.inputValue('#paid-now')) === 18,
-  await page.inputValue('#paid-now'));
-check('and says the sale is settled', (await page.textContent('#rest-row')).includes('Settled'),
-  await page.textContent('#rest-row'));
-
-await page.fill('#paid-now', '5');
-await page.waitForTimeout(250);
-check('typing a smaller amount shows the remainder in the cart',
-  (await page.textContent('#rest-row')).includes('Remaining') &&
-  (await page.textContent('#rest-row')).includes('$13.00'), await page.textContent('#rest-row'));
-
-await page.fill('#paid-now', '20');
-await page.waitForTimeout(250);
-check('typing more shows the change instead',
-  (await page.textContent('#rest-row')).includes('Change') &&
-  (await page.textContent('#rest-row')).includes('$2.00'), await page.textContent('#rest-row'));
-check('paying now is separate from the discount, which is untouched',
-  (await page.inputValue('#discount')) === '', await page.inputValue('#discount'));
-
-await page.fill('#paid-now', '5');
-await page.waitForTimeout(250);
-await shot('78-cart-partial');
 
 await page.click('#checkout');
-await page.waitForSelector('.modal-backdrop');
-check('the payment step opens on what the cart already said',
-  Number(await page.inputValue('#pay-amount')) === 5, await page.inputValue('#pay-amount'));
-check('the payment step shows what is due up front',
-  (await page.textContent('.pay-due')).includes('$18.00'), await page.textContent('.pay-due'));
-await page.fill('#pay-amount', '18');
-await page.waitForTimeout(200);
-check('the full amount reads as settled',
-  (await page.textContent('#pay-result')).includes('Settled'), await page.textContent('#pay-result'));
+await page.waitForSelector('#pay-amount');
+await page.fill('#pay-customer', 'Part Payer');
+check('the payment dialog shows what is due', (await page.textContent('#pay-due')).includes('$18.00'),
+  await page.textContent('#pay-due'));
+check('it offers the full amount by default', Number(await page.inputValue('#pay-amount')) === 18,
+  await page.inputValue('#pay-amount'));
+check('which reads as settled', (await page.textContent('#pay-result')).includes('Settled'),
+  await page.textContent('#pay-result'));
 
-// Typing more shows change owed back...
 await page.fill('#pay-amount', '20');
 await page.waitForTimeout(200);
 check('overpaying shows the change to hand back',
   (await page.textContent('#pay-result')).includes('Change') &&
   (await page.textContent('#pay-result')).includes('$2.00'), await page.textContent('#pay-result'));
 
-// ...and typing less shows what stays owing, live.
 await page.fill('#pay-amount', '5');
 await page.waitForTimeout(200);
-check('underpaying shows the balance live',
+check('underpaying shows what remains, live',
+  (await page.textContent('#pay-result')).includes('Remaining') &&
   (await page.textContent('#pay-result')).includes('$13.00'), await page.textContent('#pay-result'));
 check('quick amounts are offered', (await page.$$('[data-quick]')).length === 3);
 await shot('79-payment-step');
@@ -117,12 +86,10 @@ await shot('79-payment-step');
 await page.click('#pay-confirm');
 await page.waitForSelector('.receipt', { timeout: 8000 });
 const receipt = await page.textContent('.receipt');
+check('saving goes straight to the receipt', true);
 check('the receipt shows what was paid', receipt.includes('$5.00'));
 check('and what is still owed', receipt.includes('$13.00'), receipt.replace(/\s+/g, ' ').slice(0, 200));
-check('the toast warns about the balance', (await page.textContent('.toasts')).includes('Balance due'));
-check('the receipt offers to record a payment', await page.isVisible('[data-pay]'));
-check('and lists the instalment taken so far',
-  (await page.textContent('.modal-body')).includes('Payments'));
+check('right after the sale there is no Record payment button', (await page.$$('[data-pay]')).length === 0);
 await shot('80-receipt-partial');
 await page.click('.modal-foot [data-close]');
 

@@ -49,87 +49,30 @@ const signIn = async () => {
   await page.click('button[type=submit]');
   await page.waitForSelector('.shell');
 };
-const collapsed = () => page.evaluate(() => document.querySelector('.shell').classList.contains('nav-collapsed'));
 const sidebarWidth = () => page.evaluate(() => Math.round(document.querySelector('.sidebar').getBoundingClientRect().width));
 
 await signIn();
 
-/* --------------------------------------------------------- collapsing */
-console.log('\n[the sidebar collapses]');
-check('it starts expanded', !(await collapsed()));
-const wideNav = await sidebarWidth();
-check('a collapse button is offered', await page.isVisible('#nav-collapse'));
+/* ---------------------------------------------------- a fixed sidebar */
+console.log('\n[the sidebar stays put]');
+check('there is no collapse button', (await page.$$('#nav-collapse, .nav-toggle')).length === 0);
+const navWidth = await sidebarWidth();
+check('the sidebar is full width with its labels', navWidth > 200, String(navWidth));
+check('labels are visible', await page.isVisible('.nav-item span'));
 
-await page.click('#nav-collapse');
+await page.click('a[data-route=pos]');
+await page.waitForSelector('.tile');
 await page.waitForTimeout(400);
-check('clicking it collapses the sidebar', await collapsed());
-const railNav = await sidebarWidth();
-check('the rail is much narrower', railNav < wideNav / 2, `${railNav} vs ${wideNav}`);
-check('the icons are still there', (await page.$$('.nav-item svg')).length > 5);
-// Labels fade and collapse to zero width rather than snapping to display:none,
-// so the rail can animate. Either way they must not be visible or take space.
-const label = await page.evaluate(() => {
-  const el = document.querySelector('.nav-item span');
-  const cs = getComputedStyle(el);
-  return { opacity: Number(cs.opacity), width: Math.round(el.getBoundingClientRect().width) };
-});
-check('but the labels are hidden', label.opacity === 0 && label.width === 0, JSON.stringify(label));
-check('the rail animates rather than snapping', await page.evaluate(
-  () => getComputedStyle(document.querySelector('.shell')).transitionDuration !== '0s'));
-check('the collapse button sits with the brand at the top', await page.evaluate(
-  () => !!document.querySelector('.brand #nav-collapse')));
-const chevron = await page.evaluate(() => {
-  const svg = document.querySelector('#nav-collapse svg');
-  const cs = getComputedStyle(svg);
-  return { transform: cs.transform, transition: cs.transitionDuration };
-});
-check('the chevron turns to face the other way when collapsed',
-  chevron.transform !== 'none' && chevron.transform !== 'matrix(1, 0, 0, 1, 0, 0)', JSON.stringify(chevron));
-check('and it turns smoothly', chevron.transition !== '0s', JSON.stringify(chevron));
-await shot('70-nav-collapsed');
+check('opening the till leaves the sidebar alone', (await sidebarWidth()) === navWidth, String(await sidebarWidth()));
+check('and nothing marks it collapsed',
+  await page.evaluate(() => !document.querySelector('.shell').classList.contains('nav-collapsed')));
+await shot('71-pos-fixed-nav');
 
-await page.click('#nav-collapse');
-await page.waitForTimeout(400);
-check('clicking again expands it', !(await collapsed()));
-
-await page.click('#nav-collapse');
-await page.waitForTimeout(300);
+await page.goto(`${BASE}#/dashboard`);
+await page.waitForSelector('.stat');
 await page.reload();
 await page.waitForSelector('.shell');
-check('the choice survives a reload', await collapsed());
-await page.click('#nav-collapse');
-await page.waitForTimeout(300);
-
-/* ------------------------------------------------------ POS auto-collapse */
-console.log('\n[the till takes the space]');
-check('expanded on the dashboard', !(await collapsed()));
-await page.click('a[data-route=pos]');
-await page.waitForSelector('.tile');
-await page.waitForTimeout(400);
-check('opening the till collapses the menu by itself', await collapsed());
-
-const cartCollapsed = await page.evaluate(() => Math.round(document.querySelector('.cart').getBoundingClientRect().width));
-await shot('71-pos-collapsed');
-
-// Force the menu open at the till to compare like for like. This also leaves the
-// stored preference at "expanded", which the next check relies on.
-await page.click('#nav-collapse');
-await page.waitForTimeout(400);
-const cartExpanded = await page.evaluate(() => Math.round(document.querySelector('.cart').getBoundingClientRect().width));
-check('the freed width goes to the sale panel, not the tiles',
-  cartCollapsed > cartExpanded, `collapsed ${cartCollapsed} vs expanded ${cartExpanded}`);
-check('the sale panel is comfortably wide', cartCollapsed >= 480, String(cartCollapsed));
-check('a manual choice overrides the route at the till', !(await collapsed()));
-
-await page.click('a[data-route=dashboard]');
-await page.waitForSelector('.stat');
-await page.waitForTimeout(400);
-check('leaving the till restores the menu', !(await collapsed()));
-
-await page.click('a[data-route=pos]');
-await page.waitForSelector('.tile');
-await page.waitForTimeout(400);
-check('returning to the till collapses it again', await collapsed());
+check('and it is still full width after a reload', (await sidebarWidth()) === navWidth);
 
 /* ------------------------------------------------- forms are pages now */
 console.log('\n[forms open as pages, not dialogs]');
@@ -271,13 +214,13 @@ check('no horizontal overflow in RTL', await page.evaluate(
 await page.goto(`${BASE}#/pos`);
 await page.waitForSelector('.tile');
 await page.waitForTimeout(500);
-check('the till still collapses the menu in RTL', await collapsed());
-const railSide = await page.evaluate(() => {
+const side = await page.evaluate(() => {
   const r = document.querySelector('.sidebar').getBoundingClientRect();
-  return { right: Math.round(r.right), vw: document.documentElement.clientWidth };
+  return { right: Math.round(r.right), width: Math.round(r.width), vw: document.documentElement.clientWidth };
 });
-check('the rail stays on the right in RTL', railSide.right >= railSide.vw - 1, JSON.stringify(railSide));
-await shot('74-pos-collapsed-ar');
+check('the sidebar sits on the right in RTL, at full width',
+  side.right >= side.vw - 1 && side.width > 200, JSON.stringify(side));
+await shot('74-pos-ar');
 await page.click('.topbar [data-lang="en"]');
 await page.waitForTimeout(600);
 

@@ -17,7 +17,7 @@ import * as settings from './views/settings.js';
 /** Route table. Titles are keys so the whole shell re-labels on a language switch. */
 const VIEWS = {
   dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'overview' },
-  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', collapseNav: true },
+  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily' },
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
   products: { key: 'products', icon: 'box', mod: products, group: 'catalogue' },
@@ -32,6 +32,7 @@ const GROUPS = ['overview', 'daily', 'catalogue', 'reports', 'settings'];
 const SHORTCUTS = { pos: 'F2', products: 'F3', purchases: 'F4', expenses: 'F5' };
 
 const app = document.getElementById('app');
+localStorage.removeItem('absoft-nav'); // left over from the collapsible sidebar
 let cleanup = null;
 
 /* ------------------------------------------------------------------ theme -- */
@@ -43,31 +44,6 @@ function applyTheme(theme) {
 applyTheme(localStorage.getItem('absoft-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 const isDark = () => document.documentElement.dataset.theme === 'dark';
 const toggleTheme = () => applyTheme(isDark() ? 'light' : 'dark');
-
-/* ---------------------------------------------------------------- sidebar -- */
-
-/**
- * The sidebar collapses to an icon rail. Two things drive it: the operator's own
- * preference, and a route asking for the space (the till, where the cart matters
- * more than the menu). A manual toggle always wins and becomes the new preference.
- */
-let navCollapsed = localStorage.getItem('absoft-nav') === 'collapsed';
-let navRouteWants = null;
-
-const navIsCollapsed = () => navRouteWants ?? navCollapsed;
-
-function applyNav() {
-  document.querySelector('.shell')?.classList.toggle('nav-collapsed', navIsCollapsed());
-  const btn = document.getElementById('nav-collapse');
-  if (btn) btn.title = t(navIsCollapsed() ? 'common.expand_nav' : 'common.collapse_nav');
-}
-
-function toggleNav() {
-  navCollapsed = !navIsCollapsed();
-  navRouteWants = null; // an explicit choice overrides what the route wanted
-  localStorage.setItem('absoft-nav', navCollapsed ? 'collapsed' : 'expanded');
-  applyNav();
-}
 
 /* ------------------------------------------------------------- fullscreen -- */
 
@@ -199,7 +175,6 @@ function renderShell() {
           <div class="brand-text"><strong>${esc(t('app.name'))}</strong><small>${esc(
             store.settings.store_name || t('app.tagline'),
           )}</small></div>
-          <button class="btn btn-ghost btn-icon nav-toggle" id="nav-collapse">${icon('chevronsLeft')}</button>
         </div>
         <nav class="nav">${navHtml()}</nav>
         <div class="sidebar-foot">
@@ -230,8 +205,6 @@ function renderShell() {
     </div>`;
 
   wireLanguagePicker(app);
-  applyNav();
-  document.getElementById('nav-collapse').addEventListener('click', toggleNav);
   paintFullscreenButton();
   document.getElementById('fullscreen-toggle').addEventListener('click', toggleFullscreen);
   document.getElementById('theme-toggle').addEventListener('click', (e) => {
@@ -308,9 +281,6 @@ const routeKey = () => {
 async function renderRoute() {
   const route = routeKey();
   const view = VIEWS[route];
-
-  navRouteWants = view.collapseNav ? true : null;
-  applyNav();
 
   document.getElementById('page-title').textContent = t(`nav.${view.key}`);
   document.getElementById('page-sub').textContent = t(`nav.${view.key}.sub`);

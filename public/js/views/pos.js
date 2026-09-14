@@ -8,7 +8,6 @@ import {
   emptyState,
   esc,
   forgetSuggestions,
-  formModal,
   modal,
   money,
   qtyText,
@@ -17,37 +16,43 @@ import {
   toast,
 } from '../ui.js';
 import { showReceipt } from './sales.js';
+import { celebrateSale, playSaleChime, primeAudio } from '../feedback.js';
 
 const methodOptions = () => PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) }));
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+/**
+ * The till.
+ *
+ * The flow is deliberately split in two. The cart is only what is being sold:
+ * each line can be adjusted where it sits, and the total. Everything to do with
+ * money changing hands — who the customer is, how they pay, an invoice discount,
+ * how much they hand over and what is left — happens in the payment dialog, and
+ * saving there goes straight to the printable receipt.
+ */
 export async function render(root, ctx) {
   const state = {
     products: [],
     filter: '',
+    // Newest line first, so whatever was just scanned is always at the top.
     cart: [],
-    discount: 0,
-    // What the customer is handing over. Left alone it follows the total, so the
-    // ordinary "paid in full" sale needs no thought; typed into, it sticks.
-    paid: 0,
-    paidTouched: false,
+    // Kept between openings of the payment dialog, so cancelling it loses nothing.
+    draft: { customer: '', method: 'cash', discount: 0, note: '' },
   };
 
   const taxRate = Number(store.settings.tax_rate) || 0;
 
   root.innerHTML = `
     <div class="pos">
-      <section>
-        <div class="scan-bar">
-          <div class="input-icon combo">
-            ${icon('barcode')}
-            <input class="input" id="scan" data-search placeholder="${esc(
-              t('pos.scan_placeholder'),
-            )}" autocomplete="off"/>
-          </div>
-          <button class="btn" id="clear-search">${esc(t('pos.clear'))}</button>
+      <div class="scan-bar">
+        <div class="input-icon combo">
+          ${icon('barcode')}
+          <input class="input" id="scan" data-search placeholder="${esc(
+            t('pos.scan_placeholder'),
+          )}" autocomplete="off"/>
         </div>
-        <div id="tiles" class="product-grid"></div>
-      </section>
+        <button class="btn" id="clear-search">${esc(t('pos.clear'))}</button>
+      </div>
 
       <aside class="cart">
         <div class="cart-head">
@@ -59,42 +64,31 @@ export async function render(root, ctx) {
         </div>
         <div class="cart-lines" id="cart-lines"></div>
         <div class="cart-foot">
-          <div class="form-grid" style="gap:9px;margin-bottom:12px">
-            <div class="field">
-              <label>${esc(t('common.customer'))}</label>
-              <!-- free text: pick a saved customer or type a new one, which is then remembered -->
-              <input class="input" id="customer" list="customer-names" placeholder="${esc(
-                t('common.walk_in'),
-              )}" autocomplete="off"/>
-              <datalist id="customer-names"></datalist>
-            </div>
-            <div class="field">
-              <label>${esc(t('sales.payment'))}</label>
-              <select class="select" id="method">
-                ${methodOptions()
-                  .map((o) => `<option value="${o.value}">${esc(o.label)}</option>`)
-                  .join('')}
-              </select>
-            </div>
-          </div>
           <div id="totals"></div>
-          <button class="btn btn-primary btn-lg btn-block" id="checkout" style="margin-top:12px" disabled>
-            ${icon('check')} ${esc(t('pos.complete'))}
+          <button class="btn btn-primary btn-lg btn-block" id="checkout" disabled>
+            ${icon('coins')} ${esc(t('pos.make_payment'))}
           </button>
         </div>
       </aside>
+
+      <div id="tiles" class="product-grid"></div>
+
+      <!-- phones: the total and the way to pay stay in reach while scrolling products -->
+      <div class="pos-bar" id="pos-bar">
+        <div class="pos-bar-total">
+          <small id="bar-count"></small>
+          <strong id="bar-total"></strong>
+        </div>
+        <button class="btn btn-primary btn-lg" id="bar-checkout" disabled>${icon('coins')} ${esc(
+          t('pos.make_payment'),
+        )}</button>
+      </div>
     </div>`;
 
   const $ = (sel) => root.querySelector(sel);
   const tiles = $('#tiles');
   const scan = $('#scan');
-
-  const fillCustomers = async () => {
-    $('#customer-names').innerHTML = (await suggestions('customer'))
-      .map((n) => `<option value="${esc(n)}"></option>`)
-      .join('');
-  };
-  fillCustomers();
+  const linesEl = $('#cart-lines');
 
   /* ------------------------------------------------------------ catalogue -- */
 
@@ -154,6 +148,9 @@ export async function render(root, ctx) {
   });
 
   function resetSearch() {
+    // Cancel any search still in flight, so its results cannot reopen the menu
+    // over the next scan.
+    picker.reset();
     scan.value = '';
     state.filter = '';
     loadProducts();
@@ -182,74 +179,115 @@ export async function render(root, ctx) {
 
   /* ----------------------------------------------------------------- cart -- */
 
-  function addToCart(product, quantity = 1) {
+  const lineTotal = (l) => Math.max(0, round2(l.qty * l.unit_price - l.discount));
+
+  function addToCart(product) {
     if (!product) return;
-    const line = state.cart.find((l) => l.product_id === product.id);
-    if (line) line.qty += quantity;
-    else
-      state.cart.push({
+    const existing = state.cart.find((l) => l.product_id === product.id);
+    if (existing) {
+      // Scanning the same item again adds one to its line rather than a second
+      // line, and brings that line back to the top where the cashier is looking.
+      existing.qty = round2(existing.qty + 1);
+      state.cart = [existing, ...state.cart.filter((l) => l !== existing)];
+    } else {
+      state.cart.unshift({
         product_id: product.id,
         name: product.name,
         unit: product.unit,
         unit_price: Number(product.price) || 0,
         stock: Number(product.stock) || 0,
-        qty: quantity,
+        qty: 1,
         discount: 0,
       });
-    drawCart();
-  }
-
-  function drawCart() {
-    const lines = $('#cart-lines');
-    $('#cart-count').textContent = t('pos.item_count', { n: state.cart.length });
-
-    if (!state.cart.length) {
-      lines.innerHTML = emptyState(t('pos.cart_empty'), t('pos.cart_empty_sub'), 'cart');
-    } else {
-      lines.innerHTML = state.cart
-        .map(
-          (l, i) => `<div class="cart-line">
-            <div class="cl-name">${esc(l.name)}${
-              l.qty > l.stock ? ` <span class="badge danger">${esc(t('pos.low_badge'))}</span>` : ''
-            }</div>
-            <div class="cl-total">${money(l.qty * l.unit_price - l.discount)}</div>
-            <div class="cl-controls">
-              <div class="qty-box">
-                <button data-dec="${i}" title="${esc(t('pos.less'))}">−</button>
-                <input type="number" step="any" min="0" value="${l.qty}" data-qty="${i}"/>
-                <button data-inc="${i}" title="${esc(t('pos.more'))}">+</button>
-              </div>
-              <span class="cl-price">× ${money(l.unit_price)}${l.discount ? ` − ${money(l.discount)}` : ''}</span>
-            </div>
-            <div style="display:flex;gap:4px;justify-content:flex-end">
-              <button class="cl-remove" data-edit="${i}" title="${esc(t('pos.edit_line'))}">${icon('edit')}</button>
-              <button class="cl-remove" data-del="${i}" title="${esc(t('pos.remove_line'))}">${icon('trash')}</button>
-            </div>
-          </div>`,
-        )
-        .join('');
     }
-    drawTotals();
+    drawCart(product.id);
   }
 
-  function totals() {
-    const subtotal = state.cart.reduce((s, l) => s + l.qty * l.unit_price - l.discount, 0);
-    const discount = Math.min(Math.max(0, state.discount), subtotal);
-    const taxable = subtotal - discount;
-    const tax = (taxable * taxRate) / 100;
-    return { subtotal, discount, tax, total: taxable + tax };
-  }
+  const lineOf = (el) => state.cart.find((l) => l.product_id === Number(el.closest('[data-line]')?.dataset.line));
 
-  function drawTotals() {
-    const tot = totals();
-    $('#totals').innerHTML = `
-      <div class="sum-row"><span>${esc(t('common.subtotal'))}</span><span class="v">${money(tot.subtotal)}</span></div>
-      <div class="sum-row">
-        <span>${esc(t('common.discount'))}</span>
-        <span class="v"><input class="input" id="discount" type="number" step="0.01" min="0" value="${
-          state.discount || ''
-        }" placeholder="0.00" style="width:110px;height:30px;text-align:end;padding:4px 9px"/></span>
+  function lineHtml(l) {
+    return `<div class="cart-line" data-line="${l.product_id}">
+      <div class="cl-top">
+        <div class="cl-name">${esc(l.name)}</div>
+        <button class="cl-remove" data-remove title="${esc(t('pos.remove_line'))}">${icon('trash')}</button>
       </div>
+      <div class="cl-fields">
+        <div class="cl-field">
+          <label>${esc(t('common.qty'))}</label>
+          <div class="qty-box">
+            <button type="button" data-step="-1" title="${esc(t('pos.less'))}">−</button>
+            <input type="number" step="any" min="0" value="${l.qty}" data-field="qty"/>
+            <button type="button" data-step="1" title="${esc(t('pos.more'))}">+</button>
+          </div>
+        </div>
+        <div class="cl-field">
+          <label>${esc(t('pos.unit_price'))}</label>
+          <input class="input" type="number" step="0.01" min="0" value="${l.unit_price}" data-field="unit_price"/>
+        </div>
+        <div class="cl-field">
+          <label>${esc(t('common.discount'))}</label>
+          <input class="input" type="number" step="0.01" min="0" value="${l.discount || ''}" placeholder="0.00"
+                 data-field="discount"/>
+        </div>
+      </div>
+      <div class="cl-bottom">
+        <span class="cl-stock ${l.qty > l.stock ? 'short' : ''}" data-stock>${stockText(l)}</span>
+        <span class="cl-total" data-total>${money(lineTotal(l))}</span>
+      </div>
+    </div>`;
+  }
+
+  const stockText = (l) =>
+    l.qty > l.stock
+      ? `${esc(t('pos.low_badge'))} · ${esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }))}`
+      : esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }));
+
+  function drawCart(highlightId) {
+    const count = state.cart.length;
+    $('#cart-count').textContent = t('pos.item_count', { n: count });
+    linesEl.innerHTML = count
+      ? state.cart.map(lineHtml).join('')
+      : emptyState(t('pos.cart_empty'), t('pos.cart_empty_sub'), 'cart');
+
+    if (highlightId) {
+      const el = linesEl.querySelector(`[data-line="${highlightId}"]`);
+      el?.classList.add('flash');
+      linesEl.scrollTop = 0;
+    }
+    paintTotals();
+  }
+
+  /** Only the numbers that depend on the line, so typing never loses its place. */
+  function repaintLine(line) {
+    const el = linesEl.querySelector(`[data-line="${line.product_id}"]`);
+    if (!el) return;
+    el.querySelector('[data-total]').textContent = money(lineTotal(line));
+    const stock = el.querySelector('[data-stock]');
+    stock.innerHTML = stockText(line);
+    stock.classList.toggle('short', line.qty > line.stock);
+    paintTotals();
+  }
+
+  /** Cart totals before anything decided at payment (customer, invoice discount). */
+  function cartTotals(invoiceDiscount = 0) {
+    const subtotal = round2(state.cart.reduce((s, l) => s + lineTotal(l), 0));
+    const discount = Math.min(Math.max(0, Number(invoiceDiscount) || 0), subtotal);
+    const taxable = round2(subtotal - discount);
+    const tax = round2((taxable * taxRate) / 100);
+    return { subtotal, discount, tax, total: round2(taxable + tax) };
+  }
+
+  function paintTotals() {
+    const tot = cartTotals();
+    const lineDiscounts = round2(state.cart.reduce((s, l) => s + Math.min(l.discount, l.qty * l.unit_price), 0));
+    $('#totals').innerHTML = `
+      ${
+        lineDiscounts > 0
+          ? `<div class="sum-row"><span>${esc(t('common.discount'))}</span><span class="v">−${money(
+              lineDiscounts,
+            )}</span></div>`
+          : ''
+      }
       ${
         taxRate
           ? `<div class="sum-row"><span>${esc(t('pos.tax_label', { r: taxRate }))}</span><span class="v">${money(
@@ -257,208 +295,210 @@ export async function render(root, ctx) {
             )}</span></div>`
           : ''
       }
-      <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v">${money(tot.total)}</span></div>
-      <div class="sum-row pay-row">
-        <span>${esc(t('pay.paid_now'))}</span>
-        <span class="v"><input class="input sum-input" id="paid-now" type="number" step="0.01" min="0"
-          value="${paidNow(tot).toFixed(2)}"/></span>
-      </div>
-      <div class="sum-row rest-row" id="rest-row"></div>`;
+      <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v">${money(tot.total)}</span></div>`;
 
-    $('#discount').addEventListener('change', (e) => {
-      state.discount = Number(e.target.value) || 0;
-      drawTotals();
-    });
-
-    const paidInput = $('#paid-now');
-    paidInput.addEventListener('input', () => {
-      state.paidTouched = true;
-      state.paid = Math.max(0, Number(paidInput.value) || 0);
-      // Repaint only the remainder, so typing does not rebuild the field underneath.
-      paintRest();
-    });
-    paidInput.addEventListener('focus', () => paidInput.select());
-
-    paintRest();
-    $('#checkout').disabled = state.cart.length === 0;
+    const empty = state.cart.length === 0;
+    $('#checkout').disabled = empty;
+    $('#bar-checkout').disabled = empty;
+    $('#bar-total').textContent = money(tot.total);
+    $('#bar-count').textContent = t('pos.item_count', { n: state.cart.length });
+    $('#pos-bar').classList.toggle('has-items', !empty);
   }
 
-  /** The amount being handed over: whatever was typed, otherwise the full total. */
-  function paidNow(tot = totals()) {
-    return state.paidTouched ? state.paid : tot.total;
-  }
+  // Typing into a line updates that line in place.
+  linesEl.addEventListener('input', (e) => {
+    const input = e.target.closest('[data-field]');
+    if (!input) return;
+    const line = lineOf(input);
+    if (!line) return;
+    line[input.dataset.field] = Math.max(0, Number(input.value) || 0);
+    repaintLine(line);
+  });
 
-  /** Change owed back, money still owing, or nothing — updated as they type. */
-  function paintRest() {
-    const tot = totals();
-    const diff = Math.round((paidNow(tot) - tot.total) * 100) / 100;
-    const row = $('#rest-row');
-    if (!row) return;
-    if (diff > 0.004) {
-      row.className = 'sum-row rest-row change';
-      row.innerHTML = `<span>${esc(t('receipt.change'))}</span><span class="v">${money(diff)}</span>`;
-    } else if (diff < -0.004) {
-      row.className = 'sum-row rest-row owing';
-      row.innerHTML = `<span>${esc(t('pay.remaining'))}</span><span class="v">${money(-diff)}</span>`;
-    } else {
-      row.className = 'sum-row rest-row settled';
-      row.innerHTML = `<span>${esc(t('pay.settled_now'))}</span><span class="v">${money(0)}</span>`;
+  // A quantity left at zero once the cashier moves on means "take it off".
+  linesEl.addEventListener('change', (e) => {
+    const input = e.target.closest('[data-field="qty"]');
+    if (!input) return;
+    const line = lineOf(input);
+    if (line && line.qty <= 0) {
+      state.cart = state.cart.filter((l) => l !== line);
+      drawCart();
     }
-  }
+  });
 
-  $('#cart-lines').addEventListener('click', async (e) => {
+  linesEl.addEventListener('focusin', (e) => {
+    if (e.target.matches('input')) e.target.select();
+  });
+
+  linesEl.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
-    const { inc, dec, del, edit } = btn.dataset;
-    if (inc !== undefined) state.cart[+inc].qty += 1;
-    if (dec !== undefined) state.cart[+dec].qty = Math.max(0, state.cart[+dec].qty - 1);
-    if (del !== undefined) state.cart.splice(+del, 1);
-    if (inc !== undefined || dec !== undefined) state.cart = state.cart.filter((l) => l.qty > 0);
-    if (edit !== undefined) return editLine(+edit);
-    drawCart();
-  });
+    const line = lineOf(btn);
+    if (!line) return;
 
-  $('#cart-lines').addEventListener('change', (e) => {
-    const input = e.target.closest('[data-qty]');
-    if (!input) return;
-    const value = Number(input.value);
-    state.cart[+input.dataset.qty].qty = value > 0 ? value : 0;
-    state.cart = state.cart.filter((l) => l.qty > 0);
-    drawCart();
+    if (btn.hasAttribute('data-remove')) {
+      state.cart = state.cart.filter((l) => l !== line);
+      drawCart();
+      return;
+    }
+    if (btn.dataset.step) {
+      line.qty = round2(Math.max(0, line.qty + Number(btn.dataset.step)));
+      if (line.qty <= 0) {
+        state.cart = state.cart.filter((l) => l !== line);
+        drawCart();
+        return;
+      }
+      btn.closest('.qty-box').querySelector('input').value = line.qty;
+      repaintLine(line);
+    }
   });
-
-  async function editLine(index) {
-    const line = state.cart[index];
-    const data = await formModal({
-      title: line.name,
-      subtitle: t('pos.on_hand', { q: qtyText(line.stock), u: line.unit }),
-      submitLabel: t('pos.update_line'),
-      fields: [
-        { name: 'qty', label: t('common.quantity'), type: 'number', step: 'any', min: 0, value: line.qty, autofocus: true },
-        { name: 'unit_price', label: t('pos.unit_price'), type: 'number', step: '0.01', min: 0, value: line.unit_price },
-        {
-          name: 'discount',
-          label: t('pos.line_discount'),
-          type: 'number',
-          step: '0.01',
-          min: 0,
-          value: line.discount,
-          span: 2,
-        },
-      ],
-    });
-    if (!data) return;
-    line.qty = Math.max(0, Number(data.qty) || 0);
-    line.unit_price = Math.max(0, Number(data.unit_price) || 0);
-    line.discount = Math.max(0, Number(data.discount) || 0);
-    state.cart = state.cart.filter((l) => l.qty > 0);
-    drawCart();
-  }
 
   $('#clear-cart').addEventListener('click', () => {
     if (!state.cart.length) return;
     state.cart = [];
-    state.discount = 0;
-    state.paid = 0;
-    state.paidTouched = false;
+    state.draft = { customer: '', method: 'cash', discount: 0, note: '' };
     drawCart();
     scan.focus();
   });
 
-  /* ------------------------------------------------------------- checkout -- */
+  /* -------------------------------------------------------------- payment -- */
 
   /**
-   * The payment step.
-   *
-   * Built by hand rather than with formModal because the useful part is live:
-   * as the cashier types, the screen says either how much change to hand back or
-   * how much is still owed. That is what makes taking part of the money an
-   * ordinary action rather than a hidden trick.
+   * The payment dialog. Saving happens inside it, so a failure (a network blip,
+   * a product that went missing) keeps the dialog and everything typed into it.
+   * On success it closes with the saved sale.
    */
-  async function takePayment(tot, opening) {
-    const start = opening ?? tot.total;
-    const quick = [
-      { label: t('pay.full'), value: tot.total },
-      { label: t('pay.half'), value: Math.round((tot.total / 2) * 100) / 100 },
-      { label: t('pay.nothing'), value: 0 },
-    ];
+  async function openPayment() {
+    if (!state.cart.length) return;
+    const customers = await suggestions('customer');
+    const draft = state.draft;
+    const initial = cartTotals(draft.discount);
 
-    return modal({
+    const sale = await modal({
       title: t('pos.take_payment'),
-      subtitle: t('pos.payment_sub', { n: state.cart.length, t: money(tot.total) }),
+      subtitle: t('pos.payment_sub', { n: state.cart.length, t: money(initial.subtotal) }),
       body: `
-        <div style="display:grid;gap:14px;padding:6px 0 12px">
-          <div class="pay-due">
-            <span>${esc(t('pos.amount_due'))}</span>
-            <span class="amount">${money(tot.total)}</span>
-          </div>
-
-          <div class="field">
-            <label>${esc(t('pos.amount_received'))}</label>
-            <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0"
-                   value="${start.toFixed(2)}" autofocus/>
-          </div>
-
-          <div class="pay-quick">
-            ${quick
-              .map(
-                (q) =>
-                  `<button type="button" class="btn" data-quick="${q.value}">${esc(q.label)}</button>`,
-              )
-              .join('')}
-          </div>
-
-          <div class="pay-result" id="pay-result"></div>
-
+        <div class="pay-form">
           <div class="form-grid">
+            <div class="field">
+              <label>${esc(t('common.customer'))}</label>
+              <input class="input" id="pay-customer" list="pay-customer-names" value="${esc(draft.customer)}"
+                     placeholder="${esc(t('common.walk_in'))}" autocomplete="off"/>
+              <datalist id="pay-customer-names">${customers
+                .map((n) => `<option value="${esc(n)}"></option>`)
+                .join('')}</datalist>
+            </div>
             <div class="field">
               <label>${esc(t('pos.payment_method'))}</label>
               <select class="select" id="pay-method">
                 ${methodOptions()
                   .map(
                     (o) =>
-                      `<option value="${o.value}" ${o.value === $('#method').value ? 'selected' : ''}>${esc(
-                        o.label,
-                      )}</option>`,
+                      `<option value="${o.value}" ${o.value === draft.method ? 'selected' : ''}>${esc(o.label)}</option>`,
                   )
                   .join('')}
               </select>
             </div>
-            <div class="field">
-              <label>${esc(t('pos.note_optional'))}</label>
-              <input class="input" id="pay-note" placeholder="${esc(t('pos.note_placeholder'))}" autocomplete="off"/>
-            </div>
           </div>
 
-          <p class="muted" style="font-size:12.5px">${esc(t('pay.tip'))}</p>
+          <div class="pay-summary">
+            <div class="sum-row"><span>${esc(t('common.subtotal'))}</span>
+              <span class="v">${money(initial.subtotal)}</span></div>
+            <div class="sum-row">
+              <span>${esc(t('pos.invoice_discount'))}</span>
+              <span class="v"><input class="input sum-input" id="pay-discount" type="number" step="0.01" min="0"
+                value="${draft.discount || ''}" placeholder="0.00"/></span>
+            </div>
+            ${
+              taxRate
+                ? `<div class="sum-row"><span>${esc(t('pos.tax_label', { r: taxRate }))}</span>
+                     <span class="v" id="pay-tax"></span></div>`
+                : ''
+            }
+          </div>
+
+          <div class="pay-due">
+            <span>${esc(t('pos.amount_due'))}</span>
+            <span class="amount" id="pay-due"></span>
+          </div>
+
+          <div class="field">
+            <label>${esc(t('pos.amount_received'))}</label>
+            <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/>
+          </div>
+
+          <div class="pay-quick">
+            <button type="button" class="btn" data-quick="full">${esc(t('pay.full'))}</button>
+            <button type="button" class="btn" data-quick="half">${esc(t('pay.half'))}</button>
+            <button type="button" class="btn" data-quick="none">${esc(t('pay.nothing'))}</button>
+          </div>
+
+          <div class="pay-result" id="pay-result"></div>
+
+          <div class="field">
+            <label>${esc(t('pos.note_optional'))}</label>
+            <input class="input" id="pay-note" value="${esc(draft.note)}" placeholder="${esc(
+              t('pos.note_placeholder'),
+            )}" autocomplete="off"/>
+          </div>
         </div>`,
       footer: `<button class="btn" data-close>${esc(t('common.cancel'))}</button>
                <button class="btn btn-primary btn-lg" id="pay-confirm">${icon('check')} ${esc(
                  t('pos.confirm_sale'),
                )}</button>`,
-      setup: (root, close) => {
-        const amount = root.querySelector('#pay-amount');
-        const result = root.querySelector('#pay-result');
+      setup: (dialog, close) => {
+        const $d = (sel) => dialog.querySelector(sel);
+        const amount = $d('#pay-amount');
+        let amountTouched = false;
+
+        const current = () => cartTotals($d('#pay-discount').value);
 
         const paint = () => {
-          const paid = Math.max(0, Number(amount.value) || 0);
-          const diff = Math.round((paid - tot.total) * 100) / 100;
+          const tot = current();
+          $d('#pay-due').textContent = money(tot.total);
+          if ($d('#pay-tax')) $d('#pay-tax').textContent = money(tot.tax);
+          // Until the cashier types an amount, it follows what is due.
+          if (!amountTouched) amount.value = tot.total.toFixed(2);
+
+          const diff = round2((Number(amount.value) || 0) - tot.total);
+          const result = $d('#pay-result');
           if (diff > 0.004) {
             result.className = 'pay-result change';
             result.innerHTML = `<span>${esc(t('receipt.change'))}</span><span class="amount">${money(diff)}</span>`;
           } else if (diff < -0.004) {
             result.className = 'pay-result owing';
-            result.innerHTML = `<span>${esc(t('pay.balance'))}</span><span class="amount">${money(-diff)}</span>`;
+            result.innerHTML = `<span>${esc(t('pay.remaining'))}</span><span class="amount">${money(-diff)}</span>`;
           } else {
             result.className = 'pay-result settled';
             result.innerHTML = `<span>${esc(t('pay.settled_now'))}</span><span class="amount">${money(0)}</span>`;
           }
         };
 
-        amount.addEventListener('input', paint);
-        root.querySelectorAll('[data-quick]').forEach((b) =>
+        // Remember what was typed, so closing and reopening the dialog keeps it.
+        const keepDraft = () => {
+          draft.customer = $d('#pay-customer').value;
+          draft.method = $d('#pay-method').value;
+          draft.discount = Math.max(0, Number($d('#pay-discount').value) || 0);
+          draft.note = $d('#pay-note').value;
+        };
+
+        $d('#pay-discount').addEventListener('input', () => {
+          keepDraft();
+          paint();
+        });
+        ['#pay-customer', '#pay-method', '#pay-note'].forEach((sel) =>
+          $d(sel).addEventListener('input', keepDraft),
+        );
+        amount.addEventListener('input', () => {
+          amountTouched = true;
+          paint();
+        });
+        dialog.querySelectorAll('[data-quick]').forEach((b) =>
           b.addEventListener('click', () => {
-            amount.value = Number(b.dataset.quick).toFixed(2);
+            const due = current().total;
+            const value = { full: due, half: round2(due / 2), none: 0 }[b.dataset.quick];
+            amountTouched = true;
+            amount.value = value.toFixed(2);
             paint();
             amount.focus();
             amount.select();
@@ -467,84 +507,67 @@ export async function render(root, ctx) {
         amount.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
-            root.querySelector('#pay-confirm').click();
+            $d('#pay-confirm').click();
           }
         });
-        root.querySelector('#pay-confirm').addEventListener('click', () =>
-          close({
-            paid: Math.max(0, Number(amount.value) || 0),
-            method: root.querySelector('#pay-method').value,
-            note: root.querySelector('#pay-note').value.trim(),
-          }),
-        );
+
+        $d('#pay-confirm').addEventListener('click', async () => {
+          const btn = $d('#pay-confirm');
+          if (btn.disabled) return;
+          keepDraft();
+          btn.disabled = true;
+          // Audio must be unlocked inside the click, before the save is awaited.
+          primeAudio();
+          try {
+            const saved = await api.createSale({
+              customer: draft.customer.trim(),
+              method: draft.method,
+              discount: draft.discount,
+              paid: Math.max(0, Number(amount.value) || 0),
+              note: draft.note.trim(),
+              items: state.cart.map((l) => ({
+                product_id: l.product_id,
+                qty: l.qty,
+                unit_price: l.unit_price,
+                discount: l.discount,
+              })),
+            });
+            saved.change = round2(Math.max(0, (Number(amount.value) || 0) - saved.total));
+            close(saved);
+          } catch (err) {
+            toast(errorText(err), 'error');
+            btn.disabled = false;
+          }
+        });
+
         paint();
       },
     });
+
+    if (!sale) return; // cancelled: the cart and the draft are left exactly as they were
+
+    if (sale.shortages?.length) {
+      toast(t('pos.shortage', { names: sale.shortages.map((s) => s.name).join(', ') }), 'warn', 5200);
+    }
+    if (sale.customer) forgetSuggestions('customer');
+
+    state.cart = [];
+    state.draft = { customer: '', method: 'cash', discount: 0, note: '' };
+    drawCart();
+    loadProducts();
+
+    playSaleChime();
+    await celebrateSale(sale);
+
+    // Then the document: print it, or close it and carry on selling.
+    await showReceipt(sale, { change: sale.change, afterSale: true });
+    scan.focus();
   }
 
-  $('#checkout').addEventListener('click', async () => {
-    const tot = totals();
-    const data = await takePayment(tot, paidNow(tot));
-    if (!data) return;
+  $('#checkout').addEventListener('click', openPayment);
+  $('#bar-checkout').addEventListener('click', openPayment);
 
-    try {
-      const sale = await api.createSale({
-        customer: $('#customer').value.trim(),
-        discount: state.discount,
-        method: data.method,
-        paid: Number(data.paid) || 0,
-        note: data.note,
-        items: state.cart.map((l) => ({
-          product_id: l.product_id,
-          qty: l.qty,
-          unit_price: l.unit_price,
-          discount: l.discount,
-        })),
-      });
-
-      const change = (Number(data.paid) || 0) - sale.total;
-      if (sale.balance > 0.004) {
-        // Under-paying is deliberate, not an error: the rest stays on the invoice.
-        toast(
-          `${t('pos.completed', { doc: sale.doc_no, t: money(sale.total) })} · ${t('pay.due', {
-            v: money(sale.balance),
-          })}`,
-          'warn',
-          5200,
-        );
-      } else {
-        toast(
-          change > 0.004
-            ? t('pos.completed_change', { doc: sale.doc_no, t: money(sale.total), c: money(change) })
-            : t('pos.completed', { doc: sale.doc_no, t: money(sale.total) }),
-          'success',
-        );
-      }
-      if (sale.shortages?.length) {
-        toast(t('pos.shortage', { names: sale.shortages.map((s) => s.name).join(', ') }), 'warn', 5200);
-      }
-
-      // A new customer name is now saved, so refresh the suggestions for the next sale.
-      if (sale.customer) {
-        forgetSuggestions('customer');
-        fillCustomers();
-      }
-
-      state.cart = [];
-      state.discount = 0;
-      state.paid = 0;
-      state.paidTouched = false;
-      $('#customer').value = '';
-      drawCart();
-      loadProducts();
-      scan.focus();
-      showReceipt(sale, { change });
-    } catch (err) {
-      toast(errorText(err), 'error');
-    }
-  });
-
-  ctx.actions.innerHTML = `<span class="muted" style="font-size:12.5px">${esc(
+  ctx.actions.innerHTML = `<span class="muted hide-mobile" style="font-size:12.5px">${esc(
     t('pos.hint'),
   )} <span class="kbd">Enter</span></span>`;
 

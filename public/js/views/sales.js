@@ -21,12 +21,18 @@ import {
   todayISO,
 } from '../ui.js';
 
-/** Printable receipt / invoice for a completed sale. */
-export function showReceipt(sale, { change = 0, onChanged } = {}) {
+/**
+ * Printable receipt / invoice for a completed sale.
+ *
+ * `afterSale` is the receipt shown the moment a sale is saved at the till. It is
+ * just the document, to print or close: taking the rest of a balance is a later
+ * visit's business, and it stays available from Sales History for that.
+ */
+export function showReceipt(sale, { change = 0, onChanged, afterSale = false } = {}) {
   const cfg = sale.settings || store.settings;
   const line = (label, value, cls = '') =>
     `<div class="r-line ${cls}"><span>${esc(label)}</span><span>${value}</span></div>`;
-  const owing = sale.balance > 0.004;
+  const owing = !afterSale && sale.balance > 0.004;
 
   return modal({
     title: t('receipt.title', { doc: sale.doc_no }),
@@ -57,7 +63,7 @@ export function showReceipt(sale, { change = 0, onChanged } = {}) {
         <div class="r-rule"></div>
         <div class="r-center">${esc(cfg.receipt_footer || '')}</div>
       </div>
-      ${paymentsHtml(sale)}`,
+      ${afterSale ? '' : paymentsHtml(sale)}`,
     footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
              ${
                owing

@@ -16,7 +16,7 @@ import { esc } from './ui.js';
  *     onPick: (p) => ...,
  *   })
  *
- * Returns { open, close, isOpen, activeItem, refresh, destroy }.
+ * Returns { close, reset, isOpen, activeItem, refresh, destroy }.
  */
 export function attachPicker(input, { search, render, onPick, emptyText = '', openOnFocus = true, delay = 180 }) {
   const wrap = input.closest('.combo');
@@ -116,7 +116,25 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
     timer = setTimeout(() => run(query), delay);
   };
 
-  input.addEventListener('input', () => schedule(input.value.trim()));
+  /**
+   * Throw away whatever is on screen or on its way. The menu's results always
+   * belong to some earlier text, so the moment the text changes they must stop
+   * being choosable: a barcode scanner types the next code and presses Enter
+   * faster than any search returns, and Enter would otherwise pick the item from
+   * the previous scan.
+   */
+  function reset() {
+    clearTimeout(timer);
+    token++;
+    items = [];
+    active = -1;
+    close();
+  }
+
+  input.addEventListener('input', () => {
+    reset();
+    schedule(input.value.trim());
+  });
 
   input.addEventListener('focus', () => {
     if (openOnFocus) schedule(input.value.trim());
@@ -169,6 +187,7 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
 
   return {
     isOpen,
+    reset,
     close,
     activeItem: () => (active >= 0 ? items[active] : null),
     refresh: () => run(input.value.trim()),
