@@ -64,7 +64,7 @@ check('byte for byte', img.bytes.equals(Buffer.from(PNG, 'base64')));
 check('lists carry the picture stamp', (await call('GET', '/api/products?search=Picture')).data[0].image_at === up.data.image_at);
 check('a non-image is refused', (await call('PUT', `/api/products/${product.id}/image`, { data: 'data:text/html;base64,PGI+' })).data.code === 'IMAGE_TYPE');
 check('an oversized picture is refused', (await call('PUT', `/api/products/${product.id}/image`, {
-  data: `data:image/jpeg;base64,${Buffer.alloc(1100 * 1024, 7).toString('base64')}`,
+  data: `data:image/jpeg;base64,${Buffer.alloc(1600 * 1024, 7).toString('base64')}`,
 })).data.code === 'IMAGE_TOO_LARGE');
 
 await call('POST', '/api/users', { username: 'pic-till', password: 'test1234', role: 'cashier' });

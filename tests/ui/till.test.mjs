@@ -74,25 +74,45 @@ await page.waitForSelector('.tile');
 
 /* ------------------------------------------------- pictures on the cards */
 console.log('\n[product pictures as card backgrounds]');
-const pictured = await page.$$eval('.tile.has-bg', (t) => t.length);
-check('demo products come with pictures, shown behind their cards', pictured >= 100, String(pictured));
-const bg = await page.$eval('.tile.has-bg', (el) => getComputedStyle(el, '::before').backgroundImage);
-check('as a background image', bg.includes('/api/products/'), bg);
+check('pictures are off by default', (await page.$$('.tile-pic')).length === 0 && (await page.getAttribute('#toggle-images', 'aria-pressed')) === 'false');
+await page.click('#toggle-images');
+await page.waitForTimeout(300);
+const cards = await page.$$eval('.tile', (t) => t.length);
+check('the picture button turns every card into a picture card', (await page.$$('.tile-pic')).length === cards, String(cards));
+const pictured = await page.$$eval('.tp-media:not(.no-img)', (t) => t.length);
+check('demo products come with pictures', pictured >= 100, String(pictured));
+const media = await page.evaluate(() => {
+  const img = document.querySelector('.tp-img');
+  const box = img.closest('.tp-media').getBoundingClientRect();
+  const r = img.getBoundingClientRect();
+  const card = img.closest('.tile');
+  const name = card.querySelector('.tp-name').getBoundingClientRect();
+  const price = card.querySelector('.tp-body .t-price').getBoundingClientRect();
+  return {
+    fit: getComputedStyle(img).objectFit,
+    covers: Math.abs(r.width - box.width) < 1 && Math.abs(r.height - box.height) < 1,
+    nameInside: name.bottom <= box.bottom + 1 && name.top >= box.top,
+    priceBelow: price.top >= box.bottom,
+    ratio: Math.round((box.width / box.height) * 100) / 100,
+  };
+});
+check('the picture covers its whole area, centred', media.fit === 'cover' && media.covers, JSON.stringify(media));
+check('with the name over its lower edge and the price underneath', media.nameInside && media.priceBelow, JSON.stringify(media));
+check('products without a picture get a placeholder', (await page.$$('.tp-media.no-img svg')).length >= 1);
 const headers = await page.evaluate(async () => {
-  const el = document.querySelector('.tile.has-bg');
+  const el = document.querySelector('.tp-media:not(.no-img)').closest('.tile');
   const res = await fetch(`/api/products/${el.dataset.add}/image`);
   return { type: res.headers.get('content-type'), csp: res.headers.get('content-security-policy') || '' };
 });
 check('pictures are served so nothing inside them can run', headers.type === 'image/svg+xml' && headers.csp.includes('sandbox'), JSON.stringify(headers));
-await page.click('#toggle-images');
-await page.waitForTimeout(200);
-check('the picture button turns them off', (await page.$$('.tile.has-bg')).length === 0 && (await page.getAttribute('#toggle-images', 'aria-pressed')) === 'false');
+await page.waitForTimeout(600);
+await shot('88-till-picture-cards');
 await page.reload();
 await page.waitForSelector('.tile');
-check('and the choice is remembered on this device', (await page.$$('.tile.has-bg')).length === 0);
+check('the choice is remembered on this device', (await page.$$('.tile-pic')).length === cards);
 await page.click('#toggle-images');
 await page.waitForTimeout(200);
-check('turning them back on shows them again', (await page.$$('.tile.has-bg')).length === pictured);
+check('and the button turns them off again', (await page.$$('.tile-pic')).length === 0);
 
 /* ----------------------------------------------------- the cart is simple */
 console.log('\n[the cart is only what is being sold]');

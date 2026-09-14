@@ -72,7 +72,7 @@ export function sendJson(res, status, payload) {
   res.end(body);
 }
 
-export async function readJsonBody(req, limit = 2 * 1024 * 1024) {
+export async function readJsonBody(req, limit = 3 * 1024 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {

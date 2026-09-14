@@ -125,11 +125,26 @@ export async function render(root, ctx) {
       state.products
         .map(
           (p) => {
-            // With pictures on, a product's picture is the card's soft background.
-            const picture = showImages && p.image_at ? `/api/products/${p.id}/image?v=${encodeURIComponent(p.image_at)}` : '';
-            return `<button class="tile ${p.stock <= 0 ? 'out' : ''} ${picture ? 'has-bg' : ''}" data-add="${p.id}"
-                   data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}
-                   ${picture ? `style="--tile-img: url('${esc(picture)}')"` : ''}>
+            const prices = `<div class="t-meta">
+              <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
+              <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
+            </div>`;
+            const title = [p.name, p.description].filter(Boolean).join(' — ');
+            if (showImages) {
+              // Picture cards: the picture fills the top, the name sits over its lower
+              // edge, the price is underneath. No picture yet: a quiet placeholder.
+              const src = p.image_at ? `/api/products/${p.id}/image?v=${encodeURIComponent(p.image_at)}` : '';
+              return `<button class="tile tile-pic ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}"
+                       data-find="${esc(haystack(p))}" title="${esc(title)}">
+                <div class="tp-media ${src ? '' : 'no-img'}">
+                  ${src ? `<img class="tp-img" src="${esc(src)}" alt="" loading="lazy" decoding="async" draggable="false"/>` : icon('image')}
+                  <div class="tp-name">${esc(p.name)}</div>
+                </div>
+                <div class="tp-body">${prices}</div>
+              </button>`;
+            }
+            return `<button class="tile ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}"
+                   data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}>
             <div class="t-name">${esc(p.name)}</div>
             ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
             <div class="t-meta">

@@ -4,7 +4,7 @@ import { badRequest, notFound } from '../http.js';
 import { dateRange, money, num, qty, required, shiftDays, str, today } from '../util.js';
 
 // After the browser has shrunk it; a phone photo straight off the camera is refused.
-const MAX_IMAGE_BYTES = 1024 * 1024;
+const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 import { createAdjustment } from './adjustments.js';
 
 const SELECT_PRODUCT = `

@@ -73,8 +73,8 @@ export function pictureFor(product) {
 
 const escapeXml = (s) => s.replace(/[<>&"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** A 400×300 SVG: a gradient tinted by the category, soft circles, and the emoji towards the lower
- *  end corner, clear of the name and description that sit over the top of a till card. */
+/** A 400×300 SVG: a gradient tinted by the category, soft circles, and the emoji in the middle,
+ *  so it survives the centred crop of a till card's picture. */
 export function demoPicture(product) {
   const hue = hash(product.category || product.name || '') % 360;
   const shift = (hash(product.name || '') % 40) - 20;
@@ -89,7 +89,7 @@ export function demoPicture(product) {
   <rect width="400" height="300" fill="url(#g)"/>
   <circle cx="345" cy="45" r="95" fill="#ffffff" opacity="0.18"/>
   <circle cx="40" cy="275" r="80" fill="#ffffff" opacity="0.14"/>
-  <text x="292" y="188" font-size="140" text-anchor="middle" dominant-baseline="middle"
+  <text x="200" y="150" font-size="160" text-anchor="middle" dominant-baseline="central"
         font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif">${emoji}</text>
 </svg>`;
 }

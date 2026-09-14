@@ -301,7 +301,7 @@ export function productThumb(p, size = 'sm') {
  * long side, re-encoded as WebP (JPEG where WebP is unsupported). A phone photo
  * of several megabytes becomes a few tens of kilobytes.
  */
-export function shrinkImage(file, max = 640) {
+export function shrinkImage(file, max = 1024) {
   return new Promise((resolve, reject) => {
     if (!/^image\//.test(file.type)) return reject(new Error('not an image'));
     const url = URL.createObjectURL(file);

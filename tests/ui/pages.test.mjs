@@ -122,7 +122,10 @@ const rowHeight = await page.$eval(`tr[data-open="${productId}"]`, (tr) => tr.ge
 check('rows are slim', rowHeight <= 42, String(rowHeight));
 await page.goto(`${BASE}#/pos`);
 await page.waitForSelector('.tile');
-check('the till card shows it as its background', !!(await page.$(`.tile[data-add="${productId}"].has-bg`)));
+await page.click('#toggle-images');
+await page.waitForTimeout(200);
+check('the till card shows it once pictures are on', !!(await page.$(`.tile[data-add="${productId}"] .tp-img`)));
+await page.click('#toggle-images');
 await page.goto(`${BASE}#/purchases/new`);
 await page.waitForSelector('[data-product="0"]');
 await page.fill('[data-product="0"]', name.slice(0, 4));

@@ -1293,20 +1293,39 @@ table.data.compact td { padding: 8px 14px; }
 .btn.pay-all2 { color: var(--money2); background: var(--money2-soft); }
 .pay-due2 { color: var(--money2); opacity: 1; }
 
-/* Till cards with the product's picture as a soft background */
-.tile.has-bg { position: relative; overflow: hidden; isolation: isolate; }
-.tile.has-bg::before {
-  content: ''; position: absolute; inset: 0; z-index: -2;
-  background: var(--tile-img) center / cover no-repeat;
-  opacity: 0.42; transition: opacity 0.2s, transform 0.35s ease;
+/* Picture cards at the till: the picture fills the top, name over it, price underneath */
+.tile.tile-pic { padding: 0; gap: 0; min-height: 0; overflow: hidden; }
+.tp-media {
+  position: relative; aspect-ratio: 4 / 3; width: 100%; overflow: hidden;
+  display: flex; align-items: flex-end;
+  background: linear-gradient(160deg, #eceef3, #b9bec9);
 }
-/* A wash of the card colour, lighter at the top, so the text stays easy to read */
-.tile.has-bg::after {
-  content: ''; position: absolute; inset: 0; z-index: -1;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--surface) 55%, transparent) 0%,
-    color-mix(in srgb, var(--surface) 15%, transparent) 55%,
-    color-mix(in srgb, var(--surface) 70%, transparent) 100%);
+[data-theme="dark"] .tp-media { background: linear-gradient(160deg, #2a3346, #151c2b); }
+.tp-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: center;
+  transition: transform 0.35s ease;
 }
-.tile.has-bg:hover::before { opacity: 0.58; transform: scale(1.05); }
+.tile-pic:hover .tp-img { transform: scale(1.06); }
+.tp-media.no-img > svg {
+  position: absolute; left: 50%; top: 42%; width: 42px; height: 42px;
+  transform: translate(-50%, -50%); color: #8a90a0; opacity: 0.7; stroke-width: 1.4;
+}
+/* A dark fade along the bottom, so a white name reads on any picture */
+.tp-media::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 38%, rgba(0, 0, 0, 0.72) 100%);
+  pointer-events: none;
+}
+.tp-name {
+  position: relative; z-index: 1; width: 100%;
+  padding: 10px 12px; color: #fff;
+  font-size: 13px; font-weight: 750; line-height: 1.3; letter-spacing: 0.01em; text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  unicode-bidi: plaintext; text-align: start;
+}
+.tp-body { padding: 8px 12px 10px; }
+.tile-pic .t-meta { margin-top: 0; }
+.tile-pic .t-price { color: var(--accent-text); }
 #toggle-images[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
