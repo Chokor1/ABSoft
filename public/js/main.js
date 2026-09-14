@@ -7,6 +7,8 @@ import * as dashboard from './views/dashboard.js';
 import * as pos from './views/pos.js';
 import * as products from './views/products.js';
 import * as purchases from './views/purchases.js';
+import * as adjustments from './views/adjustments.js';
+import { sweepPickers } from './picker.js';
 import * as salesView from './views/sales.js';
 import * as expenses from './views/expenses.js';
 import * as reports from './views/reports.js';
@@ -14,19 +16,28 @@ import * as lists from './views/lists.js';
 import * as users from './views/users.js';
 import * as settings from './views/settings.js';
 
-/** Route table. Titles are keys so the whole shell re-labels on a language switch. */
+/**
+ * Route table. Titles are keys so the whole shell re-labels on a language switch.
+ * Administrators see everything; a cashier only the screens marked `cashier`
+ * (the server enforces the same split).
+ */
 const VIEWS = {
   dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'overview' },
-  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily' },
+  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true },
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
+  adjustments: { key: 'adjustments', icon: 'sliders', mod: adjustments, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
   products: { key: 'products', icon: 'box', mod: products, group: 'catalogue' },
   lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
-  sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'reports' },
+  sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'reports', cashier: true },
   reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports' },
-  users: { key: 'users', icon: 'users', mod: users, group: 'settings', adminOnly: true },
-  settings: { key: 'settings', icon: 'settings', mod: settings, group: 'settings' },
+  users: { key: 'users', icon: 'users', mod: users, group: 'settings' },
+  settings: { key: 'settings', icon: 'settings', mod: settings, group: 'settings', cashier: true },
 };
+
+const isAdmin = () => store.user?.role === 'admin';
+const canSee = (view) => isAdmin() || !!view.cashier;
+const homeRoute = () => (isAdmin() ? 'dashboard' : 'pos');
 
 const GROUPS = ['overview', 'daily', 'catalogue', 'reports', 'settings'];
 const SHORTCUTS = { pos: 'F2', products: 'F3', purchases: 'F4', expenses: 'F5' };
@@ -150,14 +161,14 @@ function renderLogin(message = '') {
 function navHtml() {
   return GROUPS.map((group) => {
     const items = Object.entries(VIEWS).filter(
-      ([, v]) => v.group === group && (!v.adminOnly || store.user.role === 'admin'),
+      ([, v]) => v.group === group && canSee(v),
     );
     if (!items.length) return '';
     return `<div class="nav-label">${esc(t(`nav.group.${group}`))}</div>${items
       .map(
         ([route, v]) => `<a class="nav-item" href="#/${route}" data-route="${route}">
             ${icon(v.icon)}<span>${esc(t(`nav.${v.key}`))}</span>
-            ${SHORTCUTS[route] ? `<span class="kbd">${SHORTCUTS[route]}</span>` : ''}
+            ${SHORTCUTS[route] && canSee(v) ? `<span class="kbd">${SHORTCUTS[route]}</span>` : ''}
           </a>`,
       )
       .join('')}`;
@@ -282,8 +293,11 @@ async function changePassword() {
 /* ----------------------------------------------------------------- router -- */
 
 const routeKey = () => {
-  const key = (location.hash.replace(/^#\/?/, '').split('/')[0] || 'dashboard').toLowerCase();
-  return VIEWS[key] && (!VIEWS[key].adminOnly || store.user?.role === 'admin') ? key : 'dashboard';
+  const key = location.hash.replace(/^#\/?/, '').split('/')[0].toLowerCase();
+  if (VIEWS[key] && canSee(VIEWS[key])) return key;
+  // Not a screen this user has: land on their home and say so in the address bar.
+  history.replaceState(null, '', `#/${homeRoute()}`);
+  return homeRoute();
 };
 
 async function renderRoute() {
@@ -301,6 +315,7 @@ async function renderRoute() {
   try {
     cleanup?.();
     cleanup = null;
+    sweepPickers();
     cleanup = await view.mod.render(page, {
       actions: document.getElementById('page-actions'),
       navigate: (to) => (location.hash = `#/${to}`),
@@ -322,7 +337,7 @@ document.addEventListener('keydown', (e) => {
   if (!store.user) return;
   const target = e.target;
   const typing = target instanceof HTMLElement && /input|textarea|select/i.test(target.tagName);
-  const shortcut = Object.entries(SHORTCUTS).find(([, k]) => k === e.key);
+  const shortcut = Object.entries(SHORTCUTS).find(([route, k]) => k === e.key && canSee(VIEWS[route]));
   if (shortcut && !document.querySelector('.modal-backdrop')) {
     e.preventDefault();
     location.hash = `#/${shortcut[0]}`;

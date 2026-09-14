@@ -2,6 +2,7 @@ import { db, lastId, transact } from '../db.js';
 import { canonicalName, listEntities, rememberAll } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
 import { money, num, qty, required, str } from '../util.js';
+import { createAdjustment } from './adjustments.js';
 
 const SELECT_PRODUCT = `
   SELECT p.*, COALESCE(s.stock, 0) AS stock,
@@ -176,11 +177,12 @@ export function register(router) {
     if (!product) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
     const delta = qty(num(ctx.body.qty));
     if (!delta) throw badRequest('Adjustment quantity cannot be zero', 'ADJUST_ZERO');
-    db.prepare(
-      `INSERT INTO stock_moves (product_id, qty, unit_cost, kind, note, user_id)
-       VALUES (?, ?, ?, 'adjust', ?, ?)`,
-    ).run(product.id, delta, product.cost, str(ctx.body.note) || 'Manual adjustment', ctx.user.id);
-    return getProduct(product.id);
+    // A one-line adjustment document, so it is numbered and listed like the rest.
+    const doc = createAdjustment(
+      { reason: str(ctx.body.note) || 'Manual adjustment', items: [{ product_id: product.id, qty: delta }] },
+      ctx.user.id,
+    );
+    return { ...getProduct(product.id), adjustment: { id: doc.id, doc_no: doc.doc_no } };
   });
 
   // Backed by the directory, so a category created there shows up before any

@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { attachPicker } from '../picker.js';
 import { productOption } from '../product-option.js';
+import { wireNamePickers } from '../name-picker.js';
 import { icon } from '../icons.js';
 import { PAYMENT_METHODS, errorText, methodText, t } from '../i18n.js';
 import {
@@ -12,7 +13,6 @@ import {
   money,
   qtyText,
   store,
-  suggestions,
   toast,
 } from '../ui.js';
 import { showReceipt } from './sales.js';
@@ -372,7 +372,6 @@ export async function render(root, ctx) {
    */
   async function openPayment() {
     if (!state.cart.length) return;
-    const customers = await suggestions('customer');
     const draft = state.draft;
     const initial = cartTotals(draft.discount);
 
@@ -384,11 +383,9 @@ export async function render(root, ctx) {
           <div class="form-grid">
             <div class="field">
               <label>${esc(t('common.customer'))}</label>
-              <input class="input" id="pay-customer" list="pay-customer-names" value="${esc(draft.customer)}"
-                     placeholder="${esc(t('common.walk_in'))}" autocomplete="off"/>
-              <datalist id="pay-customer-names">${customers
-                .map((n) => `<option value="${esc(n)}"></option>`)
-                .join('')}</datalist>
+              <div class="combo"><input class="input" id="pay-customer" data-names="customer" value="${esc(
+                draft.customer,
+              )}" placeholder="${esc(t('common.walk_in'))}" autocomplete="off"/></div>
             </div>
             <div class="field">
               <label>${esc(t('pos.payment_method'))}</label>
@@ -478,6 +475,8 @@ export async function render(root, ctx) {
           draft.note = $d('#pay-note').value;
         };
 
+        wireNamePickers(dialog);
+        $d('#pay-customer').addEventListener('change', keepDraft);
         $d('#pay-discount').addEventListener('input', () => {
           keepDraft();
           paint();

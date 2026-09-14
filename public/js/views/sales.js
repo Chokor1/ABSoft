@@ -196,6 +196,8 @@ function payStatus(sale) {
 
 export async function render(root, ctx) {
   const state = { from: monthStart(), to: todayISO(), search: '', unpaid: false };
+  // Cost and profit are for administrators; the server leaves them out for cashiers.
+  const admin = store.user.role === 'admin';
 
   const bar = rangeBar(state, (r) => {
     Object.assign(state, r);
@@ -244,8 +246,7 @@ export async function render(root, ctx) {
         discount: s.discount,
         tax: s.tax,
         total: s.total,
-        cost: s.cogs,
-        profit: s.profit,
+        ...(admin ? { cost: s.cogs, profit: s.profit } : {}),
         method: s.method,
         cashier: s.username || '',
       })),
@@ -276,9 +277,13 @@ export async function render(root, ctx) {
           <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
           <div class="spacer"></div>
           <span class="badge accent">${esc(t('sales.revenue_badge', { v: money(sum.total) }))}</span>
-          <span class="badge ${sum.profit >= 0 ? 'success' : 'danger'}">${esc(
-            t('sales.profit_badge', { v: money(sum.profit) }),
-          )}</span>
+          ${
+            admin
+              ? `<span class="badge ${sum.profit >= 0 ? 'success' : 'danger'}">${esc(
+                  t('sales.profit_badge', { v: money(sum.profit) }),
+                )}</span>`
+              : ''
+          }
           ${
             sum.balance > 0.004
               ? `<span class="badge warn">${esc(t('pay.owed_badge', { v: money(sum.balance) }))}</span>`
@@ -292,8 +297,8 @@ export async function render(root, ctx) {
                   <thead><tr>
                     <th>${esc(t('sales.invoice'))}</th><th>${esc(t('common.date'))}</th>
                     <th>${esc(t('common.customer'))}</th><th class="right">${esc(t('common.items'))}</th>
-                    <th class="right">${esc(t('common.total'))}</th><th class="right">${esc(t('common.cost'))}</th>
-                    <th class="right">${esc(t('common.profit'))}</th>
+                    <th class="right">${esc(t('common.total'))}</th>
+                    ${admin ? `<th class="right">${esc(t('common.cost'))}</th><th class="right">${esc(t('common.profit'))}</th>` : ''}
                     <th class="right">${esc(t('pay.paid'))}</th>
                     <th class="right">${esc(t('pay.balance'))}</th>
                     <th>${esc(t('pay.status'))}</th>
@@ -307,8 +312,12 @@ export async function render(root, ctx) {
                         <td>${esc(s.customer || t('common.walk_in'))}</td>
                         <td class="right">${qtyText(s.total_qty)}</td>
                         <td class="right"><b>${money(s.total)}</b></td>
-                        <td class="right muted">${money(s.cogs)}</td>
-                        <td class="right ${signClass(s.profit)}">${money(s.profit)}</td>
+                        ${
+                          admin
+                            ? `<td class="right muted">${money(s.cogs)}</td>
+                               <td class="right ${signClass(s.profit)}">${money(s.profit)}</td>`
+                            : ''
+                        }
                         <td class="right muted">${money(s.paid)}</td>
                         <td class="right ${s.balance > 0.004 ? 'money-neg' : 'muted'}">${money(s.balance)}</td>
                         <td>${payStatus(s)}</td>
@@ -335,8 +344,12 @@ export async function render(root, ctx) {
                   <tfoot><tr>
                     <td colspan="4">${esc(t('common.totals'))}</td>
                     <td class="right">${money(sum.total)}</td>
-                    <td class="right">${money(sum.cogs)}</td>
-                    <td class="right ${signClass(sum.profit)}">${money(sum.profit)}</td>
+                    ${
+                      admin
+                        ? `<td class="right">${money(sum.cogs)}</td>
+                           <td class="right ${signClass(sum.profit)}">${money(sum.profit)}</td>`
+                        : ''
+                    }
                     <td class="right">${money(sum.total - sum.balance)}</td>
                     <td class="right ${sum.balance > 0.004 ? 'money-neg' : ''}">${money(sum.balance)}</td>
                     <td colspan="3"></td>

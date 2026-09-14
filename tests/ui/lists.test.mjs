@@ -190,12 +190,10 @@ await clerk.fill('input[name=username]', 'clerk7');
 await clerk.fill('input[name=password]', 'test1234');
 await clerk.click('button[type=submit]');
 await clerk.waitForSelector('.shell');
-await clerk.goto(`${BASE}#/purchases`);
-await clerk.waitForSelector('.table-scroll tbody tr');
-check('no edit buttons on the list for a cashier', (await clerk.$$('[data-edit]')).length === 0);
 await clerk.goto(`${BASE}#/purchases/${made.purchase.id}/edit`);
 await clerk.waitForTimeout(800);
-check('the edit link sends a cashier back to the list', (await clerk.$$('#purchase-form')).length === 0);
+check('the edit link sends a cashier to the till instead', (await clerk.$$('#purchase-form')).length === 0 && clerk.url().endsWith('#/pos'),
+  clerk.url());
 await clerk.close();
 
 check('no uncaught JavaScript errors', errors.length === 0, errors.join(' | '));

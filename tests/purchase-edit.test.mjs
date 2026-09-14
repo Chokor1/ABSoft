@@ -146,7 +146,7 @@ await call('POST', '/api/users', { username: 'buyer9', password: 'test1234', rol
 cookie = '';
 await call('POST', '/api/auth/login', { username: 'buyer9', password: 'test1234' });
 const refused = await call('PUT', `/api/purchases/${created.id}`, { items: [{ product_id: flour.id, qty: 1, unit_cost: 1 }] });
-check('a cashier cannot edit a purchase', refused.status === 400 && refused.data.code === 'PURCHASE_EDIT_ADMIN_ONLY', JSON.stringify(refused));
+check('a cashier cannot edit a purchase', refused.status === 403 && refused.data.code === 'ADMIN_ONLY', JSON.stringify(refused));
 cookie = adminCookie;
 
 /* ------------------------------------------------------------------------ */

@@ -52,12 +52,13 @@ invoice loses a line.
 | **Dashboard** | Today and this month at a glance: sales, profit, stock value, low-stock warnings, 30-day trend. |
 | **Sell — POS** (`F2`) | The till. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
 | **Buy — Stock In** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. Administrators can edit a saved purchase; every change is logged. |
+| **Stock Adjustment** | Counts, damage, expiry and write-offs as numbered documents covering many products at once. Scan or search products (or add a whole category), then type what you counted or how much changed. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
 | **Products** (`F3`) | Define what you sell: name, optional description, barcode, category, cost, default price, unit, low-stock level. Click any row for its full movement history. |
 | **Lists** | Customers, suppliers, product categories, units and expense categories — the names you reuse. |
 | **Sales History** | Every invoice, with cost and profit per sale. Click one to reprint it. |
 | **Reports** | Profit & loss for any date range, plus product performance, stock valuation, the movement ledger and per-cashier totals. |
-| **Users** | Add cashiers and administrators. |
+| **Users** | Add cashiers and administrators. A cashier only gets **Sell — POS**, **Sales History** (without cost or profit) and their own settings. |
 | **Settings** | Store name, currency, sales tax rate, receipt footer, language, and database backups. |
 
 Press `/` anywhere to jump to the search box. Every list has an **Export CSV** button.
@@ -75,9 +76,11 @@ a cashier can find "750ml bottle" without knowing the product name.
 ## Names you reuse — customers, suppliers, categories, units
 
 Type a customer on an invoice, a supplier on a purchase, or a category on a product, and
-ABSoft **remembers it**. Next time the field offers it as a suggestion. Nothing changes about
+ABSoft **remembers it**. Next time, click the field for a dropdown of the saved names (with
+phone numbers where you added them), or type to narrow it down. Nothing changes about
 how you work: the field is still an ordinary text box, an unfamiliar name is simply a new one,
-and none of it is ever required.
+and none of it is ever required. A name that is not saved yet appears first as **Use “…”**, so
+pressing Enter always keeps exactly what you typed.
 
 The **Lists** screen is where those names live, with a tab each for customers, suppliers,
 product categories, units and expense categories. Open any entry to add detail — phone, email,
@@ -155,6 +158,41 @@ and the stock goes negative so you can see it needs fixing.
 Deleting is protective: a product or user that already appears in history is archived
 instead of deleted, so past reports never change. Voiding a sale or deleting a purchase
 (administrators only) reverses its stock movements.
+
+---
+
+## Stock adjustments
+
+**Stock Adjustment** (under Buy in the menu) records corrections as documents, `ADJ-000001`
+and on, each with a date, a reason (stock count, damaged, expired, lost, returns… or your own)
+and an optional note.
+
+1. Scan a barcode or search for a product — it gets a line, and the cursor jumps to **Counted**.
+   Press Enter to go back to the search for the next one. **Add a whole category** puts every
+   product in that category on the sheet at once, which is how a shelf count starts.
+2. On each line type **Counted** (what is physically there) *or* **Change** (+5, −2). Each fills
+   in the other, with the new balance and the value of the difference beside it.
+3. Save. Lines that do not change anything are left off.
+
+A count is applied against the balance **at the moment you save**, so a sale rung up while
+someone was counting is not lost. Adjustments are valued at the product's average cost and do
+not change it. Deleting an adjustment reverses its stock. The quick **Adjust stock** button on
+a product still works, and now makes a one-line adjustment document too.
+
+---
+
+## Who can do what
+
+| | Administrator | Cashier |
+| --- | --- | --- |
+| Sell — POS, receipts, taking payments on invoices | ✓ | ✓ |
+| Sales History | ✓ with cost and profit | ✓ without cost and profit |
+| Void a sale, remove a payment | ✓ | — |
+| Products, purchases, adjustments, expenses, lists, reports, dashboard | ✓ | — |
+| Users, store settings, backups | ✓ | — |
+
+This is enforced by the server, not just hidden in the menu: a cashier's session can only call
+what the till needs, and product and sale data sent to a cashier leaves out costs and profit.
 
 ---
 

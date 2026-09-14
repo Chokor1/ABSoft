@@ -7,6 +7,7 @@
 import { db, transact } from '../db.js';
 import { ensureSeedAdmin } from '../auth.js';
 import { money, qty } from '../util.js';
+import { rememberEntity } from '../entities.js';
 
 ensureSeedAdmin();
 const admin = db.prepare(`SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1`).get();
@@ -119,6 +120,19 @@ transact(() => {
       insertExpense.run(day(offset), category, note, money(amount * between(0.85, 1.15)), admin.id);
     }
   });
+
+  // Fill the reusable-name directory from what was just written, the way the
+  // app does when those documents are saved through it.
+  const names = (sql) => db.prepare(sql).all().map((r) => r.name).filter(Boolean);
+  for (const [kind, sql] of [
+    ['category', `SELECT DISTINCT category AS name FROM products`],
+    ['unit', `SELECT DISTINCT unit AS name FROM products`],
+    ['supplier', `SELECT DISTINCT supplier AS name FROM purchases`],
+    ['customer', `SELECT DISTINCT customer AS name FROM sales`],
+    ['expense_category', `SELECT DISTINCT category AS name FROM expenses`],
+  ]) {
+    names(sql).forEach((name) => rememberEntity(kind, name));
+  }
 });
 
 const counts = db

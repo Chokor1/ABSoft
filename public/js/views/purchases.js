@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { attachPicker } from '../picker.js';
 import { productOption } from '../product-option.js';
+import { wireNamePickers } from '../name-picker.js';
 import { icon } from '../icons.js';
 import { count, errorText, t } from '../i18n.js';
 import {
@@ -18,7 +19,6 @@ import {
   qtyText,
   rangeBar,
   store,
-  suggestions,
   toast,
   todayISO,
 } from '../ui.js';
@@ -290,7 +290,6 @@ async function renderForm(root, ctx, editId = null) {
     toast(t('buy.need_product'), 'warn');
     return back();
   }
-  const supplierNames = await suggestions('supplier');
   const lines = editing
     ? editing.items.map((i) => ({
         product_id: i.product_id,
@@ -341,12 +340,9 @@ async function renderForm(root, ctx, editId = null) {
       <div class="card-body">
         <div class="form-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
           <div class="field"><label>${esc(t('common.supplier'))}</label>
-            <input class="input" name="supplier" list="supplier-names" placeholder="${esc(
+            <div class="combo"><input class="input" name="supplier" data-names="supplier" placeholder="${esc(
               t('buy.supplier_placeholder'),
-            )}" value="${esc(editing?.supplier || '')}" autocomplete="off"/>
-            <datalist id="supplier-names">${supplierNames
-              .map((n) => `<option value="${esc(n)}"></option>`)
-              .join('')}</datalist></div>
+            )}" value="${esc(editing?.supplier || '')}" autocomplete="off"/></div></div>
           <div class="field"><label>${esc(t('common.date'))}</label>
             <input class="input" type="date" name="date" value="${editing?.date || todayISO()}"/></div>
           <div class="field"><label>${esc(t('buy.ref'))}</label>
@@ -374,6 +370,7 @@ async function renderForm(root, ctx, editId = null) {
     </form>`;
 
   const form = root.querySelector('#purchase-form');
+  const dropSupplier = wireNamePickers(form);
   const linesEl = root.querySelector('#lines');
 
   // The line table is re-rendered on every add, remove and pick, so the pickers
@@ -482,5 +479,8 @@ async function renderForm(root, ctx, editId = null) {
   else root.querySelector('#add-line').click();
 
   // main.js calls this when navigating away.
-  return dropPickers;
+  return () => {
+    dropPickers();
+    dropSupplier();
+  };
 }

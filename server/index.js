@@ -9,6 +9,7 @@ import { ensureSeedAdmin, login, logout, purgeExpiredSessions, userFromToken } f
 import {
   HttpError,
   Router,
+  forbidden,
   parseCookies,
   readJsonBody,
   sendJson,
@@ -23,6 +24,7 @@ import { register as registerReports } from './routes/reports.js';
 import { register as registerUsers } from './routes/users.js';
 import { register as registerSystem } from './routes/system.js';
 import { register as registerEntities } from './routes/entities.js';
+import { register as registerAdjustments } from './routes/adjustments.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -63,10 +65,42 @@ registerReports(router);
 registerUsers(router);
 registerSystem(router);
 registerEntities(router);
+registerAdjustments(router);
 
 /* -------------------------------------------------------------- server ---- */
 
 const PUBLIC_ROUTES = new Set(['POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/auth/me']);
+
+/**
+ * A cashier works the till: find products, sell, take payments on invoices and
+ * look sales up. Everything else is administrator work. Some routes here still
+ * refuse cashiers inside their handler (voiding a sale, removing a payment) with
+ * a message of their own.
+ */
+const CASHIER_ROUTES = new Set([
+  'GET /api/products',
+  'GET /api/products/lookup',
+  'GET /api/sales',
+  'GET /api/sales/:id',
+  'POST /api/sales',
+  'DELETE /api/sales/:id',
+  'POST /api/sales/:id/payments',
+  'DELETE /api/payments/:id',
+  'GET /api/entities/:kind',
+  'GET /api/settings',
+  'GET /api/system',
+  'POST /api/me/password',
+]);
+
+// What things cost and what they earn stays with administrators.
+const COST_FIELDS = new Set(['cost', 'unit_cost', 'stock_value', 'margin', 'cogs', 'profit']);
+function withoutCosts(value) {
+  if (Array.isArray(value)) return value.map(withoutCosts);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [k, v] of Object.entries(value)) if (!COST_FIELDS.has(k)) out[k] = withoutCosts(v);
+  return out;
+}
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -82,6 +116,10 @@ const server = createServer(async (req, res) => {
       if (!user && !PUBLIC_ROUTES.has(`${req.method} ${pathname}`)) {
         throw new HttpError(401, 'Your session has expired — please sign in again', 'SESSION_EXPIRED');
       }
+      const cashier = user && user.role !== 'admin';
+      if (cashier && !CASHIER_ROUTES.has(`${req.method} ${route.pattern}`)) {
+        throw forbidden('Administrator access required', 'ADMIN_ONLY');
+      }
 
       const ctx = {
         req,
@@ -92,7 +130,8 @@ const server = createServer(async (req, res) => {
         query: Object.fromEntries(url.searchParams),
         body: req.method === 'GET' || req.method === 'DELETE' ? {} : await readJsonBody(req),
       };
-      const payload = await route.handler(ctx);
+      const result = await route.handler(ctx);
+      const payload = cashier ? withoutCosts(result) : result;
       // Streaming handlers (the backup download) write their own head and body.
       if (!res.headersSent && !res.writableEnded) sendJson(res, 200, payload ?? { ok: true });
       return;

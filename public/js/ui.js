@@ -1,6 +1,8 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
 import { isRtl, locale, t } from './i18n.js';
+import { wireNamePickers } from './name-picker.js';
+import { sweepPickers } from './picker.js';
 
 /* ------------------------------------------------------------ formatting -- */
 
@@ -119,6 +121,7 @@ export function modal({ title, subtitle = '', body, footer = '', wide = false, s
     const close = (value) => {
       document.removeEventListener('keydown', onKey);
       backdrop.remove();
+      sweepPickers();
       resolve(value);
     };
     const onKey = (e) => {
@@ -163,6 +166,7 @@ export function formModal({ title, subtitle, fields, submitLabel = t('common.sav
       <button class="btn" data-close>${esc(t('common.cancel'))}</button>
       <button class="btn btn-primary" form="modal-form" type="submit">${esc(submitLabel)}</button>`,
     setup: (root, close) => {
+      wireNamePickers(root, fields);
       root.querySelector('#modal-form').addEventListener('submit', (e) => {
         e.preventDefault();
         close(readFields(root, fields));
@@ -220,6 +224,7 @@ export function formPage(container, { title, subtitle = '', fields, submitLabel 
     onSubmit(readFields(container, fields));
   });
   container.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', () => onCancel?.()));
+  wireNamePickers(container, fields);
 
   const first = container.querySelector('[autofocus], input:not([type=hidden]), select, textarea');
   first?.focus();
@@ -251,11 +256,10 @@ function fieldHtml(f) {
         : `<input class="input" type="${f.type || 'text'}" ${common} value="${esc(f.value ?? '')}"
              placeholder="${esc(f.placeholder || '')}" ${f.step ? `step="${f.step}"` : ''} ${
                f.min !== undefined ? `min="${f.min}"` : ''
-             } ${f.list ? `list="${f.list}"` : ''} autocomplete="off"/>`;
+             } ${f.names ? `data-names="${esc(f.names)}"` : ''} ${f.choices ? 'data-choices' : ''} autocomplete="off"/>`;
   return `<div class="field ${span}">
-    <label>${esc(f.label)}</label>${control}
+    <label>${esc(f.label)}</label>${f.names || f.choices ? `<div class="combo">${control}</div>` : control}
     ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
-    ${f.datalist ? `<datalist id="${f.list}">${f.datalist.map((o) => `<option value="${esc(o)}"></option>`).join('')}</datalist>` : ''}
   </div>`;
 }
 
@@ -376,24 +380,22 @@ export function shortNum(v) {
  */
 const suggestionCache = new Map();
 
-export function suggestions(kind) {
+/** The saved rows (name, phone, email…) for a kind. */
+export function directory(kind) {
   if (!suggestionCache.has(kind)) {
     suggestionCache.set(
       kind,
-      api
-        .entities(kind)
-        .then((rows) => rows.map((r) => r.name))
-        .catch(() => []), // suggestions are a convenience; never block the form
+      api.entities(kind).catch(() => []), // suggestions are a convenience; never block the form
     );
   }
   return suggestionCache.get(kind);
 }
 
+/** Just the names. */
+export const suggestions = (kind) => directory(kind).then((rows) => rows.map((r) => r.name));
+
 export const forgetSuggestions = (kind) => (kind ? suggestionCache.delete(kind) : suggestionCache.clear());
 
-/** Options for a free-text input that also offers saved names. */
-export const datalistHtml = (id, values) =>
-  `<datalist id="${id}">${values.map((v) => `<option value="${esc(v)}"></option>`).join('')}</datalist>`;
 
 /* ------------------------------------------------------------------ misc -- */
 

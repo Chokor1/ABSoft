@@ -18,7 +18,18 @@ import { esc } from './ui.js';
  *
  * Returns { close, reset, isOpen, activeItem, refresh, destroy }.
  */
-export function attachPicker(input, { search, render, onPick, emptyText = '', openOnFocus = true, delay = 180 }) {
+/** Every live picker, so ones whose field has been re-rendered away can be cleared up. */
+const live = new Set();
+
+/** Destroy pickers whose input is no longer on the page (after a route change or a closed dialog). */
+export function sweepPickers() {
+  for (const p of live) if (!p.connected()) p.destroy();
+}
+
+export function attachPicker(
+  input,
+  { search, render, onPick, emptyText = '', openOnFocus = true, delay = 180, activeIndex = () => 0 },
+) {
   const wrap = input.closest('.combo');
   if (!wrap) throw new Error('attachPicker: the input must be inside a .combo element');
 
@@ -29,7 +40,11 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
   menu.className = 'combo-menu';
   menu.hidden = true;
   menu.setAttribute('role', 'listbox');
-  document.body.appendChild(menu);
+  // Added to the page the first time it opens, so a form full of pickers does
+  // not leave a trail of empty menus behind.
+  const mount = () => {
+    if (!menu.isConnected) document.body.appendChild(menu);
+  };
 
   /** Sit the menu under the input, or above it when the window runs out. */
   function position() {
@@ -66,6 +81,10 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
   const isOpen = () => !menu.hidden;
 
   function close() {
+    // Cancel anything still on its way, so a search that returns late cannot
+    // reopen a menu that was closed or a field that was left.
+    clearTimeout(timer);
+    token++;
     menu.hidden = true;
     active = -1;
     input.setAttribute('aria-expanded', 'false');
@@ -81,8 +100,10 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
           )
           .join('')
       : `<div class="combo-empty">${esc(emptyText)}</div>`;
+    mount();
     menu.hidden = false;
     position();
+    menu.querySelector('.combo-item.active')?.scrollIntoView({ block: 'nearest' });
     input.setAttribute('aria-expanded', 'true');
   }
 
@@ -106,8 +127,9 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
       results = []; // a failed lookup shows "no matches", never a broken field
     }
     if (mine !== token) return; // a newer keystroke already answered
+    if (document.activeElement !== input) return; // the cashier has moved on
     items = results;
-    active = results.length ? 0 : -1;
+    active = results.length ? Math.min(results.length - 1, activeIndex(results, query)) : -1;
     paint();
   }
 
@@ -167,7 +189,12 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
     choose(items[Number(el.dataset.i)]);
   });
 
-  input.addEventListener('blur', () => setTimeout(close, 120));
+  // Delayed so a click on the menu lands first; skipped if focus came straight back.
+  input.addEventListener('blur', () =>
+    setTimeout(() => {
+      if (document.activeElement !== input) close();
+    }, 120),
+  );
 
   function choose(item) {
     if (!item) return;
@@ -176,6 +203,7 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
   }
 
   function destroy() {
+    live.delete(api);
     clearTimeout(timer);
     window.removeEventListener('scroll', reposition, true);
     window.removeEventListener('resize', reposition);
@@ -185,12 +213,17 @@ export function attachPicker(input, { search, render, onPick, emptyText = '', op
   window.addEventListener('scroll', reposition, true); // capture: any ancestor
   window.addEventListener('resize', reposition);
 
-  return {
+  const api = {
     isOpen,
     reset,
     close,
     activeItem: () => (active >= 0 ? items[active] : null),
     refresh: () => run(input.value.trim()),
+    /** Open with results for `query` rather than what is typed (e.g. show every choice). */
+    open: (query = '') => run(query),
     destroy,
+    connected: () => input.isConnected,
   };
+  live.add(api);
+  return api;
 }

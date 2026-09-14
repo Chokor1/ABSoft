@@ -204,8 +204,8 @@ async function renderList(root, ctx) {
     const delta = data.mode === 'set' ? amount - Number(product.stock) : data.mode === 'remove' ? -amount : amount;
     if (!delta) return toast(t('prod.adjust_none'), 'warn');
     try {
-      await api.adjustStock(product.id, delta, data.note);
-      toast(t('prod.adjusted'), 'success');
+      const res = await api.adjustStock(product.id, delta, data.note);
+      toast(res.adjustment ? t('prod.adjusted_doc', { doc: res.adjustment.doc_no }) : t('prod.adjusted'), 'success');
       load();
     } catch (err) {
       toast(errorText(err), 'error');
@@ -315,8 +315,7 @@ async function renderForm(root, ctx, id) {
         name: 'category',
         label: t('common.category'),
         value: product?.category || '',
-        list: 'cat-list',
-        datalist: categories,
+        names: 'category',
         placeholder: t('prod.category_placeholder'),
       },
       { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
@@ -326,8 +325,7 @@ async function renderForm(root, ctx, id) {
         label: t('common.unit'),
         value: product?.unit || 'pcs',
         placeholder: t('prod.unit_placeholder'),
-        list: 'unit-list',
-        datalist: units,
+        names: 'unit',
       },
       { name: 'min_stock', label: t('prod.min_stock'), type: 'number', step: 'any', min: 0, value: product?.min_stock ?? 0 },
       ...(isNew

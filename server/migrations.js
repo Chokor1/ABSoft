@@ -141,6 +141,36 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Stock adjustments as documents: a count, damage or write-off covering many
+    // products at once, with a number, a date and a reason. Loose adjustments
+    // made before this stay in the movement ledger as they are.
+    name: 'stock-adjustments',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS adjustments (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_no     TEXT    NOT NULL,
+          date       TEXT    NOT NULL,
+          reason     TEXT    NOT NULL DEFAULT '',
+          note       TEXT    NOT NULL DEFAULT '',
+          user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_adjustments_date ON adjustments(date);
+
+        CREATE TABLE IF NOT EXISTS adjustment_items (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          adjustment_id INTEGER NOT NULL REFERENCES adjustments(id) ON DELETE CASCADE,
+          product_id    INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+          stock_before  REAL    NOT NULL DEFAULT 0,
+          qty           REAL    NOT NULL,
+          unit_cost     REAL    NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_adjustment_items_doc ON adjustment_items(adjustment_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

@@ -1034,3 +1034,27 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .log-add::marker { color: var(--success, #16a34a); }
 .log-remove::marker { color: var(--danger, #dc2626); }
 .log-reason { margin-top: 6px; font-size: 13px; font-style: italic; }
+
+/* Name pickers (customer, supplier, category, unit…): a real dropdown, with a chevron */
+.combo-names .input { padding-inline-end: 34px; }
+.combo-names::after {
+  content: ''; position: absolute; inset-inline-end: 14px; top: 50%;
+  width: 7px; height: 7px; margin-top: -5px;
+  border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted);
+  transform: rotate(45deg); pointer-events: none;
+}
+.ci-avatar {
+  flex: none; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+  background: var(--surface-3); color: var(--text-2);
+}
+.ci-avatar.new { background: var(--accent-soft); color: var(--accent-text); }
+.ci-avatar svg { width: 14px; height: 14px; }
+
+/* Stock adjustment form */
+.adj-add { gap: 10px; flex-wrap: wrap; }
+.adj-add .adj-find { flex: 2 1 320px; }
+.adj-add .adj-category { flex: 1 1 200px; }
+.adj-table td { vertical-align: middle; }
+.adj-table .input { height: 34px; }

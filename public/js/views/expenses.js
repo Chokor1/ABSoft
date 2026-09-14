@@ -185,7 +185,7 @@ async function renderForm(root, ctx, id) {
       {
         name: 'category', label: t('common.category'),
         value: expense?.category || t('exp.cat.general'),
-        list: 'exp-cats', datalist: categorySuggestions(used),
+        names: 'expense_category', choices: categorySuggestions(used),
       },
       {
         name: 'method', label: t('exp.paid_by'), type: 'select',

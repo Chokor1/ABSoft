@@ -39,7 +39,7 @@ export class Router {
           .join('/') +
         '$',
     );
-    this.#routes.push({ method, regex, keys, handler });
+    this.#routes.push({ method, pattern, regex, keys, handler });
     return this;
   }
 
@@ -56,7 +56,7 @@ export class Router {
       if (!m) continue;
       const params = {};
       route.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
-      return { handler: route.handler, params };
+      return { handler: route.handler, params, pattern: route.pattern };
     }
     return null;
   }

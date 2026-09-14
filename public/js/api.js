@@ -60,6 +60,11 @@ export const api = {
   updatePurchase: (id, p) => api.put(`/api/purchases/${id}`, p),
   deletePurchase: (id) => api.del(`/api/purchases/${id}`),
 
+  adjustments: (query) => api.get('/api/adjustments', query),
+  adjustment: (id) => api.get(`/api/adjustments/${id}`),
+  createAdjustment: (a) => api.post('/api/adjustments', a),
+  deleteAdjustment: (id) => api.del(`/api/adjustments/${id}`),
+
   sales: (query) => api.get('/api/sales', query),
   sale: (id) => api.get(`/api/sales/${id}`),
   createSale: (s) => api.post('/api/sales', s),
