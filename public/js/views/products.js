@@ -280,7 +280,7 @@ async function renderForm(root, ctx) {
 
 /* ----------------------------------------------------------- detail page -- */
 
-const TABS = ['overview', 'details', 'movements', 'sales', 'purchases'];
+const TABS = ['details', 'overview', 'movements', 'sales', 'purchases'];
 
 async function renderDetail(root, ctx, id, initialTab) {
   const admin = store.user?.role === 'admin';
@@ -291,7 +291,7 @@ async function renderDetail(root, ctx, id, initialTab) {
     toast(errorText(err), 'error');
     return ctx.navigate('products');
   }
-  const state = { tab: TABS.includes(initialTab) ? initialTab : 'overview', from: shiftDays(todayISO(), -29), to: todayISO() };
+  const state = { tab: TABS.includes(initialTab) ? initialTab : 'details', from: shiftDays(todayISO(), -29), to: todayISO() };
   let dropPickers = () => {};
 
   ctx.actions.innerHTML = `
@@ -306,24 +306,13 @@ async function renderDetail(root, ctx, id, initialTab) {
     else if (res) reload();
   });
 
+  // The menu comes first: the product's name and its tabs sit together at the top.
   root.innerHTML = `
-    <div class="card product-hero" id="hero"></div>
-    <div class="tabs-bar sticky-bar">
-      <div class="seg" id="tabs">${TABS.map((k) => `<button data-tab="${k}">${esc(t(`prod.tab.${k}`))}</button>`).join('')}</div>
-    </div>
+    <div class="card product-hero sticky-bar" id="hero"></div>
     <div id="tab-body"></div>`;
 
   const hero = root.querySelector('#hero');
   const body = root.querySelector('#tab-body');
-
-  root.querySelector('#tabs').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-tab]');
-    if (!btn) return;
-    state.tab = btn.dataset.tab;
-    // Keep the tab in the address, so reload and Back land on the same view.
-    history.replaceState(null, '', `#/products/${id}/${state.tab}`);
-    showTab();
-  });
 
   async function reload() {
     product = await api.product(id);
@@ -331,58 +320,108 @@ async function renderDetail(root, ctx, id, initialTab) {
     showTab();
   }
 
+  function go(tab) {
+    state.tab = tab;
+    // Keep the tab in the address, so reload and Back land on the same view.
+    history.replaceState(null, '', `#/products/${id}/${state.tab}`);
+    showTab();
+  }
+
   function paintHero() {
     const low = product.stock <= product.min_stock;
     hero.innerHTML = `
-      <div class="ph-main">
+      <div class="ph-row">
         <button type="button" class="btn btn-ghost btn-icon" id="back" aria-label="${esc(t('common.back'))}">${icon('back')}</button>
-        <div class="ph-image ${product.image_at ? 'has-image' : ''}">
-          ${productThumb(product, 'lg')}
-          <div class="ph-image-actions">
-            <label class="btn btn-sm" title="${esc(t('prod.image_upload'))}">
-              ${icon('camera')} <span>${esc(product.image_at ? t('prod.image_change') : t('prod.image_add'))}</span>
-              <input type="file" id="image-file" accept="image/png,image/jpeg,image/webp" hidden/>
-            </label>
-            ${
-              product.image_at
-                ? `<button class="btn btn-sm btn-ghost" id="image-remove" title="${esc(t('prod.image_remove'))}">${icon('trash')}</button>`
-                : ''
-            }
-          </div>
-        </div>
+        ${productThumb(product, 'xs')}
         <div class="ph-text">
           <h2>${esc(product.name)}</h2>
           <div class="ph-badges">
             ${product.category ? `<span class="badge">${esc(product.category)}</span>` : ''}
-            ${product.barcode ? `<span class="badge mono">${icon('barcode')} ${esc(product.barcode)}</span>` : ''}
+            <span class="badge ${product.stock <= 0 ? 'danger' : low ? 'warn' : 'success'}">${qtyText(product.stock)} ${esc(product.unit)}</span>
+            <span class="badge accent">${money(product.price)}</span>
             ${product.active ? '' : `<span class="badge">${esc(t('prod.archived'))}</span>`}
-            ${product.stock <= 0 ? `<span class="badge danger">${esc(t('prod.out_of_stock'))}</span>` : low ? `<span class="badge warn">${esc(t('prod.low'))}</span>` : ''}
           </div>
-          ${product.description ? `<p class="muted">${esc(product.description)}</p>` : ''}
         </div>
-      </div>
-      <div class="stats ph-stats">
-        ${statTile({
-          label: t('common.stock'),
-          value: `${qtyText(product.stock)} <small>${esc(product.unit)}</small>`,
-          foot: t('prod.min_level', { q: qtyText(product.min_stock) }),
-          tint: product.stock <= 0 ? 'danger' : low ? 'warn' : 'success',
-          iconName: 'box',
-        })}
-        ${statTile({ label: t('common.price'), value: money(product.price), foot: t('prod.per_unit', { u: product.unit }), iconName: 'coins' })}
-        ${statTile({ label: t('common.cost'), value: money(product.cost), foot: `${t('common.margin')} ${pct(product.margin)}`, iconName: 'truck' })}
-        ${statTile({ label: t('common.value'), value: money(product.stock_value), foot: t('prod.stock_value_foot'), iconName: 'wallet' })}
-        ${statTile({
-          label: t('prod.sold_30'),
-          value: `${qtyText(product.sold_30)} <small>${esc(product.unit)}</small>`,
-          foot: money(product.revenue_30),
-          tint: 'info',
-          iconName: 'trendUp',
-        })}
+        <div class="spacer"></div>
+        <div class="seg" id="tabs">${TABS.map(
+          (k) => `<button data-tab="${k}" class="${k === state.tab ? 'active' : ''}">${esc(t(`prod.tab.${k}`))}</button>`,
+        ).join('')}</div>
       </div>`;
-
     hero.querySelector('#back').addEventListener('click', () => ctx.navigate('products'));
-    hero.querySelector('#image-file').addEventListener('change', async (e) => {
+    hero.querySelector('#tabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-tab]');
+      if (btn) go(btn.dataset.tab);
+    });
+  }
+
+  function showTab() {
+    dropPickers();
+    dropPickers = () => {};
+    hero.querySelectorAll('#tabs [data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
+    body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(t('common.loading'))}</p></div></div></div>`;
+    ({ details: tabDetails, overview: tabOverview, movements: tabMovements, sales: tabSales, purchases: tabPurchases })[state.tab]();
+  }
+
+  /* Details: the picture, with the product's properties beside and under it. */
+  function tabDetails() {
+    // Laid out to fill the grid: the editable fields, what the product holds
+    // (read only), then the active switch.
+    const fields = productFields(product).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
+    const editable = fields.filter((f) => f.name !== 'active');
+    const active = fields.filter((f) => f.name === 'active');
+    const readOnly = (label, value) =>
+      `<div class="field"><label>${esc(label)}</label><div class="input readonly">${value}</div></div>`;
+    body.innerHTML = `
+      <form class="card" id="page-form" novalidate>
+        <div class="card-body">
+          <div class="pd-grid">
+            <div class="pd-image">
+              ${productThumb(product, 'lg')}
+              <div class="pd-image-actions">
+                <label class="btn btn-sm" title="${esc(t('prod.image_upload'))}">
+                  ${icon('camera')} <span>${esc(product.image_at ? t('prod.image_change') : t('prod.image_add'))}</span>
+                  <input type="file" id="image-file" accept="image/png,image/jpeg,image/webp" hidden/>
+                </label>
+                ${
+                  product.image_at
+                    ? `<button type="button" class="btn btn-sm btn-ghost" id="image-remove" title="${esc(t('prod.image_remove'))}">${icon('trash')}</button>`
+                    : ''
+                }
+              </div>
+            </div>
+            ${renderFields(editable)}
+            ${readOnly(t('common.stock'), `${qtyText(product.stock)} ${esc(product.unit)}`)}
+            ${admin ? readOnly(t('common.value'), money(product.stock_value)) : ''}
+            ${admin ? readOnly(t('common.margin'), pct(product.margin)) : ''}
+            <div class="pd-active">${renderFields(active)}</div>
+          </div>
+        </div>
+        <div class="card-head form-actions">
+          <div class="muted" style="font-size:12.5px">${esc(t('prod.edit_sub'))}</div>
+          <div class="spacer"></div>
+          <button type="submit" class="btn btn-primary">${icon('check')} ${esc(t('common.save_changes'))}</button>
+        </div>
+      </form>`;
+    const form = body.querySelector('#page-form');
+    dropPickers = wireNamePickers(form, fields);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!form.checkValidity()) return form.reportValidity();
+      try {
+        await api.saveProduct({ ...readFields(form, fields), id });
+        forgetSuggestions('category');
+        forgetSuggestions('unit');
+        toast(t('prod.updated'), 'success');
+        product = await api.product(id);
+        paintHero();
+        tabDetails();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    });
+
+    body.querySelector('#image-file').addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
       try {
@@ -391,31 +430,45 @@ async function renderDetail(root, ctx, id, initialTab) {
         product = { ...product, ...(await api.uploadProductImage(id, data)) };
         toast(t('prod.image_saved'), 'success');
         paintHero();
+        tabDetails();
       } catch (err) {
         toast(err.code || err.status ? errorText(err) : t('prod.image_unreadable'), 'error');
       }
     });
-    hero.querySelector('#image-remove')?.addEventListener('click', async () => {
+    body.querySelector('#image-remove')?.addEventListener('click', async () => {
       product = { ...product, ...(await api.deleteProductImage(id)) };
       toast(t('prod.image_removed'), 'success');
       paintHero();
+      tabDetails();
     });
   }
 
-  function showTab() {
-    dropPickers();
-    dropPickers = () => {};
-    root.querySelectorAll('#tabs [data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
-    body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(t('common.loading'))}</p></div></div></div>`;
-    ({ overview: tabOverview, details: tabDetails, movements: tabMovements, sales: tabSales, purchases: tabPurchases })[state.tab]();
-  }
-
-  /* Overview: the last 30 days of selling and the latest movements, at a glance. */
+  /* Overview: the key numbers, the last 30 days of selling and the latest movements. */
   async function tabOverview() {
     const report = await api.productSales(id, { from: shiftDays(todayISO(), -29), to: todayISO() });
     if (state.tab !== 'overview') return;
     const s = report.summary;
+    const low = product.stock <= product.min_stock;
     body.innerHTML = `
+      <div class="stats">
+        ${statTile({
+          label: t('common.stock'),
+          value: `${qtyText(product.stock)} <small>${esc(product.unit)}</small>`,
+          foot: t('prod.min_level', { q: qtyText(product.min_stock) }),
+          tint: product.stock <= 0 ? 'danger' : low ? 'warn' : 'success',
+          iconName: 'box',
+        })}
+        ${statTile({ label: t('common.price'), value: money(product.price), foot: t('prod.per_unit', { u: product.unit }), iconName: 'coins' })}
+        ${admin ? statTile({ label: t('common.cost'), value: money(product.cost), foot: `${t('common.margin')} ${pct(product.margin)}`, iconName: 'truck' }) : ''}
+        ${admin ? statTile({ label: t('common.value'), value: money(product.stock_value), foot: t('prod.stock_value_foot'), iconName: 'wallet' }) : ''}
+        ${statTile({
+          label: t('prod.sold_30'),
+          value: `${qtyText(product.sold_30)} <small>${esc(product.unit)}</small>`,
+          foot: money(product.revenue_30),
+          tint: 'info',
+          iconName: 'trendUp',
+        })}
+      </div>
       <div class="grid cols-2 split-wide" style="align-items:start">
         <div class="card">
           <div class="card-head"><div><h3>${esc(t('prod.sales_30'))}</h3>
@@ -446,41 +499,7 @@ async function renderDetail(root, ctx, id, initialTab) {
           }</div>
         </div>
       </div>`;
-    body.querySelector('[data-goto]')?.addEventListener('click', (e) => {
-      state.tab = e.currentTarget.dataset.goto;
-      history.replaceState(null, '', `#/products/${id}/${state.tab}`);
-      showTab();
-    });
-  }
-
-  /* Details: the product's fields, edited right here. */
-  function tabDetails() {
-    const fields = productFields(product);
-    body.innerHTML = `
-      <form class="card form-page" id="page-form" novalidate>
-        <div class="card-head"><div><h3>${esc(t('prod.edit'))}</h3><div class="sub">${esc(t('prod.edit_sub'))}</div></div></div>
-        <div class="card-body"><div class="form-grid">${renderFields(fields)}</div></div>
-        <div class="card-head form-actions">
-          <div class="spacer"></div>
-          <button type="submit" class="btn btn-primary">${icon('check')} ${esc(t('common.save_changes'))}</button>
-        </div>
-      </form>`;
-    const form = body.querySelector('#page-form');
-    dropPickers = wireNamePickers(form, fields);
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!form.checkValidity()) return form.reportValidity();
-      try {
-        await api.saveProduct({ ...readFields(form, fields), id });
-        forgetSuggestions('category');
-        forgetSuggestions('unit');
-        toast(t('prod.updated'), 'success');
-        product = await api.product(id);
-        paintHero();
-      } catch (err) {
-        toast(errorText(err), 'error');
-      }
-    });
+    body.querySelector('[data-goto]')?.addEventListener('click', (e) => go(e.currentTarget.dataset.goto));
   }
 
   /* Movements: every stock change, with the balance after each. */

@@ -169,10 +169,12 @@ export function attachPicker(
       highlight(active + (e.key === 'ArrowDown' ? 1 : -1));
       return;
     }
-    if (e.key === 'Escape' && isOpen()) {
-      e.preventDefault();
-      e.stopPropagation(); // keep Escape from also closing the surrounding modal
-      close();
+    if (e.key === 'Escape') {
+      if (isOpen()) {
+        e.preventDefault();
+        e.stopPropagation(); // keep Escape from also closing the surrounding modal
+      }
+      close(); // also cancels a search that has not answered yet
       return;
     }
     if (e.key === 'Enter' && isOpen() && active >= 0) {

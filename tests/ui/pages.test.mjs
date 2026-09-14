@@ -58,29 +58,60 @@ await page.waitForSelector('.product-hero');
 check('clicking a row opens the product page', /#\/products\/\d+$/.test(page.url()) && (await noDialog()), page.url());
 check('with the product name', (await page.textContent('.product-hero h2')).includes(name), name);
 const tabs = await page.$$eval('#tabs [data-tab]', (b) => b.map((x) => x.dataset.tab));
-check('and its tabs: overview, details, movements, sales, purchases', tabs.join() === 'overview,details,movements,sales,purchases', tabs.join());
-check('the overview charts the last 30 days', !!(await page.$('#tab-body svg')));
-await shot('90-product-overview');
+check('its menu is at the top: details, overview, movements, sales, purchases', tabs.join() === 'details,overview,movements,sales,purchases', tabs.join());
+const menuAbove = await page.evaluate(() =>
+  document.querySelector('#tabs').getBoundingClientRect().bottom <= document.querySelector('#tab-body').getBoundingClientRect().top);
+check('above the content', menuAbove);
 const productId = Number(page.url().match(/products\/(\d+)/)[1]);
 
-console.log('\n[editing it in place]');
-await page.click('#tabs [data-tab="details"]');
+console.log('\n[details first: the picture with the properties beside and under it]');
 await page.waitForSelector('#page-form input[name=name]');
-check('the details tab is the edit form', (await page.inputValue('input[name=name]')) === name);
-check('and the address remembers the tab', page.url().endsWith(`/products/${productId}/details`), page.url());
+check('it opens on details, ready to edit', (await page.inputValue('input[name=name]')) === name);
+const layout = await page.evaluate(() => {
+  const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+  const img = r('.pd-image .pthumb');
+  const nameBox = r('input[name=name]');
+  const minStock = r('input[name=min_stock]');
+  const letters = document.querySelector('.pd-image .pthumb.no-image');
+  let centred = null;
+  if (letters) {
+    const range = document.createRange();
+    range.selectNodeContents(letters);
+    const text = range.getBoundingClientRect();
+    const box = letters.getBoundingClientRect();
+    centred = {
+      dx: Math.round(text.left + text.width / 2 - (box.left + box.width / 2)),
+      dy: Math.round(text.top + text.height / 2 - (box.top + box.height / 2)),
+    };
+  }
+  return {
+    beside: nameBox.left >= img.right && nameBox.top < img.bottom,
+    under: minStock.top >= img.bottom - 1,
+    centred,
+    readOnlyStock: [...document.querySelectorAll('.pd-grid .input.readonly')].length,
+  };
+});
+check('the properties start beside the picture', layout.beside, JSON.stringify(layout));
+check('and continue under it', layout.under, JSON.stringify(layout));
+check('without a picture, the initials sit in the middle',
+  layout.centred && Math.abs(layout.centred.dx) <= 2 && Math.abs(layout.centred.dy) <= 3, JSON.stringify(layout.centred));
+check('stock, value and margin are shown but not editable', layout.readOnlyStock === 3, String(layout.readOnlyStock));
+await shot('90-product-details');
+
 await page.fill('input[name=price]', '4.25');
 await page.click('#page-form button[type=submit]');
 await page.waitForTimeout(900);
 check('saving updates the header straight away', (await page.textContent('.product-hero')).includes('$4.25'));
-check('and stays on the page', page.url().endsWith(`/products/${productId}/details`));
+check('and stays on the page', /\/products\/\d+(\/details)?$/.test(page.url()), page.url());
 
 console.log('\n[a picture]');
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVQI12P8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==', 'base64');
 await page.setInputFiles('#image-file', { name: 'tea.png', mimeType: 'image/png', buffer: PNG });
-await page.waitForSelector('.product-hero img.pthumb', { timeout: 8000 });
-const loaded = await page.$eval('.product-hero img.pthumb', (img) =>
+await page.waitForSelector('.pd-image img.pthumb', { timeout: 8000 });
+const loaded = await page.$eval('.pd-image img.pthumb', (img) =>
   new Promise((r) => (img.complete ? r(img.naturalWidth) : (img.onload = () => r(img.naturalWidth)))));
 check('uploading shows the picture', loaded > 0, String(loaded));
+check('the header shows it small too', !!(await page.$('.product-hero img.pthumb')));
 check('offers to remove it', !!(await page.$('#image-remove')));
 await shot('91-product-picture');
 await page.goto(`${BASE}#/products`);
@@ -91,12 +122,26 @@ const rowHeight = await page.$eval(`tr[data-open="${productId}"]`, (tr) => tr.ge
 check('rows are slim', rowHeight <= 42, String(rowHeight));
 await page.goto(`${BASE}#/pos`);
 await page.waitForSelector('.tile');
-check('so does the till', !!(await page.$(`.tile[data-add="${productId}"] img.pthumb`)));
+check('the till card shows it', !!(await page.$(`.tile[data-add="${productId}"] img.pthumb`)));
+await page.goto(`${BASE}#/purchases/new`);
+await page.waitForSelector('[data-product="0"]');
+await page.fill('[data-product="0"]', name.slice(0, 4));
+await page.waitForSelector('.combo-menu:not([hidden]) .combo-item', { timeout: 6000 });
+check('but search results never show pictures', (await page.$$('.combo-menu .pthumb, .combo-menu img')).length === 0);
+await page.keyboard.press('Escape');
 await page.goto(`${BASE}#/products/${productId}`);
 await page.waitForSelector('#image-remove');
 await page.click('#image-remove');
 await page.waitForTimeout(600);
-check('removing it goes back to initials', !(await page.$('.product-hero img.pthumb')) && !!(await page.$('.product-hero .pthumb.empty')));
+check('removing it goes back to initials', !(await page.$('.pd-image img.pthumb')) && !!(await page.$('.pd-image .pthumb.no-image')));
+const headThumb = await page.$eval('.product-hero .pthumb', (el) => [Math.round(el.getBoundingClientRect().width), Math.round(el.getBoundingClientRect().height)]);
+check('the small initials in the header are a neat square', headThumb[0] === headThumb[1] && headThumb[0] <= 34, JSON.stringify(headThumb));
+
+console.log('\n[overview]');
+await page.click('#tabs [data-tab="overview"]');
+await page.waitForSelector('#tab-body .stat');
+check('the overview has the key numbers and the 30-day chart', !!(await page.$('#tab-body svg')) && (await page.$$('#tab-body .stat')).length >= 3);
+await shot('90b-product-overview');
 
 console.log('\n[its reports]');
 await page.click('#tabs [data-tab="movements"]');
@@ -120,11 +165,11 @@ check('the purchases tab lists what it was bought at', (await page.$$('#tab-body
 console.log('\n[the tabs stay in reach]');
 await page.click('#tabs [data-tab="movements"]');
 await page.waitForTimeout(600);
-const tabsTop = async () => Math.round((await page.$eval('.tabs-bar', (el) => el.getBoundingClientRect().top)));
+const tabsTop = async () => Math.round((await page.$eval('.product-hero', (el) => el.getBoundingClientRect().top)));
 await page.evaluate(() => window.scrollTo(0, 600));
 await page.waitForTimeout(300);
 const topbarBottom = await page.$eval('.topbar', (el) => Math.round(el.getBoundingClientRect().bottom));
-check('scrolling down keeps the tabs under the top bar', Math.abs((await tabsTop()) - topbarBottom) <= 2,
+check('scrolling down keeps the name and tabs under the top bar', Math.abs((await tabsTop()) - topbarBottom) <= 2,
   `${await tabsTop()} vs ${topbarBottom}`);
 const tableBottom = await page.$eval('#tab-body .table-scroll', (el) => Math.round(el.getBoundingClientRect().bottom));
 check('and the movements table fits the window below them', tableBottom <= 720, String(tableBottom));

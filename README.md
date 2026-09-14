@@ -167,12 +167,15 @@ instead of deleted, so past reports never change. Voiding a sale or deleting a p
 
 ## A product's page
 
-Click any product. At the top: its **picture**, name, category, barcode and the numbers that
-matter — stock, price, cost and margin, stock value, and what sold in the last 30 days — with
-**Adjust stock** and delete beside the page title. Underneath, tabs:
+Click any product. Its name, stock and price sit at the top with the menu beside them —
+**Details, Overview, Stock movements, Sales report, Purchases** — and stay there as you scroll.
+**Adjust stock** and delete are in the top bar.
 
-- **Overview** — the last 30 days of sales as a chart, and the latest stock movements.
-- **Details** — the product's fields, edited right there. Save and stay on the page.
+- **Details** (opens first) — the picture, with the product's properties beside and under it:
+  everything editable is a field you can change and save in place; stock, value and margin are
+  shown read-only.
+- **Overview** — stock, price, cost and margin, stock value and the last 30 days' sales as tiles,
+  a 30-day chart, and the latest stock movements.
 - **Stock movements** — every change with the balance after it.
 - **Sales report** — any date range: quantity sold, revenue, cost, profit and margin, and every
   invoice line (click one to open the invoice).
@@ -180,8 +183,9 @@ matter — stock, price, cost and margin, stock value, and what sold in the last
 
 **Pictures.** Click *Add picture* and choose a photo. The browser shrinks it (640 px, WebP) before
 uploading, so even a phone photo ends up a few tens of kilobytes. It is stored in the database,
-so backups carry it. The picture shows on the product page, on the till's product cards and in
-product search results; the product list stays compact and shows none.
+so backups carry it. The picture shows on the product page and on the till's product cards;
+the product list and search results stay compact and show none. Without a picture, the
+product's initials stand in.
 
 ---
 
@@ -241,6 +245,11 @@ blending the average cost always uses — rather than a replay of every sale sin
 ---
 
 ## At the till
+
+Typing in the search box filters the product cards as you type — by name, barcode, category or
+description, every word counting — with the remaining cards sliding into place. Enter adds a
+scanned barcode straight away, or the product itself when only one card is left; Escape or
+**Clear** brings every card back.
 
 The cart is only what is being sold. The newest item goes on top, scanning an item that is
 already there adds one to its line, and each line's quantity, unit price and discount are

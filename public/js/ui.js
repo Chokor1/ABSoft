@@ -292,7 +292,8 @@ export function productThumb(p, size = 'sm') {
     return `<img class="pthumb ${size}" src="/api/products/${p.id}/image?v=${encodeURIComponent(p.image_at)}"
                  alt="" loading="lazy" decoding="async"/>`;
   }
-  return `<span class="pthumb ${size} empty" aria-hidden="true">${esc(initials(p?.name || ''))}</span>`;
+  // Not "empty": that is the empty-state class, and its padding would stretch the box.
+  return `<span class="pthumb ${size} no-image" aria-hidden="true">${esc(initials(p?.name || ''))}</span>`;
 }
 
 /**

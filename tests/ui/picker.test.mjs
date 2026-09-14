@@ -143,35 +143,44 @@ await page.waitForTimeout(700);
 check('Cancel leaves the purchase form', !(await page.isVisible('#purchase-form')));
 
 /* ------------------------------------------------------------- the till */
-console.log('\n[selling: the same search at the till]');
+console.log('\n[selling: typing filters the product cards, no dropdown]');
 await page.goto(`${BASE}#/pos`);
 await page.waitForSelector('.tile');
+const allCards = await page.$$eval('.tile', (t) => t.length);
+const visibleNames = () => page.$$eval('.tile:not([hidden]) .t-name', (n) => n.map((x) => x.textContent.trim()));
 await page.fill('#scan', 'muff');
-await page.waitForSelector('.combo-menu .combo-item', { timeout: 6000 });
-const posResults = await page.$$eval('.combo-menu .ci-name', (n) => n.map((x) => x.textContent.trim()));
-check('typing at the till shows matches', posResults.length >= 1, posResults.join(' | '));
-await page.waitForFunction(() => document.querySelectorAll('.tile').length <= 3, { timeout: 6000 }).catch(() => {});
-const tileCount = await page.$$eval('.tile', (t) => t.length);
-check('the tiles filter at the same time', tileCount <= 3, String(tileCount));
-await shot('61-pos-picker');
+await page.waitForTimeout(40);
+const moving = await page.evaluate(() => document.getAnimations().length);
+await page.waitForTimeout(400);
+check('no dropdown opens at the till', (await page.$$('.combo-menu:not([hidden])')).length === 0);
+const muffins = await visibleNames();
+check('the cards filter to the matches', muffins.length >= 1 && muffins.length < allCards && muffins.every((n) => /muff/i.test(n)), muffins.join(' | '));
+check('with an animation as they rearrange', moving > 0, String(moving));
+await shot('61-pos-filter');
 await page.keyboard.press('Enter');
-await page.waitForTimeout(700);
-check('Enter adds the highlighted product to the cart', (await page.$$('.cart-line')).length === 1);
+await page.waitForTimeout(500);
+check('Enter adds the only match to the cart', (await page.$$('.cart-line')).length === 1);
 check('the right one', (await page.textContent('.cl-name')).toLowerCase().includes('muffin'),
   await page.textContent('.cl-name'));
 check('the search box clears itself for the next item', (await page.inputValue('#scan')) === '');
+await page.waitForTimeout(400);
+check('and every card comes back', (await visibleNames()).length === allCards);
 
 /* ----------------------------------------- the dangerous old behaviour */
 console.log('\n[a partial code no longer guesses]');
 await page.fill('#scan', 'c');
-await page.waitForTimeout(600);
-// Pretend the results have not arrived yet, which is exactly when the old code guessed.
-await page.evaluate(() => document.querySelector('.combo-menu')?.setAttribute('hidden', ''));
+await page.waitForTimeout(300);
+const several = (await visibleNames()).length;
 await page.keyboard.press('Enter');
 await page.waitForTimeout(900);
-check('a one-letter fragment does not silently ring something up',
-  (await page.$$('.cart-line')).length === 1, String((await page.$$('.cart-line')).length));
-check('it says so instead', (await page.textContent('.toasts')).includes('No product matches'));
+check('a one-letter fragment matching several cards does not ring anything up',
+  several > 1 && (await page.$$('.cart-line')).length === 1, `${several} visible, ${(await page.$$('.cart-line')).length} lines`);
+await page.fill('#scan', 'zzzz-nothing');
+await page.waitForTimeout(300);
+check('no match shows an empty state in the grid', await page.isVisible('#tiles-empty'));
+await page.keyboard.press('Enter');
+await page.waitForTimeout(900);
+check('and Enter says nothing matches', (await page.textContent('.toasts')).includes('No product matches'));
 
 /* ---------------------------------------------------- barcode scanning */
 console.log('\n[a real scanner still works]');
@@ -179,7 +188,7 @@ await page.fill('#scan', '');
 await page.waitForTimeout(300);
 await page.fill('#scan', '5449000000996');
 await page.keyboard.press('Enter');
-await page.waitForTimeout(900);
+await page.waitForTimeout(600);
 check('an exact barcode goes straight into the cart', (await page.$$('.cart-line')).length === 2);
 check('and it is the scanned product', (await page.textContent('.cart-lines')).includes('Bottled Water'));
 
@@ -190,21 +199,12 @@ await page.waitForTimeout(700);
 await page.goto(`${BASE}#/pos`);
 await page.waitForSelector('.tile');
 await page.fill('#scan', 'tea');
-await page.waitForSelector('.combo-menu .combo-item', { timeout: 6000 });
-check('the dropdown works in Arabic too', (await page.$$('.combo-item')).length >= 1);
-const box = await page.evaluate(() => {
-  const m = document.querySelector('.combo-menu').getBoundingClientRect();
-  const i = document.querySelector('#scan').getBoundingClientRect();
-  return {
-    menuLeft: Math.round(m.left), inputLeft: Math.round(i.left),
-    menuRight: Math.round(m.right), inputRight: Math.round(i.right),
-  };
-});
-check('it stays anchored to its input in RTL',
-  Math.abs(box.menuLeft - box.inputLeft) < 3 && Math.abs(box.menuRight - box.inputRight) < 3, JSON.stringify(box));
-check('no horizontal overflow from the dropdown',
+await page.waitForTimeout(500);
+const teas = await visibleNames();
+check('filtering works in Arabic too', teas.length >= 1 && teas.every((n) => /tea/i.test(n)), teas.join(' | '));
+check('no horizontal overflow',
   await page.evaluate(() => document.body.scrollWidth <= document.documentElement.clientWidth + 1));
-await shot('62-pos-picker-ar');
+await shot('62-pos-filter-ar');
 
 await page.goto(`${BASE}#/purchases`);
 await page.waitForTimeout(700);

@@ -1,6 +1,4 @@
 import { api } from '../api.js';
-import { attachPicker } from '../picker.js';
-import { productOption } from '../product-option.js';
 import { wireNamePickers } from '../name-picker.js';
 import { icon } from '../icons.js';
 import { PAYMENT_METHODS, errorText, methodText, t } from '../i18n.js';
@@ -93,36 +91,92 @@ export async function render(root, ctx) {
 
   /* ------------------------------------------------------------ catalogue -- */
 
+  /*
+   * The whole catalogue is loaded once and the cards filter in place as you
+   * type: no dropdown, no round trip per keystroke. Cards that stay glide to
+   * their new places, cards that come back fade in.
+   */
   async function loadProducts() {
-    tiles.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>${esc(t('pos.loading_products'))}</p></div>`;
-    state.products = await api.products({ search: state.filter });
+    if (!state.products.length) {
+      tiles.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>${esc(t('pos.loading_products'))}</p></div>`;
+    }
+    state.products = await api.products();
     drawTiles();
+    applyFilter({ animate: false });
   }
 
+  const haystack = (p) => [p.name, p.barcode, p.category, p.description].filter(Boolean).join(' ').toLowerCase();
+
   function drawTiles() {
-    if (!state.products.length) {
-      tiles.innerHTML = `<div style="grid-column:1/-1">${emptyState(
-        state.filter ? t('pos.no_match') : t('pos.no_products'),
-        state.filter ? t('pos.no_match_sub') : t('pos.no_products_sub'),
+    tiles.innerHTML =
+      state.products
+        .map(
+          (p) => `<button class="tile ${p.stock <= 0 ? 'out' : ''} ${p.image_at ? 'has-image' : ''}" data-add="${p.id}"
+                   data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}>
+            ${p.image_at ? productThumb(p, 'tile') : ''}
+            <div class="t-name">${esc(p.name)}</div>
+            ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
+            <div class="t-meta">
+              <span class="t-price">${money(p.price)}</span>
+              <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
+            </div>
+          </button>`,
+        )
+        .join('') + `<div class="tiles-empty" id="tiles-empty" hidden></div>`;
+  }
+
+  /** Every word typed must appear somewhere in the name, barcode, category or description. */
+  const matches = (el, words) => words.every((w) => el.dataset.find.includes(w));
+  const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function applyFilter({ animate = true } = {}) {
+    const words = state.filter.toLowerCase().split(/\s+/).filter(Boolean);
+    const cards = [...tiles.querySelectorAll('.tile')];
+    const motion = animate && !reduceMotion();
+
+    // First: where the visible cards are now.
+    const before = new Map();
+    if (motion) cards.forEach((c) => !c.hidden && before.set(c, c.getBoundingClientRect()));
+
+    let shown = 0;
+    cards.forEach((c) => {
+      const show = !words.length || matches(c, words);
+      c.hidden = !show;
+      if (show) shown++;
+    });
+
+    const empty = tiles.querySelector('#tiles-empty');
+    empty.hidden = shown > 0;
+    if (!shown) {
+      empty.innerHTML = emptyState(
+        state.products.length ? t('pos.no_match') : t('pos.no_products'),
+        state.products.length ? t('pos.no_match_sub') : t('pos.no_products_sub'),
         'box',
-      )}</div>`;
-      return;
+      );
     }
-    tiles.innerHTML = state.products
-      .map(
-        (p) => `<button class="tile ${p.stock <= 0 ? 'out' : ''} ${p.image_at ? 'has-image' : ''}" data-add="${p.id}" ${
-          p.description ? `title="${esc(p.description)}"` : ''
-        }>
-          ${p.image_at ? productThumb(p, 'tile') : ''}
-          <div class="t-name">${esc(p.name)}</div>
-          ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
-          <div class="t-meta">
-            <span class="t-price">${money(p.price)}</span>
-            <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
-          </div>
-        </button>`,
-      )
-      .join('');
+    if (!motion) return;
+
+    // Last, invert, play: slide the cards that stayed from where they were,
+    // and let the ones that reappeared grow in.
+    cards.forEach((c) => {
+      if (c.hidden) return;
+      const was = before.get(c);
+      if (!was) {
+        c.animate(
+          [{ opacity: 0, transform: 'scale(0.92)' }, { opacity: 1, transform: 'none' }],
+          { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' },
+        );
+        return;
+      }
+      const now = c.getBoundingClientRect();
+      const dx = was.left - now.left;
+      const dy = was.top - now.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      c.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+        duration: 260,
+        easing: 'cubic-bezier(.2,.8,.2,1)',
+      });
+    });
   }
 
   tiles.addEventListener('click', (e) => {
@@ -130,54 +184,51 @@ export async function render(root, ctx) {
     if (btn) addToCart(state.products.find((p) => p.id === Number(btn.dataset.add)));
   });
 
-  const search = debounce(() => {
+  const refilter = debounce(() => {
     state.filter = scan.value.trim();
-    loadProducts();
-  }, 220);
-
-  scan.addEventListener('input', search);
-
-  // Results drop down under the box as you type; the tile grid filters alongside.
-  const picker = attachPicker(scan, {
-    search: (q) => (q ? api.products({ search: q, limit: 25 }) : []),
-    render: productOption,
-    emptyText: t('pos.no_match'),
-    openOnFocus: false,
-    onPick: (product) => {
-      addToCart(product);
-      resetSearch();
-    },
-  });
+    applyFilter();
+  }, 90);
+  scan.addEventListener('input', refilter);
 
   function resetSearch() {
-    // Cancel any search still in flight, so its results cannot reopen the menu
-    // over the next scan.
-    picker.reset();
     scan.value = '';
     state.filter = '';
-    loadProducts();
+    applyFilter();
     scan.focus();
   }
 
   scan.addEventListener('keydown', async (e) => {
-    // The picker consumes Enter when something is highlighted.
-    if (e.key !== 'Enter' || (picker.isOpen() && picker.activeItem())) return;
+    if (e.key === 'Escape' && scan.value) {
+      e.preventDefault();
+      return resetSearch();
+    }
+    if (e.key !== 'Enter') return;
     e.preventDefault();
     const code = scan.value.trim();
     if (!code) return;
+    // A barcode scanner types the code and presses Enter at once: match it
+    // exactly first, without waiting for the filter.
+    const exact = state.products.find((p) => p.barcode && p.barcode === code);
+    if (exact) {
+      addToCart(exact);
+      return resetSearch();
+    }
+    // Typed a name and only one card is left: Enter adds it.
+    state.filter = code;
+    applyFilter({ animate: false });
+    const visible = [...tiles.querySelectorAll('.tile:not([hidden])')];
+    if (visible.length === 1) {
+      addToCart(state.products.find((p) => p.id === Number(visible[0].dataset.add)));
+      return resetSearch();
+    }
     try {
-      // A barcode scanner types the code then hits Enter before any search has
-      // returned, so resolve the exact code straight to the cart.
       addToCart(await api.lookup(code));
       resetSearch();
     } catch (err) {
-      toast(errorText(err), 'error');
+      if (!visible.length) toast(errorText(err), 'error');
     }
   });
-  $('#clear-search').addEventListener('click', () => {
-    picker.close();
-    resetSearch();
-  });
+  $('#clear-search').addEventListener('click', resetSearch);
 
   /* ----------------------------------------------------------------- cart -- */
 
@@ -562,5 +613,5 @@ export async function render(root, ctx) {
   scan.focus();
 
   // main.js calls this when navigating away.
-  return () => picker.destroy();
+
 }
