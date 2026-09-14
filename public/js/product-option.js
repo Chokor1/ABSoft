@@ -1,4 +1,4 @@
-import { esc, money, qtyText } from './ui.js';
+import { esc, money, productThumb, qtyText } from './ui.js';
 
 /**
  * One product as it appears in a search dropdown.
@@ -11,6 +11,7 @@ export function productOption(p) {
   const sub = [p.barcode, p.category, p.description].filter(Boolean).join(' · ');
   const out = Number(p.stock) <= 0;
   return `
+    ${productThumb(p, 'xs')}
     <div class="ci-main">
       <div class="ci-name">${esc(p.name)}</div>
       ${sub ? `<div class="ci-sub">${esc(sub)}</div>` : ''}

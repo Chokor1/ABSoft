@@ -39,6 +39,8 @@ export async function render(root, ctx) {
     Object.assign(state, r);
     load();
   });
+  // The report menu and dates stay in reach while a long report scrolls.
+  bar.classList.add('sticky-bar');
   const tabs = document.createElement('div');
   tabs.className = 'seg';
   tabs.innerHTML = TAB_KEYS.map((key) => `<button data-tab="${key}">${esc(t(`rep.tab.${key}`))}</button>`).join('');
@@ -174,6 +176,12 @@ export async function render(root, ctx) {
             </tr>`,
           )
           .join(''),
+        foot: rows.length
+          ? `<tr><td colspan="3">${esc(t('common.totals'))}</td>
+             <td class="right"><span class="money-pos">+${qtyText(rows.filter((m) => m.qty > 0).reduce((s, m) => s + m.qty, 0))}</span>
+               / <span class="money-neg">−${qtyText(rows.filter((m) => m.qty < 0).reduce((s, m) => s - m.qty, 0))}</span></td>
+             <td colspan="3"></td></tr>`
+          : '',
         empty: [t('rep.hist_none'), t('rep.hist_none_sub'), 'history'],
       });
       return;
@@ -199,6 +207,12 @@ export async function render(root, ctx) {
           </tr>`,
         )
         .join(''),
+      foot: rows.length
+        ? `<tr><td>${esc(t('common.totals'))}</td>
+           <td class="right">${number(rows.reduce((a, s) => a + s.sales, 0))}</td>
+           <td class="right">${money(rows.reduce((a, s) => a + s.revenue, 0))}</td>
+           <td class="right">${money(rows.reduce((a, s) => a + s.profit, 0))}</td><td></td></tr>`
+        : '',
       empty: [t('rep.staff_none'), t('rep.staff_none_sub'), 'users'],
     });
   }
@@ -344,7 +358,7 @@ function tableCard({ title, subtitle, head, rows, foot = '', empty }) {
     <div class="card-body flush">
       ${
         rows
-          ? `<div class="table-wrap"><table class="data"><thead>${head}</thead><tbody>${rows}</tbody>
+          ? `<div class="table-wrap table-scroll"><table class="data"><thead>${head}</thead><tbody>${rows}</tbody>
              ${foot ? `<tfoot>${foot}</tfoot>` : ''}</table></div>`
           : emptyState(...empty)
       }

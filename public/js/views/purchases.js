@@ -9,11 +9,11 @@ import {
   dateText,
   dateTimeText,
   debounce,
+  docPage,
   downloadCsv,
   emptyState,
   esc,
   forgetSuggestions,
-  modal,
   money,
   monthStart,
   qtyText,
@@ -27,6 +27,7 @@ import {
 export async function render(root, ctx) {
   if (ctx.params[0] === 'new') return renderForm(root, ctx);
   if (ctx.params[1] === 'edit' && ctx.params[0]) return renderForm(root, ctx, ctx.params[0]);
+  if (/^\d+$/.test(ctx.params[0] || '')) return renderDoc(root, ctx, Number(ctx.params[0]));
   return renderList(root, ctx);
 }
 
@@ -140,7 +141,7 @@ async function renderList(root, ctx) {
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {
         if (e.target.closest('button')) return;
-        showPurchase(await api.purchase(tr.dataset.open), ctx);
+        ctx.navigate(`purchases/${tr.dataset.open}`);
       }),
     );
     body.querySelectorAll('[data-edit]').forEach((b) =>
@@ -173,37 +174,82 @@ async function renderList(root, ctx) {
   await load();
 }
 
-function showPurchase(p, ctx) {
-  modal({
+/** One purchase, as a page: its lines, its history, and Edit. */
+async function renderDoc(root, ctx, id) {
+  const back = () => ctx.navigate('purchases');
+  let p;
+  try {
+    p = await api.purchase(id);
+  } catch (err) {
+    toast(errorText(err), 'error');
+    return back();
+  }
+  const body = docPage(root, {
     title: t('buy.view_title', { doc: p.doc_no }),
-    subtitle: `${dateText(p.date)}${p.supplier ? ` · ${p.supplier}` : ''}`,
-    wide: true,
-    body: `<div class="table-wrap"><table class="data">
-        <thead><tr><th>${esc(t('nav.products'))}</th><th class="right">${esc(t('common.quantity'))}</th>
-          <th class="right">${esc(t('buy.unit_cost'))}</th><th class="right">${esc(t('common.total'))}</th></tr></thead>
-        <tbody>${p.items
-          .map(
-            (i) => `<tr>
-              <td><div class="cell-title">${esc(i.name)}</div>
-                  <div class="cell-sub mono">${esc(i.barcode || '')}</div></td>
-              <td class="right">${qtyText(i.qty)} ${esc(i.unit)}</td>
-              <td class="right">${money(i.unit_cost)}</td>
-              <td class="right"><b>${money(i.total)}</b></td>
-            </tr>`,
-          )
-          .join('')}</tbody>
-        <tfoot><tr><td colspan="3">${esc(t('common.total'))}</td><td class="right">${money(p.total)}</td></tr></tfoot>
-      </table></div>
-      ${p.note ? `<p class="muted" style="padding:12px 2px">${esc(p.note)}</p>` : ''}
-      ${logHtml(p.log || [])}`,
-    footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
-             ${isAdmin() ? `<button class="btn btn-primary" data-edit>${icon('edit')} ${esc(t('common.edit'))}</button>` : ''}`,
-    setup: (root, close) => {
-      root.querySelector('[data-edit]')?.addEventListener('click', () => {
-        close();
-        ctx.navigate(`purchases/${p.id}/edit`);
-      });
-    },
+    subtitle: [dateText(p.date), p.supplier, p.username].filter(Boolean).join(' · '),
+    badges: `<span class="badge accent">${money(p.total)}</span>
+             ${p.edit_count ? `<span class="badge warn">${esc(t('buy.edited'))}</span>` : ''}`,
+    actions: `<button class="btn" data-print>${icon('print')} ${esc(t('common.print'))}</button>
+              ${
+                isAdmin()
+                  ? `<button class="btn btn-primary" data-edit>${icon('edit')} ${esc(t('common.edit'))}</button>
+                     <button class="btn btn-ghost" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>`
+                  : ''
+              }`,
+    onBack: back,
+  });
+  const qty = p.items.reduce((a, i) => a + i.qty, 0);
+  body.innerHTML = `
+    <div class="grid cols-2 split-wide doc-grid">
+      <div class="card">
+        <div class="card-head"><div><h3>${esc(t('buy.items'))}</h3>
+          <div class="sub">${esc(t('buy.lines_sub', { n: p.items.length, q: qtyText(qty) }))}</div></div></div>
+        <div class="card-body flush">
+          <div class="table-wrap table-scroll"><table class="data">
+            <thead><tr><th>${esc(t('nav.products'))}</th><th class="right">${esc(t('common.quantity'))}</th>
+              <th class="right">${esc(t('buy.unit_cost'))}</th><th class="right">${esc(t('common.total'))}</th></tr></thead>
+            <tbody>${p.items
+              .map(
+                (i) => `<tr class="row-click" data-product="${i.product_id}">
+                  <td><div class="cell-title">${esc(i.name)}</div>
+                      <div class="cell-sub mono">${esc(i.barcode || '')}</div></td>
+                  <td class="right">${qtyText(i.qty)} ${esc(i.unit)}</td>
+                  <td class="right">${money(i.unit_cost)}</td>
+                  <td class="right"><b>${money(i.total)}</b></td>
+                </tr>`,
+              )
+              .join('')}</tbody>
+            <tfoot><tr><td>${esc(t('common.total'))}</td><td class="right">${qtyText(qty)}</td><td></td>
+              <td class="right">${money(p.total)}</td></tr></tfoot>
+          </table></div>
+        </div>
+        ${p.note ? `<div class="card-body doc-note">${esc(p.note)}</div>` : ''}
+      </div>
+      <div class="card">
+        <div class="card-body">${logHtml(p.log || []) || `<p class="muted">${esc(t('common.none'))}</p>`}</div>
+      </div>
+    </div>`;
+
+  body.querySelectorAll('[data-product]').forEach((tr) =>
+    tr.addEventListener('click', () => ctx.navigate(`products/${tr.dataset.product}`)),
+  );
+  root.querySelector('[data-print]').addEventListener('click', () => window.print());
+  root.querySelector('[data-edit]')?.addEventListener('click', () => ctx.navigate(`purchases/${p.id}/edit`));
+  root.querySelector('[data-del]')?.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: t('buy.delete_title'),
+      message: t('buy.delete_msg'),
+      confirmLabel: t('buy.delete_confirm'),
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.deletePurchase(p.id);
+      toast(t('buy.deleted'), 'success');
+      back();
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
   });
 }
 
@@ -463,7 +509,7 @@ async function renderForm(root, ctx, editId = null) {
         const saved = await api.updatePurchase(editing.id, { ...payload, reason: form.reason.value.trim() });
         toast(t('buy.updated', { doc: saved.doc_no, v: money(saved.total) }), 'success');
         if (saved.supplier) forgetSuggestions('supplier');
-        return back();
+        return ctx.navigate(`purchases/${saved.id}`);
       }
       const saved = await api.createPurchase(payload);
       toast(t('buy.saved', { doc: saved.doc_no, v: money(saved.total) }), 'success');

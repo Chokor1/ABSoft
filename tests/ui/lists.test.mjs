@@ -144,9 +144,11 @@ await page.fill('[data-search]', 'Edit Supplier');
 await page.waitForTimeout(800);
 await page.click(`[data-open="${made.purchase.id}"] td:first-child`);
 await page.waitForSelector('.purchase-log');
+check('clicking the row opens the purchase as a page', page.url().endsWith(`#/purchases/${made.purchase.id}`) &&
+  (await page.$$('.modal-backdrop')).length === 0, page.url());
 check('the purchase shows its history', (await page.textContent('.purchase-log')).includes('Created'));
 check('with who created it', (await page.textContent('.purchase-log')).includes('Administrator'));
-await page.click('.modal [data-edit]');
+await page.click('.doc-actions [data-edit]');
 
 await page.waitForSelector('#purchase-form');
 check('the edit page is titled with the document', (await page.textContent('#purchase-form h3')).includes(made.purchase.doc_no));
@@ -158,12 +160,14 @@ await shot('66-purchase-edit');
 await page.fill('[data-qty="0"]', '5');
 await page.fill('input[name=reason]', 'Supplier short-shipped');
 await page.click('#save-purchase');
-await page.waitForSelector('.table-scroll, .empty', { timeout: 8000 });
+await page.waitForSelector('.doc-head', { timeout: 8000 });
 await page.waitForTimeout(500);
+check('saving the edit returns to the purchase page', page.url().endsWith(`#/purchases/${made.purchase.id}`), page.url());
 
 const stockAfter = await page.evaluate(async (id) => (await (await fetch(`/api/products/${id}`)).json()).stock, made.product.id);
 check('stock follows the corrected quantity', Math.abs(stockAfter - (stockBefore - 7)) < 0.001, `${stockBefore} → ${stockAfter}`);
 
+await page.goto(`${BASE}#/purchases`);
 await page.fill('[data-search]', 'Edit Supplier');
 await page.waitForTimeout(800);
 check('the list marks it as edited', (await page.textContent(`[data-open="${made.purchase.id}"]`)).includes('Edited'));
@@ -175,7 +179,6 @@ check('with the quantity change', logText.includes('12') && logText.includes('5'
 check('and the reason', logText.includes('Supplier short-shipped'), logText);
 await page.waitForTimeout(400);
 await shot('67-purchase-history');
-await page.click('.modal-head [data-close]');
 
 console.log('\n[a cashier cannot open the edit page]');
 await page.evaluate(() =>

@@ -106,18 +106,22 @@ await page.fill('input[name=price]', '7');
 await page.fill('input[name=opening_stock]', '12');
 await page.click('#page-form button[type=submit]');
 await page.waitForTimeout(1200);
-check('saving returns to the list', page.url().endsWith('#/products'), page.url());
-check('the product is there', (await page.textContent('.page')).includes('Page Form Product'));
+check('saving opens the new product page', /#\/products\/\d+$/.test(page.url()), page.url());
+check('the product is there', (await page.textContent('.product-hero')).includes('Page Form Product'));
 
-await page.click('tr:has-text("Page Form Product") [data-edit]');
+await page.goto(`${BASE}#/products`);
+await page.waitForSelector('tr:has-text("Page Form Product")');
+await page.click('tr:has-text("Page Form Product")');
+await page.waitForSelector('#tabs [data-tab="details"]');
+await page.click('#tabs [data-tab="details"]');
 await page.waitForSelector('#page-form');
 check('editing opens a page with the record loaded',
   (await page.inputValue('input[name=name]')) === 'Page Form Product');
-check('the edit URL identifies the record', /products\/\d+\/edit/.test(page.url()), page.url());
+check('the edit URL identifies the record', /products\/\d+\/details/.test(page.url()), page.url());
 await page.fill('input[name=price]', '9');
 await page.click('#page-form button[type=submit]');
 await page.waitForTimeout(1200);
-check('the edit saved', (await page.textContent('tr:has-text("Page Form Product")')).includes('9.00'));
+check('the edit saved', (await page.textContent('.product-hero')).includes('9.00'));
 
 await page.goto(`${BASE}#/expenses/new`);
 await page.waitForSelector('#page-form');

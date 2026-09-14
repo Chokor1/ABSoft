@@ -21,7 +21,18 @@ export function required(value, field, key) {
   return s;
 }
 
-export const today = () => new Date().toISOString().slice(0, 10);
+/** Today's date where the shop is (the machine's local time), not in UTC. */
+export const today = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+/** A YYYY-MM-DD date moved by a number of days. */
+export function shiftDays(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 /** Normalise a YYYY-MM-DD input; falls back to today when blank/invalid. */
 export function isoDate(value) {
@@ -31,11 +42,7 @@ export function isoDate(value) {
 
 /** Inclusive range used by every report; defaults to the current month. */
 export function dateRange(query) {
-  const now = new Date();
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const from = /^\d{4}-\d{2}-\d{2}$/.test(str(query.from))
-    ? str(query.from)
-    : firstOfMonth.toISOString().slice(0, 10);
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(str(query.from)) ? str(query.from) : `${today().slice(0, 7)}-01`;
   const to = /^\d{4}-\d{2}-\d{2}$/.test(str(query.to)) ? str(query.to) : today();
   return from <= to ? { from, to } : { from: to, to: from };
 }

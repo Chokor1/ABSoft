@@ -8,10 +8,10 @@ import {
   confirmDialog,
   dateText,
   debounce,
+  docPage,
   downloadCsv,
   emptyState,
   esc,
-  modal,
   money,
   monthStart,
   qtyText,
@@ -27,9 +27,10 @@ const reasonChoices = () => REASONS.map((r) => t(`adj.reason.${r}`));
 
 const signed = (n) => `${Number(n) > 0 ? '+' : ''}${qtyText(n)}`;
 
-/** #/adjustments, #/adjustments/new */
+/** #/adjustments, #/adjustments/new, #/adjustments/<id> */
 export async function render(root, ctx) {
   if (ctx.params[0] === 'new') return renderForm(root, ctx);
+  if (/^\d+$/.test(ctx.params[0] || '')) return renderDoc(root, ctx, Number(ctx.params[0]));
   return renderList(root, ctx);
 }
 
@@ -124,7 +125,7 @@ async function renderList(root, ctx) {
                   <tfoot><tr><td colspan="6">${esc(t('common.total'))}</td>
                     <td class="right ${signClass(value)}">${money(value)}</td><td colspan="3"></td></tr></tfoot>
                 </table></div>`
-              : emptyState(t('adj.none'), t('adj.none_sub'), 'sliders')
+              : emptyState(t('adj.none'), t('adj.none_sub'), 'adjust')
           }
         </div>
       </div>`;
@@ -132,7 +133,7 @@ async function renderList(root, ctx) {
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {
         if (e.target.closest('button')) return;
-        showAdjustment(await api.adjustment(tr.dataset.open));
+        ctx.navigate(`adjustments/${tr.dataset.open}`);
       }),
     );
     body.querySelectorAll('[data-del]').forEach((b) =>
@@ -159,32 +160,74 @@ async function renderList(root, ctx) {
   await load();
 }
 
-function showAdjustment(a) {
-  modal({
+/** One adjustment, as a page. */
+async function renderDoc(root, ctx, id) {
+  const back = () => ctx.navigate('adjustments');
+  let a;
+  try {
+    a = await api.adjustment(id);
+  } catch (err) {
+    toast(errorText(err), 'error');
+    return back();
+  }
+  const body = docPage(root, {
     title: t('adj.view_title', { doc: a.doc_no }),
-    subtitle: [dateText(a.date), a.reason, a.full_name || a.username].filter(Boolean).join(' · '),
-    wide: true,
-    body: `<div class="table-wrap"><table class="data">
-        <thead><tr><th>${esc(t('nav.products'))}</th><th class="right">${esc(t('adj.before'))}</th>
-          <th class="right">${esc(t('adj.change'))}</th><th class="right">${esc(t('adj.after'))}</th>
-          <th class="right">${esc(t('adj.value'))}</th></tr></thead>
-        <tbody>${a.items
-          .map(
-            (i) => `<tr>
-              <td><div class="cell-title">${esc(i.name)}</div>
-                  <div class="cell-sub mono">${esc(i.barcode || '')}</div></td>
-              <td class="right">${qtyText(i.stock_before)} ${esc(i.unit)}</td>
-              <td class="right ${signClass(i.qty)}"><b>${signed(i.qty)}</b></td>
-              <td class="right">${qtyText(i.stock_before + i.qty)} ${esc(i.unit)}</td>
-              <td class="right ${signClass(i.value)}">${money(i.value)}</td>
-            </tr>`,
-          )
-          .join('')}</tbody>
-        <tfoot><tr><td colspan="4">${esc(t('common.total'))}</td>
-          <td class="right ${signClass(a.value)}">${money(a.value)}</td></tr></tfoot>
-      </table></div>
-      ${a.note ? `<p class="muted" style="padding:12px 2px">${esc(a.note)}</p>` : ''}`,
-    footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>`,
+    subtitle: [dateText(a.date), a.full_name || a.username].filter(Boolean).join(' · '),
+    badges: `${a.reason ? `<span class="badge">${esc(a.reason)}</span>` : ''}
+             <span class="badge ${signClass(a.value) === 'money-neg' ? 'danger' : 'success'}">${esc(t('adj.value_badge', { v: money(a.value) }))}</span>`,
+    actions: `<button class="btn" data-print>${icon('print')} ${esc(t('common.print'))}</button>
+              <button class="btn btn-ghost" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>`,
+    onBack: back,
+  });
+  body.innerHTML = `
+    <div class="card">
+      <div class="card-head"><div><h3>${esc(t('adj.lines_title'))}</h3>
+        <div class="sub">${esc(t('adj.lines_sub', { n: a.items.length, i: qtyText(a.qty_in), o: qtyText(a.qty_out) }))}</div></div></div>
+      <div class="card-body flush">
+        <div class="table-wrap table-scroll"><table class="data">
+          <thead><tr><th>${esc(t('nav.products'))}</th><th class="right">${esc(t('adj.before'))}</th>
+            <th class="right">${esc(t('adj.change'))}</th><th class="right">${esc(t('adj.after'))}</th>
+            <th class="right">${esc(t('adj.value'))}</th></tr></thead>
+          <tbody>${a.items
+            .map(
+              (i) => `<tr class="row-click" data-product="${i.product_id}">
+                <td><div class="cell-title">${esc(i.name)}</div>
+                    <div class="cell-sub mono">${esc(i.barcode || '')}</div></td>
+                <td class="right">${qtyText(i.stock_before)} ${esc(i.unit)}</td>
+                <td class="right ${signClass(i.qty)}"><b>${signed(i.qty)}</b></td>
+                <td class="right">${qtyText(i.stock_before + i.qty)} ${esc(i.unit)}</td>
+                <td class="right ${signClass(i.value)}">${money(i.value)}</td>
+              </tr>`,
+            )
+            .join('')}</tbody>
+          <tfoot><tr><td colspan="2">${esc(t('common.total'))}</td>
+            <td class="right"><span class="money-pos">+${qtyText(a.qty_in)}</span> / <span class="money-neg">−${qtyText(a.qty_out)}</span></td>
+            <td></td>
+            <td class="right ${signClass(a.value)}">${money(a.value)}</td></tr></tfoot>
+        </table></div>
+      </div>
+      ${a.note ? `<div class="card-body doc-note">${esc(a.note)}</div>` : ''}
+    </div>`;
+
+  body.querySelectorAll('[data-product]').forEach((tr) =>
+    tr.addEventListener('click', () => ctx.navigate(`products/${tr.dataset.product}`)),
+  );
+  root.querySelector('[data-print]').addEventListener('click', () => window.print());
+  root.querySelector('[data-del]').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: t('adj.delete_title'),
+      message: t('adj.delete_msg'),
+      confirmLabel: t('adj.delete_confirm'),
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.deleteAdjustment(a.id);
+      toast(t('adj.deleted'), 'success');
+      back();
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
   });
 }
 

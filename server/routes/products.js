@@ -1,11 +1,15 @@
 import { db, lastId, transact } from '../db.js';
 import { canonicalName, listEntities, rememberAll } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { money, num, qty, required, str } from '../util.js';
+import { dateRange, money, num, qty, required, shiftDays, str, today } from '../util.js';
+
+// After the browser has shrunk it; a phone photo straight off the camera is refused.
+const MAX_IMAGE_BYTES = 1024 * 1024;
 import { createAdjustment } from './adjustments.js';
 
 const SELECT_PRODUCT = `
   SELECT p.*, COALESCE(s.stock, 0) AS stock,
+         (SELECT updated_at FROM product_images i WHERE i.product_id = p.id) AS image_at,
          ROUND(COALESCE(s.stock, 0) * p.cost, 2) AS stock_value,
          CASE WHEN p.price > 0 THEN ROUND((p.price - p.cost) / p.price * 100, 1) ELSE 0 END AS margin
   FROM products p
@@ -80,10 +84,107 @@ export function register(router) {
       .prepare(
         `SELECT m.*, u.username FROM stock_moves m
          LEFT JOIN users u ON u.id = m.user_id
-         WHERE m.product_id = ? ORDER BY m.id DESC LIMIT 200`,
+         WHERE m.product_id = ? ORDER BY m.id DESC LIMIT 500`,
       )
       .all(ctx.params.id);
-    return { ...product, history };
+    const recent = db
+      .prepare(
+        `SELECT COALESCE(SUM(i.qty), 0) AS qty, COALESCE(SUM(i.total), 0) AS revenue
+         FROM sale_items i JOIN sales s ON s.id = i.sale_id
+         WHERE i.product_id = ? AND s.date >= ?`,
+      )
+      .get(product.id, shiftDays(today(), -29));
+    return { ...product, sold_30: qty(recent.qty), revenue_30: money(recent.revenue), history };
+  });
+
+  /** How a product sold over a period: totals, a day-by-day series and every line. */
+  router.get('/api/products/:id/sales', (ctx) => {
+    const product = getProduct(ctx.params.id);
+    if (!product) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    const { from, to } = dateRange(ctx.query);
+    const lines = db
+      .prepare(
+        `SELECT i.id, i.sale_id, s.doc_no, s.date, s.customer, i.qty, i.unit_price, i.discount, i.total,
+                ROUND(i.qty * i.unit_cost, 2) AS cost, ROUND(i.total - i.qty * i.unit_cost, 2) AS profit
+         FROM sale_items i JOIN sales s ON s.id = i.sale_id
+         WHERE i.product_id = ? AND s.date BETWEEN ? AND ?
+         ORDER BY s.date DESC, i.id DESC`,
+      )
+      .all(product.id, from, to);
+    const sum = (key) => money(lines.reduce((a, l) => a + Number(l[key]), 0));
+    const byDay = db
+      .prepare(
+        `SELECT s.date AS date, ROUND(SUM(i.total), 2) AS revenue,
+                ROUND(SUM(i.total - i.qty * i.unit_cost), 2) AS profit, SUM(i.qty) AS qty
+         FROM sale_items i JOIN sales s ON s.id = i.sale_id
+         WHERE i.product_id = ? AND s.date BETWEEN ? AND ?
+         GROUP BY s.date ORDER BY s.date`,
+      )
+      .all(product.id, from, to);
+    const revenue = sum('total');
+    const profit = sum('profit');
+    return {
+      from,
+      to,
+      summary: {
+        qty: qty(lines.reduce((a, l) => a + l.qty, 0)),
+        revenue,
+        cost: sum('cost'),
+        profit,
+        margin: revenue > 0 ? Math.round((profit / revenue) * 1000) / 10 : 0,
+        invoices: new Set(lines.map((l) => l.sale_id)).size,
+      },
+      byDay,
+      lines,
+    };
+  });
+
+  /** Every purchase line for a product, newest first. */
+  router.get('/api/products/:id/purchases', (ctx) => {
+    const product = getProduct(ctx.params.id);
+    if (!product) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    return db
+      .prepare(
+        `SELECT i.id, i.purchase_id, pu.doc_no, pu.date, pu.supplier, i.qty, i.unit_cost, i.total
+         FROM purchase_items i JOIN purchases pu ON pu.id = i.purchase_id
+         WHERE i.product_id = ? ORDER BY pu.date DESC, i.id DESC LIMIT 500`,
+      )
+      .all(product.id);
+  });
+
+  /* The product picture. Served as a file with a long cache: its URL carries the
+     upload time, so a new picture is a new URL. */
+  router.get('/api/products/:id/image', (ctx) => {
+    const row = db.prepare(`SELECT mime, data FROM product_images WHERE product_id = ?`).get(ctx.params.id);
+    if (!row) throw notFound('No image for this product', 'IMAGE_NOT_FOUND');
+    const body = Buffer.from(row.data);
+    ctx.res.writeHead(200, {
+      'Content-Type': row.mime,
+      'Content-Length': body.length,
+      'Cache-Control': 'private, max-age=31536000, immutable',
+    });
+    ctx.res.end(body);
+  });
+
+  router.put('/api/products/:id/image', (ctx) => {
+    const product = getProduct(ctx.params.id);
+    if (!product) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(str(ctx.body.data));
+    if (!match) throw badRequest('Use a JPEG, PNG or WebP picture', 'IMAGE_TYPE');
+    const data = Buffer.from(match[2], 'base64');
+    if (data.length > MAX_IMAGE_BYTES) throw badRequest('That picture is too large', 'IMAGE_TOO_LARGE');
+    db.prepare(
+      `INSERT INTO product_images (product_id, mime, data, updated_at) VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(product_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at`,
+    ).run(product.id, match[1], data);
+    return getProduct(product.id);
+  });
+
+  router.delete('/api/products/:id/image', (ctx) => {
+    const product = getProduct(ctx.params.id);
+    if (!product) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    db.prepare(`DELETE FROM product_images WHERE product_id = ?`).run(product.id);
+    return getProduct(product.id);
   });
 
   router.post('/api/products', (ctx) => {
@@ -159,9 +260,10 @@ export function register(router) {
     const { n } = db
       .prepare(
         `SELECT (SELECT COUNT(*) FROM sale_items WHERE product_id = ?)
-              + (SELECT COUNT(*) FROM purchase_items WHERE product_id = ?) AS n`,
+              + (SELECT COUNT(*) FROM purchase_items WHERE product_id = ?)
+              + (SELECT COUNT(*) FROM adjustment_items WHERE product_id = ?) AS n`,
       )
-      .get(product.id, product.id);
+      .get(product.id, product.id, product.id);
     // Products with history are archived instead of deleted so reports stay intact.
     if (n > 0) {
       db.prepare(`UPDATE products SET active = 0 WHERE id = ?`).run(product.id);

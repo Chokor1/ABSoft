@@ -166,11 +166,11 @@ const after2 = (await api(admin, 'GET', `/api/products/${p2.id}`)).data.stock;
 check('the counted product is two down', Math.abs(after1 - (p1.stock - 2)) < 0.001, `${p1.stock} → ${after1}`);
 check('the other is five up', Math.abs(after2 - (p2.stock + 5)) < 0.001, `${p2.stock} → ${after2}`);
 await admin.click('.table-scroll tbody tr td:first-child');
-await admin.waitForSelector('.modal');
-check('opening it shows before, change and after', (await admin.textContent('.modal')).includes('New balance'));
+await admin.waitForSelector('.doc-head');
+check('opening it is a page, not a dialog', /#\/adjustments\/\d+$/.test(admin.url()) && (await admin.$$('.modal-backdrop')).length === 0, admin.url());
+check('it shows before, change and after', (await admin.textContent('.doc-body')).includes('New balance'));
 await admin.waitForTimeout(300);
 await shot(admin, '83-adjustment-view');
-await admin.click('.modal-head [data-close]');
 
 /* -------------------------------------------------------------- cashier */
 console.log('\n[a cashier only has the till]');

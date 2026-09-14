@@ -1,5 +1,5 @@
 import { db } from '../db.js';
-import { dateRange, money, num, str, today } from '../util.js';
+import { dateRange, money, num, shiftDays, str, today } from '../util.js';
 
 const round = (n) => money(num(n));
 
@@ -87,10 +87,9 @@ function dailySeries(from, to) {
 export function register(router) {
   // Everything the dashboard needs, in one round trip.
   router.get('/api/reports/dashboard', () => {
-    const now = new Date();
     const day = today();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    const chartStart = new Date(now.getTime() - 29 * 86400000).toISOString().slice(0, 10);
+    const monthStart = `${day.slice(0, 7)}-01`;
+    const chartStart = shiftDays(day, -29);
 
     const inventory = db
       .prepare(

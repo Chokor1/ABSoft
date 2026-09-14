@@ -40,8 +40,10 @@ export const todayISO = () => {
 };
 
 export function shiftDays(iso, days) {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + days);
+  // Calendar arithmetic in UTC on both ends: mixing local midnight with
+  // toISOString() lands on the previous day anywhere east of Greenwich.
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
@@ -264,6 +266,66 @@ function fieldHtml(f) {
 }
 
 /* ------------------------------------------------------------- fragments -- */
+
+/**
+ * A document (invoice, purchase, adjustment) opened as a page: a header card
+ * with Back, the title, badges and actions, and the body underneath.
+ * Returns the body element; `[data-back]` inside the header goes back.
+ */
+export function docPage(root, { title, subtitle = '', badges = '', actions = '', onBack }) {
+  root.innerHTML = `
+    <div class="card doc-head">
+      <button type="button" class="btn btn-ghost btn-icon" data-back aria-label="${esc(t('common.back'))}">${icon('back')}</button>
+      <div class="doc-title"><h2>${esc(title)}</h2>${subtitle ? `<div class="sub">${esc(subtitle)}</div>` : ''}</div>
+      <div class="doc-badges">${badges}</div>
+      <div class="spacer"></div>
+      <div class="doc-actions no-print">${actions}</div>
+    </div>
+    <div class="doc-body"></div>`;
+  root.querySelector('[data-back]').addEventListener('click', () => onBack?.());
+  return root.querySelector('.doc-body');
+}
+
+/** A product's picture, or its initials on a tinted square when it has none. */
+export function productThumb(p, size = 'sm') {
+  if (p?.image_at) {
+    return `<img class="pthumb ${size}" src="/api/products/${p.id}/image?v=${encodeURIComponent(p.image_at)}"
+                 alt="" loading="lazy" decoding="async"/>`;
+  }
+  return `<span class="pthumb ${size} empty" aria-hidden="true">${esc(initials(p?.name || ''))}</span>`;
+}
+
+/**
+ * Read a picked image file and shrink it for upload: at most `max` pixels on the
+ * long side, re-encoded as WebP (JPEG where WebP is unsupported). A phone photo
+ * of several megabytes becomes a few tens of kilobytes.
+ */
+export function shrinkImage(file, max = 640) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\//.test(file.type)) return reject(new Error('not an image'));
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const g = canvas.getContext('2d');
+      g.fillStyle = '#fff'; // transparent PNGs would otherwise turn black as JPEG
+      g.fillRect(0, 0, canvas.width, canvas.height);
+      g.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      let data = canvas.toDataURL('image/webp', 0.86);
+      if (!data.startsWith('data:image/webp')) data = canvas.toDataURL('image/jpeg', 0.86);
+      resolve(data);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('unreadable image'));
+    };
+    img.src = url;
+  });
+}
 
 export const emptyState = (title, message, iconName = 'box') =>
   `<div class="empty">${icon(iconName)}<strong>${esc(title)}</strong><p>${esc(message)}</p></div>`;

@@ -11,6 +11,7 @@ import {
   forgetSuggestions,
   modal,
   money,
+  productThumb,
   qtyText,
   store,
   toast,
@@ -109,9 +110,10 @@ export async function render(root, ctx) {
     }
     tiles.innerHTML = state.products
       .map(
-        (p) => `<button class="tile ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}" ${
+        (p) => `<button class="tile ${p.stock <= 0 ? 'out' : ''} ${p.image_at ? 'has-image' : ''}" data-add="${p.id}" ${
           p.description ? `title="${esc(p.description)}"` : ''
         }>
+          ${p.image_at ? productThumb(p, 'tile') : ''}
           <div class="t-name">${esc(p.name)}</div>
           ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
           <div class="t-meta">

@@ -164,10 +164,7 @@ export async function render(root, ctx) {
 
   root.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => ctx.navigate(b.dataset.go)));
   root.querySelectorAll('[data-sale]').forEach((tr) =>
-    tr.addEventListener('click', async () => {
-      const { showReceipt } = await import('./sales.js');
-      showReceipt(await api.sale(tr.dataset.sale));
-    }),
+    tr.addEventListener('click', () => ctx.navigate(`sales/${tr.dataset.sale}`)),
   );
 
   if (store.settings.low_stock_alert === '1' && inventory.low_stock > 0) {

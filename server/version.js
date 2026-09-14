@@ -21,3 +21,12 @@ function readPackageJson() {
 }
 
 export const VERSION = readPackageJson().version;
+
+/** The version on disk right now. Differs from VERSION once an update lands without a restart. */
+export function diskVersion() {
+  try {
+    return readPackageJson().version;
+  } catch {
+    return VERSION;
+  }
+}

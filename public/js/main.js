@@ -25,7 +25,7 @@ const VIEWS = {
   dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'overview' },
   pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true },
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
-  adjustments: { key: 'adjustments', icon: 'sliders', mod: adjustments, group: 'daily' },
+  adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
   products: { key: 'products', icon: 'box', mod: products, group: 'catalogue' },
   lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
@@ -142,9 +142,10 @@ function renderLogin(message = '') {
     btn.disabled = true;
     btn.textContent = t('login.submitting');
     try {
-      const { user, settings: cfg } = await api.login(form.username.value, form.password.value);
+      const { user, settings: cfg, restart_needed } = await api.login(form.username.value, form.password.value);
       store.user = user;
       store.settings = cfg;
+      store.restartNeeded = !!restart_needed;
       startApp();
     } catch (err) {
       document.getElementById('login-error').textContent = errorText(err);
@@ -322,6 +323,13 @@ async function renderRoute() {
       params: location.hash.replace(/^#\/?/, '').split('/').slice(1),
     });
   } catch (err) {
+    // A route missing on the server means the server is older than these screens.
+    if (err?.code === 'NO_ROUTE') {
+      showRestartNotice();
+      page.innerHTML = `<div class="card"><div class="card-body"><div class="empty">${icon('alert')}
+        <strong>${esc(t('app.restart_title'))}</strong><p>${esc(t('app.restart_body'))}</p></div></div></div>`;
+      return;
+    }
     page.innerHTML = `<div class="card"><div class="card-body"><div class="empty">${icon('alert')}
       <strong>${esc(t('common.page_error'))}</strong><p>${esc(errorText(err))}</p></div></div></div>`;
   }
@@ -331,6 +339,20 @@ function startApp() {
   renderShell();
   renderRoute();
   window.onhashchange = renderRoute;
+  if (store.restartNeeded) showRestartNotice();
+}
+
+/**
+ * The files on disk are newer than the running server: an update was pulled but
+ * ABSoft was not restarted, so new screens would call routes that do not exist yet.
+ */
+function showRestartNotice() {
+  if (document.querySelector('.restart-notice')) return;
+  const bar = document.createElement('div');
+  bar.className = 'restart-notice';
+  bar.setAttribute('role', 'alert');
+  bar.innerHTML = `${icon('alert')}<span><b>${esc(t('app.restart_title'))}</b> ${esc(t('app.restart_body'))}</span>`;
+  document.querySelector('.topbar')?.after(bar);
 }
 
 document.addEventListener('keydown', (e) => {
@@ -360,9 +382,10 @@ setUnauthorizedHandler(() => {
 
 (async function boot() {
   try {
-    const { user, settings: cfg } = await api.me();
+    const { user, settings: cfg, restart_needed } = await api.me();
     store.user = user;
     store.settings = cfg;
+    store.restartNeeded = !!restart_needed;
     startApp();
   } catch {
     renderLogin();

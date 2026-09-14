@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { DB_FILE, db, getSettings } from './db.js';
 import { currentVersion } from './migrations.js';
-import { VERSION } from './version.js';
+import { VERSION, diskVersion } from './version.js';
 import { ensureSeedAdmin, login, logout, purgeExpiredSessions, userFromToken } from './auth.js';
 import {
   HttpError,
@@ -43,7 +43,7 @@ router.post('/api/auth/login', async (ctx) => {
     'Set-Cookie',
     `${COOKIE}=${result.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${14 * 24 * 3600}`,
   );
-  return { user: result.user, settings: getSettings() };
+  return { user: result.user, settings: getSettings(), restart_needed: diskVersion() !== VERSION };
 });
 
 router.post('/api/auth/logout', (ctx) => {
@@ -54,7 +54,8 @@ router.post('/api/auth/logout', (ctx) => {
 
 router.get('/api/auth/me', (ctx) => {
   if (!ctx.user) throw new HttpError(401, 'Not signed in', 'NOT_SIGNED_IN');
-  return { user: ctx.user, settings: getSettings() };
+  // The files were updated but this process still runs the old code.
+  return { user: ctx.user, settings: getSettings(), restart_needed: diskVersion() !== VERSION };
 });
 
 registerProducts(router);
@@ -80,6 +81,7 @@ const PUBLIC_ROUTES = new Set(['POST /api/auth/login', 'POST /api/auth/logout', 
 const CASHIER_ROUTES = new Set([
   'GET /api/products',
   'GET /api/products/lookup',
+  'GET /api/products/:id/image',
   'GET /api/sales',
   'GET /api/sales/:id',
   'POST /api/sales',

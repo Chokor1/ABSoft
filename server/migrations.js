@@ -171,6 +171,21 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // One picture per product, kept inside the database so a backup carries it.
+    // The browser shrinks it before upload, so rows stay small.
+    name: 'product-images',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS product_images (
+          product_id INTEGER PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE,
+          mime       TEXT    NOT NULL,
+          data       BLOB    NOT NULL,
+          updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

@@ -6,6 +6,7 @@ import {
   dateText,
   dateTimeText,
   debounce,
+  docPage,
   downloadCsv,
   emptyState,
   esc,
@@ -28,16 +29,12 @@ import {
  * just the document, to print or close: taking the rest of a balance is a later
  * visit's business, and it stays available from Sales History for that.
  */
-export function showReceipt(sale, { change = 0, onChanged, afterSale = false } = {}) {
+/** The printable receipt itself. */
+function receiptHtml(sale, change = 0) {
   const cfg = sale.settings || store.settings;
   const line = (label, value, cls = '') =>
     `<div class="r-line ${cls}"><span>${esc(label)}</span><span>${value}</span></div>`;
-  const owing = !afterSale && sale.balance > 0.004;
-
-  return modal({
-    title: t('receipt.title', { doc: sale.doc_no }),
-    subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')}`,
-    body: `<div class="receipt" id="receipt-print">
+  return `<div class="receipt" id="receipt-print">
         <div class="r-center"><b>${esc(cfg.store_name || t('app.name'))}</b></div>
         <div class="r-center">${esc(sale.doc_no)} · ${dateTimeText(sale.created_at || sale.date)}</div>
         <div class="r-rule"></div>
@@ -62,7 +59,16 @@ export function showReceipt(sale, { change = 0, onChanged, afterSale = false } =
         ${sale.balance > 0.004 ? line(t('pay.balance'), money(sale.balance), 'r-total') : ''}
         <div class="r-rule"></div>
         <div class="r-center">${esc(cfg.receipt_footer || '')}</div>
-      </div>
+      </div>`;
+}
+
+export function showReceipt(sale, { change = 0, onChanged, afterSale = false } = {}) {
+  const owing = !afterSale && sale.balance > 0.004;
+
+  return modal({
+    title: t('receipt.title', { doc: sale.doc_no }),
+    subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')}`,
+    body: `${receiptHtml(sale, change)}
       ${afterSale ? '' : paymentsHtml(sale)}`,
     footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
              ${
@@ -194,7 +200,106 @@ function payStatus(sale) {
   return `<span class="badge danger">${esc(t('pay.status_unpaid'))}</span>`;
 }
 
+/** One invoice, as a page: the receipt, what has been paid, and what to do next. */
+async function renderSale(root, ctx, id) {
+  const back = () => ctx.navigate('sales');
+  const admin = store.user.role === 'admin';
+  let sale;
+  try {
+    sale = await api.sale(id);
+  } catch (err) {
+    toast(errorText(err), 'error');
+    return back();
+  }
+
+  const paint = () => {
+    const owing = sale.balance > 0.004;
+    const body = docPage(root, {
+      title: t('receipt.title', { doc: sale.doc_no }),
+      subtitle: [dateText(sale.date), sale.customer || t('common.walk_in'), sale.username].filter(Boolean).join(' · '),
+      badges: `<span class="badge accent">${money(sale.total)}</span> ${payStatus(sale)}`,
+      actions: `${owing ? `<button class="btn btn-primary" data-pay>${icon('coins')} ${esc(t('pay.record'))}</button>` : ''}
+                <button class="btn ${owing ? '' : 'btn-primary'}" data-print>${icon('print')} ${esc(t('common.print'))}</button>
+                ${admin ? `<button class="btn btn-ghost" data-void title="${esc(t('sales.void_tip'))}">${icon('trash')}</button>` : ''}`,
+      onBack: back,
+    });
+    const row = (label, value, cls = '') => `<div class="sum-row ${cls}"><span>${esc(label)}</span><span class="v">${value}</span></div>`;
+    body.innerHTML = `
+      <div class="grid cols-2 sale-grid">
+        <div class="card"><div class="card-body receipt-page">${receiptHtml(sale)}</div></div>
+        <div class="sale-side">
+          <div class="card">
+            <div class="card-head"><div><h3>${esc(t('sales.summary'))}</h3></div></div>
+            <div class="card-body sale-summary">
+              ${row(t('common.subtotal'), money(sale.subtotal))}
+              ${sale.discount ? row(t('common.discount'), `−${money(sale.discount)}`) : ''}
+              ${sale.tax ? row(t('common.tax'), money(sale.tax)) : ''}
+              ${row(t('common.total'), money(sale.total), 'strong')}
+              ${row(t('pay.paid'), money(sale.paid))}
+              ${row(t('pay.balance'), money(sale.balance), owing ? 'strong money-neg' : 'muted')}
+              ${
+                admin && sale.cogs !== undefined
+                  ? `<div class="sum-sep"></div>${row(t('common.cost'), money(sale.cogs), 'muted')}
+                     ${row(t('common.profit'), money(sale.profit), signClass(sale.profit))}`
+                  : ''
+              }
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">${paymentsHtml(sale)}</div>
+          </div>
+        </div>
+      </div>`;
+
+    root.querySelector('[data-print]').addEventListener('click', () => window.print());
+    root.querySelector('[data-pay]')?.addEventListener('click', async () => {
+      const updated = await recordPayment(sale);
+      if (updated) {
+        sale = updated;
+        paint();
+      }
+    });
+    root.querySelector('[data-void]')?.addEventListener('click', async () => {
+      const ok = await confirmDialog({
+        title: t('sales.void_title'),
+        message: t('sales.void_msg'),
+        confirmLabel: t('sales.void_confirm'),
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await api.deleteSale(sale.id);
+        toast(t('sales.voided'), 'success');
+        back();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    });
+    root.querySelectorAll('[data-del-pay]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const ok = await confirmDialog({
+          title: t('pay.delete_title'),
+          message: t('pay.delete_msg'),
+          confirmLabel: t('common.remove'),
+          danger: true,
+        });
+        if (!ok) return;
+        try {
+          sale = await api.deletePayment(b.dataset.delPay);
+          toast(t('pay.removed'), 'success');
+          paint();
+        } catch (err) {
+          toast(errorText(err), 'error');
+        }
+      }),
+    );
+  };
+  paint();
+}
+
+/** #/sales, #/sales/<id> */
 export async function render(root, ctx) {
+  if (/^\d+$/.test(ctx.params[0] || '')) return renderSale(root, ctx, Number(ctx.params[0]));
   const state = { from: monthStart(), to: todayISO(), search: '', unpaid: false };
   // Cost and profit are for administrators; the server leaves them out for cashiers.
   const admin = store.user.role === 'admin';
@@ -363,7 +468,7 @@ export async function render(root, ctx) {
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {
         if (e.target.closest('[data-void]') || e.target.closest('[data-pay-row]')) return;
-        showReceipt(await api.sale(tr.dataset.open), { onChanged: load });
+        ctx.navigate(`sales/${tr.dataset.open}`);
       }),
     );
 

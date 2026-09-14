@@ -54,16 +54,20 @@ invoice loses a line.
 | **Buy — Stock In** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. Administrators can edit a saved purchase; every change is logged. |
 | **Stock Adjustment** | Counts, damage, expiry and write-offs as numbered documents covering many products at once. Scan or search products (or add a whole category), then type what you counted or how much changed. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
-| **Products** (`F3`) | Define what you sell: name, optional description, barcode, category, cost, default price, unit, low-stock level. Click any row for its full movement history. |
+| **Products** (`F3`) | Define what you sell: name, optional description, barcode, category, cost, default price, unit, low-stock level. Click a row to open the product's own page (see below). |
 | **Lists** | Customers, suppliers, product categories, units and expense categories — the names you reuse. |
-| **Sales History** | Every invoice, with cost and profit per sale. Click one to reprint it. |
+| **Sales History** | Every invoice, with cost and profit per sale. Click one to open it: the receipt, its payments, print, take the rest, void. |
 | **Reports** | Profit & loss for any date range, plus product performance, stock valuation, the movement ledger and per-cashier totals. |
 | **Users** | Add cashiers and administrators. A cashier only gets **Sell — POS**, **Sales History** (without cost or profit) and their own settings. |
 | **Settings** | Store name, currency, sales tax rate, receipt footer, language, and database backups. |
 
 Press `/` anywhere to jump to the search box. Every list has an **Export CSV** button.
-On a computer screen, list pages stay put while their table scrolls inside its own section,
-with the column headings and totals row held in place; on a phone the page scrolls as usual.
+Tables — lists and reports alike — scroll their rows inside their own section, with the column
+headings and the totals row always in view. With only a few rows, the table simply ends at its
+totals. The report menu stays pinned under the top bar while a long report scrolls.
+
+Clicking a row opens a **page**, not a pop-up: an invoice, a purchase (with its change history
+and Edit) or a stock adjustment, each with Back, Print and its actions at the top.
 The ⛶ button in the top bar puts ABSoft **full screen** — useful on a till, where the browser
 chrome is just clutter. (Your browser's own `F11` works too.)
 
@@ -158,6 +162,26 @@ and the stock goes negative so you can see it needs fixing.
 Deleting is protective: a product or user that already appears in history is archived
 instead of deleted, so past reports never change. Voiding a sale or deleting a purchase
 (administrators only) reverses its stock movements.
+
+---
+
+## A product's page
+
+Click any product. At the top: its **picture**, name, category, barcode and the numbers that
+matter — stock, price, cost and margin, stock value, and what sold in the last 30 days — with
+**Adjust stock** and delete beside the page title. Underneath, tabs:
+
+- **Overview** — the last 30 days of sales as a chart, and the latest stock movements.
+- **Details** — the product's fields, edited right there. Save and stay on the page.
+- **Stock movements** — every change with the balance after it.
+- **Sales report** — any date range: quantity sold, revenue, cost, profit and margin, and every
+  invoice line (click one to open the invoice).
+- **Purchases** — each time it was bought, from whom, at what cost.
+
+**Pictures.** Click *Add picture* and choose a photo. The browser shrinks it (640 px, WebP) before
+uploading, so even a phone photo ends up a few tens of kilobytes. It is stored in the database,
+so backups carry it. The picture shows on the product page, on the till's product cards and in
+product search results; the product list stays compact and shows none.
 
 ---
 
@@ -349,6 +373,10 @@ Close ABSoft, double-click **`update.cmd`**, start ABSoft again. It:
 3. Prints the new version number.
 
 The database upgrades itself the first time the new version starts. Nothing else to do.
+
+**Updated but not restarted?** If the files are newer than the ABSoft that is running, the app
+says so in a yellow bar — *"ABSoft was updated — restart it to finish"* — instead of failing on a
+new screen with an unhelpful error. Close ABSoft and start it again.
 
 If someone has edited files on the shop's machine, the pull refuses rather than clobbering
 them, and the script tells them exactly how to discard those edits (`git reset --hard`) —

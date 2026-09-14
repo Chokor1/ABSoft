@@ -121,6 +121,8 @@ await page.waitForTimeout(800);
 console.log('\n[settling it later]');
 await page.click('tr:has-text("Part Payer")');
 await page.waitForSelector('.receipt');
+check('the invoice opens as a page, not a dialog', /#\/sales\/\d+$/.test(page.url()) && (await page.$$('.modal-backdrop')).length === 0,
+  page.url());
 await page.click('[data-pay]');
 await page.waitForSelector('#modal-form');
 check('the payment form knows the balance',
@@ -133,7 +135,7 @@ await page.selectOption('select[name=method]', 'card');
 await page.click('.modal-foot button[type=submit]');
 await page.waitForTimeout(1200);
 check('the toast reports the new balance', (await page.textContent('.toasts')).includes('$5.00'));
-const after = await page.textContent('.modal-body');
+const after = await page.textContent('.doc-body');
 check('the reopened receipt shows both instalments',
   (after.match(/Cash|Card/g) || []).length >= 2, after.replace(/\s+/g, ' ').slice(0, 300));
 await shot('82-payment-history');
@@ -144,8 +146,9 @@ await page.click('.modal-foot button[type=submit]');
 await page.waitForTimeout(1200);
 check('paying the rest settles it', (await page.textContent('.toasts')).includes('settled'));
 check('the receipt no longer offers to take payment', !(await page.isVisible('[data-pay]')));
-await page.click('.modal-foot [data-close]');
-await page.waitForTimeout(800);
+await page.click('.doc-head [data-back]');
+await page.waitForSelector('tr:has-text("Part Payer")');
+await page.waitForTimeout(500);
 
 const settledRow = await page.textContent('tr:has-text("Part Payer")');
 check('the list now marks it paid', settledRow.includes('paid') && !settledRow.includes('part paid'),
@@ -160,9 +163,8 @@ await page.click('[data-del-pay]');
 await page.waitForSelector('[data-confirm]');
 await page.click('[data-confirm]');
 await page.waitForTimeout(1200);
-check('the balance comes back', (await page.textContent('.modal-body')).includes('Balance due'),
-  (await page.textContent('.modal-body')).replace(/\s+/g, ' ').slice(0, 200));
-await page.click('.modal-foot [data-close]');
+check('the balance comes back', (await page.textContent('.doc-body')).includes('Balance due'),
+  (await page.textContent('.doc-body')).replace(/\s+/g, ' ').slice(0, 200));
 
 /* ----------------------------------------------------------------- dashboard */
 console.log('\n[the dashboard flags it]');
@@ -180,10 +182,9 @@ check('the balance column is translated', (await page.textContent('thead')).incl
 check('the status is translated', (await page.textContent('tbody')).includes('مدفوعة'));
 await page.click('tr:has-text("Part Payer")');
 await page.waitForSelector('.receipt');
-check('the payments section is translated', (await page.textContent('.modal-body')).includes('الدفعات'));
+check('the payments section is translated', (await page.textContent('.doc-body')).includes('الدفعات'));
 check('and the record-payment button', (await page.textContent('[data-pay]')).includes('تسجيل دفعة'));
 await shot('83-payments-ar');
-await page.click('.modal-foot [data-close]');
 await page.click('.topbar [data-lang="en"]');
 await page.waitForTimeout(600);
 

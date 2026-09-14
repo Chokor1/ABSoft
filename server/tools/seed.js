@@ -6,7 +6,7 @@
  */
 import { db, transact } from '../db.js';
 import { ensureSeedAdmin } from '../auth.js';
-import { money, qty } from '../util.js';
+import { money, qty, shiftDays, today } from '../util.js';
 import { rememberEntity } from '../entities.js';
 
 ensureSeedAdmin();
@@ -40,7 +40,7 @@ const EXPENSES = [
   ['Transport', 'Supplier pickup', 25],
 ];
 
-const day = (offset) => new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+const day = (offset) => shiftDays(today(), -offset);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const between = (a, b) => a + Math.random() * (b - a);
 
@@ -67,6 +67,9 @@ transact(() => {
   );
   const insertSaleItem = db.prepare(
     `INSERT INTO sale_items (sale_id, product_id, qty, unit_price, unit_cost, discount, total) VALUES (?, ?, ?, ?, ?, 0, ?)`,
+  );
+  const insertPayment = db.prepare(
+    `INSERT INTO payments (sale_id, amount, method, date, note, user_id, created_at) VALUES (?, ?, ?, ?, '', ?, ?)`,
   );
 
   // Three restocks, sized to comfortably cover the sales generated below.
@@ -104,6 +107,8 @@ transact(() => {
       const saleId = Number(
         insertSale.run(docNo, '', date, subtotal, subtotal, cogs, subtotal, method, admin.id).lastInsertRowid,
       );
+      // Paid in full, recorded in the payments ledger like a sale made at the till.
+      insertPayment.run(saleId, subtotal, method, date, admin.id, `${date} 12:00:00`);
       for (const l of lines) {
         insertSaleItem.run(saleId, l.id, l.qty, l.price, l.cost, money(l.qty * l.price));
         insertMove.run(l.id, -l.qty, l.cost, 'sale', 'sales', saleId, docNo, admin.id, `${date} 12:00:00`);
