@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { errorText, moveText, t } from '../i18n.js';
 import { wireNamePickers } from '../name-picker.js';
+import { money2, money2Html, onRateChange, second } from '../currency.js';
 import {
   chartSvg,
   confirmDialog,
@@ -202,6 +203,7 @@ async function renderList(root, ctx) {
                   <th>${esc(t('nav.products'))}</th><th>${esc(t('common.barcode'))}</th>
                   <th>${esc(t('common.category'))}</th>
                   <th class="right">${esc(t('common.cost'))}</th><th class="right">${esc(t('common.price'))}</th>
+                  ${second() ? `<th class="right">${esc(t('prod.price_in', { c: second().symbol }))}</th>` : ''}
                   <th class="right">${esc(t('common.margin'))}</th>
                   <th class="right">${esc(t('common.stock'))}</th><th class="right">${esc(t('common.value'))}</th>
                 </tr></thead>
@@ -221,6 +223,7 @@ async function renderList(root, ctx) {
                       }</td>
                       <td class="right muted">${money(p.cost)}</td>
                       <td class="right"><b>${money(p.price)}</b></td>
+                      ${second() ? `<td class="right">${money2Html(p.price)}</td>` : ''}
                       <td class="right ${p.margin >= 0 ? 'money-pos' : 'money-neg'}">${pct(p.margin)}</td>
                       <td class="right">
                         <span class="badge ${p.stock <= 0 ? 'danger' : p.stock <= p.min_stock ? 'warn' : 'success'}">
@@ -232,7 +235,7 @@ async function renderList(root, ctx) {
                   )
                   .join('')}</tbody>
                 <tfoot><tr>
-                  <td colspan="7">${esc(t('prod.totals', { n: rows.length }))}</td>
+                  <td colspan="${second() ? 8 : 7}">${esc(t('prod.totals', { n: rows.length }))}</td>
                   <td class="right">${money(stockValue)}</td>
                 </tr></tfoot>
               </table></div>`
@@ -338,7 +341,7 @@ async function renderDetail(root, ctx, id, initialTab) {
           <div class="ph-badges">
             ${product.category ? `<span class="badge">${esc(product.category)}</span>` : ''}
             <span class="badge ${product.stock <= 0 ? 'danger' : low ? 'warn' : 'success'}">${qtyText(product.stock)} ${esc(product.unit)}</span>
-            <span class="badge accent">${money(product.price)}</span>
+            <span class="badge accent">${money(product.price)} ${money2Html(product.price)}</span>
             ${product.active ? '' : `<span class="badge">${esc(t('prod.archived'))}</span>`}
           </div>
         </div>
@@ -390,6 +393,7 @@ async function renderDetail(root, ctx, id, initialTab) {
               </div>
             </div>
             ${renderFields(editable)}
+            ${second() ? readOnly(t('prod.price_in', { c: second().symbol }), `<span id="price2">${esc(money2(product.price))}</span>`) : ''}
             ${readOnly(t('common.stock'), `${qtyText(product.stock)} ${esc(product.unit)}`)}
             ${admin ? readOnly(t('common.value'), money(product.stock_value)) : ''}
             ${admin ? readOnly(t('common.margin'), pct(product.margin)) : ''}
@@ -404,6 +408,17 @@ async function renderDetail(root, ctx, id, initialTab) {
       </form>`;
     const form = body.querySelector('#page-form');
     dropPickers = wireNamePickers(form, fields);
+    const paintPrice2 = () => {
+      const el = body.querySelector('#price2');
+      if (el) el.textContent = money2(form.price.value);
+    };
+    form.price.addEventListener('input', paintPrice2);
+    const stopRate = onRateChange(paintPrice2);
+    const dropNames = dropPickers;
+    dropPickers = () => {
+      dropNames();
+      stopRate();
+    };
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -458,7 +473,12 @@ async function renderDetail(root, ctx, id, initialTab) {
           tint: product.stock <= 0 ? 'danger' : low ? 'warn' : 'success',
           iconName: 'box',
         })}
-        ${statTile({ label: t('common.price'), value: money(product.price), foot: t('prod.per_unit', { u: product.unit }), iconName: 'coins' })}
+        ${statTile({
+          label: t('common.price'),
+          value: money(product.price),
+          foot: second() ? money2Html(product.price) : t('prod.per_unit', { u: product.unit }),
+          iconName: 'coins',
+        })}
         ${admin ? statTile({ label: t('common.cost'), value: money(product.cost), foot: `${t('common.margin')} ${pct(product.margin)}`, iconName: 'truck' }) : ''}
         ${admin ? statTile({ label: t('common.value'), value: money(product.stock_value), foot: t('prod.stock_value_foot'), iconName: 'wallet' }) : ''}
         ${statTile({

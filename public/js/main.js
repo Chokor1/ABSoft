@@ -9,6 +9,7 @@ import * as products from './views/products.js';
 import * as purchases from './views/purchases.js';
 import * as adjustments from './views/adjustments.js';
 import { sweepPickers } from './picker.js';
+import { onRateChange, saveRate, second, watchRate } from './currency.js';
 import * as salesView from './views/sales.js';
 import * as expenses from './views/expenses.js';
 import * as reports from './views/reports.js';
@@ -192,6 +193,7 @@ function renderShell() {
           )}</small></div>
         </div>
         <nav class="nav">${navHtml()}</nav>
+        <div class="rate-box" id="rate-box" hidden></div>
         <div class="sidebar-foot">
           <button class="user-chip" id="user-menu">
             <div class="avatar">${esc(initials(store.user.full_name || store.user.username))}</div>
@@ -220,6 +222,7 @@ function renderShell() {
     </div>`;
 
   wireLanguagePicker(app);
+  paintRateBox();
 
   // Anything that sticks under the top bar needs its height, which changes when
   // it wraps on a narrow screen.
@@ -338,7 +341,75 @@ async function renderRoute() {
   }
 }
 
+/* ---------------------------------------------------------- exchange rate -- */
+
+/**
+ * The rate of the second currency, in the sidebar. Everyone sees it; an
+ * administrator can change it in place: one field, Enter or Save, and every
+ * amount on screen follows.
+ */
+function paintRateBox(editing = false) {
+  const box = document.getElementById('rate-box');
+  if (!box) return;
+  const cur = second();
+  box.hidden = !cur;
+  if (!cur) return;
+  const base = store.settings.currency || '$';
+  const rateText = cur.rate.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  const canEdit = store.user?.role === 'admin';
+
+  if (!editing) {
+    box.innerHTML = `
+      <div class="rate-label">${icon('coins')} ${esc(t('rate.title'))}</div>
+      <div class="rate-row">
+        <div class="rate-value" dir="ltr">1 ${esc(base)} = <b>${esc(rateText)}</b> ${esc(cur.symbol)}</div>
+        ${canEdit ? `<button class="btn btn-ghost btn-icon btn-sm" id="rate-edit" title="${esc(t('rate.edit'))}">${icon('edit')}</button>` : ''}
+      </div>`;
+    box.querySelector('#rate-edit')?.addEventListener('click', () => paintRateBox(true));
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="rate-label">${icon('coins')} ${esc(t('rate.title'))}</div>
+    <form class="rate-form" id="rate-form" dir="ltr">
+      <span class="muted">1 ${esc(base)} =</span>
+      <input class="input" id="rate-input" type="number" min="0" step="any" value="${cur.rate}" required
+             aria-label="${esc(t('rate.title'))}"/>
+      <span class="muted">${esc(cur.symbol)}</span>
+      <button class="btn btn-primary btn-icon btn-sm" type="submit" title="${esc(t('common.save'))}">${icon('check')}</button>
+      <button class="btn btn-ghost btn-icon btn-sm" type="button" id="rate-cancel" title="${esc(t('common.cancel'))}">${icon('close')}</button>
+    </form>`;
+  const input = box.querySelector('#rate-input');
+  input.focus();
+  input.select();
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      paintRateBox(false);
+    }
+  });
+  box.querySelector('#rate-cancel').addEventListener('click', () => paintRateBox(false));
+  box.querySelector('#rate-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const value = Number(input.value);
+    if (!(value > 0)) return toast(t('err.RATE_POSITIVE'), 'warn');
+    try {
+      await saveRate(value);
+      toast(t('rate.saved', { a: `1 ${base}`, b: `${value.toLocaleString()} ${cur.symbol}` }), 'success');
+      paintRateBox(false);
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  });
+}
+
+// Keep the box in step with rate changes made anywhere (settings page, another till).
+onRateChange(() => {
+  if (!document.querySelector('#rate-form')) paintRateBox(false);
+});
+
 function startApp() {
+  watchRate();
   renderShell();
   renderRoute();
   window.onhashchange = renderRoute;

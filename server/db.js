@@ -149,6 +149,11 @@ const DEFAULT_SETTINGS = {
   tax_rate: '0',
   low_stock_alert: '1',
   receipt_footer: 'Thank you for your business!',
+  // Optional second currency, e.g. L.L at 89,500 to the dollar. Off until switched on.
+  currency2_enabled: '0',
+  currency2_symbol: 'L.L',
+  currency2_rate: '0',
+  currency2_decimals: '0',
 };
 
 const setSetting = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);

@@ -186,6 +186,27 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // A second currency (L.L beside $). The books stay in the first currency;
+    // an invoice remembers the rate of its day, and a payment taken in the second
+    // currency keeps what was handed over and the rate it was converted at.
+    name: 'second-currency',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS exchange_rates (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          symbol     TEXT    NOT NULL DEFAULT '',
+          rate       REAL    NOT NULL,
+          user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+      addColumn(db, 'sales', 'rate2', 'REAL');
+      addColumn(db, 'payments', 'currency', `TEXT NOT NULL DEFAULT ''`);
+      addColumn(db, 'payments', 'amount2', 'REAL');
+      addColumn(db, 'payments', 'rate', 'REAL');
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

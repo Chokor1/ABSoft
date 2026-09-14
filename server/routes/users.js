@@ -1,7 +1,7 @@
 import { db, getSettings, saveSettings } from '../db.js';
 import { createUser, hashPassword, publicUser, verifyPassword } from '../auth.js';
 import { badRequest, forbidden, notFound } from '../http.js';
-import { required, str } from '../util.js';
+import { num, required, str } from '../util.js';
 
 const ROLES = new Set(['admin', 'cashier']);
 
@@ -94,9 +94,44 @@ export function register(router) {
 
   router.put('/api/settings', (ctx) => {
     adminOnly(ctx);
-    const allowed = ['store_name', 'currency', 'tax_rate', 'low_stock_alert', 'receipt_footer'];
+    const allowed = [
+      'store_name', 'currency', 'tax_rate', 'low_stock_alert', 'receipt_footer',
+      'currency2_enabled', 'currency2_symbol', 'currency2_decimals',
+    ];
     const patch = {};
     for (const key of allowed) if (ctx.body[key] !== undefined) patch[key] = str(ctx.body[key]);
+    if (patch.currency2_enabled !== undefined) patch.currency2_enabled = patch.currency2_enabled === '1' ? '1' : '0';
+    if (patch.currency2_decimals !== undefined) {
+      patch.currency2_decimals = String(Math.min(4, Math.max(0, Math.round(num(patch.currency2_decimals)))));
+    }
+    // The rate goes through the same check and history as the sidebar's rate box.
+    if (ctx.body.currency2_rate !== undefined && num(ctx.body.currency2_rate) !== num(getSettings().currency2_rate)) {
+      recordRate(ctx.body.currency2_rate, patch.currency2_symbol ?? getSettings().currency2_symbol, ctx.user.id);
+    }
     return saveSettings(patch);
   });
+
+  /** Update the exchange rate, from the sidebar. Every change is kept. */
+  router.put('/api/exchange-rate', (ctx) => {
+    adminOnly(ctx);
+    recordRate(ctx.body.rate, getSettings().currency2_symbol, ctx.user.id);
+    return getSettings();
+  });
+
+  router.get('/api/exchange-rates', (ctx) => {
+    adminOnly(ctx);
+    return db
+      .prepare(
+        `SELECT r.*, u.username FROM exchange_rates r LEFT JOIN users u ON u.id = r.user_id
+         ORDER BY r.id DESC LIMIT 50`,
+      )
+      .all();
+  });
+}
+
+function recordRate(value, symbol, userId) {
+  const rate = num(value);
+  if (!(rate > 0)) throw badRequest('The exchange rate must be greater than zero', 'RATE_POSITIVE');
+  saveSettings({ currency2_rate: String(rate) });
+  db.prepare(`INSERT INTO exchange_rates (symbol, rate, user_id) VALUES (?, ?, ?)`).run(str(symbol), rate, userId);
 }

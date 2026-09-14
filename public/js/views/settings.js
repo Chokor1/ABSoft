@@ -3,6 +3,7 @@ import { playSaleChime, setSoundEnabled, soundEnabled } from '../feedback.js';
 import { icon } from '../icons.js';
 import { LANGUAGES, errorText, lang, t } from '../i18n.js';
 import { dateTimeText, esc, money, number, store, toast } from '../ui.js';
+import { applySettings, money2 } from '../currency.js';
 
 const kb = (bytes) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -73,6 +74,43 @@ export async function render(root, ctx) {
             <p class="muted" style="font-size:12.5px">${esc(t('set.language_help'))}</p>
           </div>
         </div>
+
+        <form class="card" id="currency2-form">
+          <div class="card-head"><div><h3>${esc(t('set.currency2'))}</h3>
+            <div class="sub">${esc(t('set.currency2_sub', { c: cfg.currency || '$' }))}</div></div></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field span-2">
+                <label class="check">
+                  <input type="checkbox" name="currency2_enabled" ${cfg.currency2_enabled === '1' ? 'checked' : ''} ${isAdmin ? '' : 'disabled'}/>
+                  ${esc(t('set.currency2_enable'))}
+                </label>
+              </div>
+              <div class="field">
+                <label>${esc(t('set.currency2_symbol'))}</label>
+                <input class="input" name="currency2_symbol" value="${esc(cfg.currency2_symbol || 'L.L')}" maxlength="6" ${isAdmin ? '' : 'disabled'}/>
+              </div>
+              <div class="field">
+                <label>${esc(t('set.currency2_decimals'))}</label>
+                <input class="input" type="number" min="0" max="4" step="1" name="currency2_decimals" value="${esc(cfg.currency2_decimals || '0')}" ${isAdmin ? '' : 'disabled'}/>
+              </div>
+              <div class="field span-2">
+                <label>${esc(t('set.currency2_rate', { c: cfg.currency || '$' }))}</label>
+                <input class="input" type="number" min="0" step="any" name="currency2_rate" value="${esc(Number(cfg.currency2_rate) > 0 ? cfg.currency2_rate : '')}"
+                       placeholder="89500" ${isAdmin ? '' : 'disabled'}/>
+                <div class="help" id="currency2-example"></div>
+              </div>
+            </div>
+          </div>
+          ${
+            isAdmin
+              ? `<div class="card-head" style="border-top:1px solid var(--border);border-bottom:0">
+                   <div class="spacer"></div>
+                   <button class="btn btn-primary" type="submit">${icon('check')} ${esc(t('set.save'))}</button>
+                 </div>`
+              : ''
+          }
+        </form>
 
         <div class="card">
           <div class="card-head"><div><h3>${esc(t('set.till'))}</h3></div></div>
@@ -226,6 +264,36 @@ export async function render(root, ctx) {
     });
   }
 
+  // Second currency: a live example of the conversion while typing.
+  const c2 = root.querySelector('#currency2-form');
+  const example = () => {
+    const rate = Number(c2.currency2_rate.value);
+    const symbol = c2.currency2_symbol.value.trim() || 'L.L';
+    c2.querySelector('#currency2-example').textContent =
+      rate > 0 ? t('set.currency2_example', { a: money(10), b: `${(10 * rate).toLocaleString()} ${symbol}` }) : t('set.currency2_help');
+  };
+  c2.addEventListener('input', example);
+  example();
+  c2.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!isAdmin) return;
+    const enabled = c2.currency2_enabled.checked;
+    const rate = Number(c2.currency2_rate.value);
+    if (enabled && !(rate > 0)) return toast(t('err.RATE_POSITIVE'), 'warn');
+    try {
+      const saved = await api.saveSettings({
+        currency2_enabled: enabled ? '1' : '0',
+        currency2_symbol: c2.currency2_symbol.value.trim() || 'L.L',
+        currency2_decimals: c2.currency2_decimals.value || '0',
+        ...(rate > 0 ? { currency2_rate: String(rate) } : {}),
+      });
+      applySettings(saved);
+      toast(enabled ? t('set.currency2_saved', { a: `1 ${store.settings.currency || '$'}`, v: money2(1) }) : t('set.saved'), 'success');
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  });
+
   root.querySelector('#sound-toggle').addEventListener('change', (e) => setSoundEnabled(e.target.checked));
   root.querySelector('#sound-test').addEventListener('click', () => {
     const was = soundEnabled();
@@ -254,7 +322,7 @@ export async function render(root, ctx) {
         receipt_footer: form.receipt_footer.value.trim(),
         low_stock_alert: form.low_stock_alert.checked ? '1' : '0',
       });
-      store.settings = saved;
+      applySettings(saved);
       toast(t('set.saved'), 'success');
       document.querySelector('.brand small').textContent = saved.store_name || t('app.tagline');
     } catch (err) {

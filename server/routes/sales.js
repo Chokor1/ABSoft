@@ -2,6 +2,34 @@
 import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
 import { isoDate, money, nextDocNo, num, qty, str } from '../util.js';
+import { secondCurrency, toBase, toSecond } from '../currency.js';
+
+/**
+ * What was handed over, as { currency: '' | 'second', amount, amount2, base } entries.
+ * `tenders` is the till's list ({ currency: 'base' | 'second', amount }); without it,
+ * `paid` is a single amount in the first currency, as before.
+ */
+function readTenders(body, second) {
+  if (!Array.isArray(body.tenders)) {
+    const paid = money(Math.max(0, num(body.paid)));
+    return paid > 0 ? [{ currency: '', amount2: null, base: paid }] : [];
+  }
+  const out = [];
+  // First-currency money first, so change comes out of the second currency last.
+  for (const kind of ['base', 'second']) {
+    for (const t of body.tenders.filter((x) => (x?.currency === 'second' ? 'second' : 'base') === kind)) {
+      const amount = Math.max(0, num(t.amount));
+      if (!(amount > 0)) continue;
+      if (kind === 'second') {
+        if (!second) throw badRequest('The second currency is not switched on', 'SECOND_CURRENCY_OFF');
+        out.push({ currency: 'second', amount2: amount, base: toBase(amount, second) });
+      } else {
+        out.push({ currency: '', amount2: null, base: money(amount) });
+      }
+    }
+  }
+  return out;
+}
 
 const LIST_SQL = `
   SELECT s.*, u.username,
@@ -109,7 +137,12 @@ export function register(router) {
     const total = money(taxable + tax);
     const cogs = money(prepared.reduce((s, l) => s + l.qty * l.unit_cost, 0));
     const date = isoDate(ctx.body.date);
-    const paid = ctx.body.paid === undefined ? total : money(Math.max(0, num(ctx.body.paid)));
+    const second = secondCurrency(settings);
+    const tenders =
+      ctx.body.paid === undefined && !Array.isArray(ctx.body.tenders)
+        ? [{ currency: '', amount2: null, base: total }]
+        : readTenders(ctx.body, second);
+    const tendered = money(tenders.reduce((s, x) => s + x.base, 0));
     // Use the directory's spelling when this customer is already known.
     const customer = canonicalName('customer', ctx.body.customer);
 
@@ -122,8 +155,8 @@ export function register(router) {
       const docNo = str(ctx.body.doc_no) || nextDocNo(db, 'sales', 'INV');
       const res = db
         .prepare(
-          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           docNo,
@@ -134,10 +167,11 @@ export function register(router) {
           tax,
           total,
           cogs,
-          paid,
+          0, // recalcPaid fills this in from the payment rows below
           str(ctx.body.method) || 'cash',
           str(ctx.body.note),
           ctx.user.id,
+          second ? second.rate : null,
         );
       const saleId = lastId(res);
 
@@ -162,13 +196,30 @@ export function register(router) {
           `${date} ${new Date().toISOString().slice(11, 19)}`,
         );
       }
-      // The amount handed over at the till is simply the first instalment.
-      // Anything above the total is change, not an overpayment, so it is capped.
-      const firstPayment = money(Math.min(paid, total));
-      if (firstPayment > 0) {
-        db.prepare(
-          `INSERT INTO payments (sale_id, amount, method, date, note, user_id) VALUES (?, ?, ?, ?, '', ?)`,
-        ).run(saleId, firstPayment, str(ctx.body.method) || 'cash', date, ctx.user.id);
+      // What was handed over at the till is the first instalment, one row per
+      // currency. Anything above the total is change, not an overpayment, so the
+      // rows stop at the total.
+      const insertPayment = db.prepare(
+        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate)
+         VALUES (?, ?, ?, ?, '', ?, ?, ?, ?)`,
+      );
+      let owed = total;
+      for (const tender of tenders) {
+        const amount = money(Math.min(owed, tender.base));
+        if (!(amount > 0)) continue;
+        owed = money(owed - amount);
+        const isSecond = tender.currency === 'second';
+        insertPayment.run(
+          saleId,
+          amount,
+          str(ctx.body.method) || 'cash',
+          date,
+          ctx.user.id,
+          tender.currency,
+          // The part of the notes that paid the invoice; the rest went back as change.
+          isSecond ? Math.min(tender.amount2, toSecond(amount, second)) : null,
+          isSecond ? second.rate : null,
+        );
       }
       recalcPaid(saleId);
 
@@ -177,7 +228,15 @@ export function register(router) {
       return loadSale(saleId);
     });
 
-    return { ...sale, shortages, settings };
+    const change = money(Math.max(0, tendered - total));
+    return {
+      ...sale,
+      shortages,
+      settings,
+      tendered,
+      change,
+      change2: second ? toSecond(change, second) : null,
+    };
   });
 
   // Record another instalment against an invoice.
@@ -185,8 +244,14 @@ export function register(router) {
     const sale = loadSale(ctx.params.id);
     if (!sale) throw notFound('Sale not found', 'SALE_NOT_FOUND');
 
-    const amount = money(num(ctx.body.amount));
+    // Taken in the second currency: convert at today's rate, keep what was handed over.
+    const inSecond = ctx.body.currency === 'second';
+    const second = secondCurrency();
+    if (inSecond && !second) throw badRequest('The second currency is not switched on', 'SECOND_CURRENCY_OFF');
+    let amount = inSecond ? toBase(ctx.body.amount, second) : money(num(ctx.body.amount));
     if (!(amount > 0)) throw badRequest('Payment amount must be greater than zero', 'PAYMENT_POSITIVE');
+    // Paying the balance in the second currency can land a cent over after rounding.
+    if (inSecond && Math.abs(amount - sale.balance) <= 0.01) amount = sale.balance;
     // Refuse to record more than is owed: the excess is change at the counter,
     // not money the business is holding for this invoice.
     if (amount > sale.balance + 0.005) {
@@ -197,8 +262,19 @@ export function register(router) {
 
     return transact(() => {
       db.prepare(
-        `INSERT INTO payments (sale_id, amount, method, date, note, user_id) VALUES (?, ?, ?, ?, ?, ?)`,
-      ).run(sale.id, amount, str(ctx.body.method) || 'cash', isoDate(ctx.body.date), str(ctx.body.note), ctx.user.id);
+        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        sale.id,
+        amount,
+        str(ctx.body.method) || 'cash',
+        isoDate(ctx.body.date),
+        str(ctx.body.note),
+        ctx.user.id,
+        inSecond ? 'second' : '',
+        inSecond ? Math.max(0, num(ctx.body.amount)) : null,
+        inSecond ? second.rate : null,
+      );
       recalcPaid(sale.id);
       return loadSale(sale.id);
     });

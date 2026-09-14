@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { formatSecond, money2, second, toSecond } from '../currency.js';
 import { icon } from '../icons.js';
 import { PAYMENT_METHODS, count, errorText, methodText, t } from '../i18n.js';
 import {
@@ -10,8 +11,9 @@ import {
   downloadCsv,
   emptyState,
   esc,
-  formModal,
   modal,
+  readFields,
+  renderFields,
   money,
   monthStart,
   qtyText,
@@ -30,7 +32,7 @@ import {
  * visit's business, and it stays available from Sales History for that.
  */
 /** The printable receipt itself. */
-function receiptHtml(sale, change = 0) {
+function receiptHtml(sale, change = 0, change2 = null) {
   const cfg = sale.settings || store.settings;
   const line = (label, value, cls = '') =>
     `<div class="r-line ${cls}"><span>${esc(label)}</span><span>${value}</span></div>`;
@@ -54,21 +56,27 @@ function receiptHtml(sale, change = 0) {
         ${sale.discount ? line(t('common.discount'), `−${money(sale.discount)}`) : ''}
         ${sale.tax ? line(t('common.tax'), money(sale.tax)) : ''}
         ${line(t('receipt.total'), money(sale.total), 'r-total')}
+        ${sale.rate2 && second() ? line('', money2(sale.total, sale.rate2), 'r-second') : ''}
         ${line(t('pay.paid'), money(sale.paid))}
+        ${(sale.payments || [])
+          .filter((p) => p.currency === 'second' && p.amount2)
+          .map((p) => line(t('receipt.paid_in', { c: second()?.symbol || '' }), esc(formatSecond(p.amount2)), 'r-second'))
+          .join('')}
         ${change > 0.004 ? line(t('receipt.change'), money(change)) : ''}
+        ${change > 0.004 && change2 ? line('', esc(formatSecond(change2)), 'r-second') : ''}
         ${sale.balance > 0.004 ? line(t('pay.balance'), money(sale.balance), 'r-total') : ''}
         <div class="r-rule"></div>
         <div class="r-center">${esc(cfg.receipt_footer || '')}</div>
       </div>`;
 }
 
-export function showReceipt(sale, { change = 0, onChanged, afterSale = false } = {}) {
+export function showReceipt(sale, { change = 0, change2 = null, onChanged, afterSale = false } = {}) {
   const owing = !afterSale && sale.balance > 0.004;
 
   return modal({
     title: t('receipt.title', { doc: sale.doc_no }),
     subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')}`,
-    body: `${receiptHtml(sale, change)}
+    body: `${receiptHtml(sale, change, change2)}
       ${afterSale ? '' : paymentsHtml(sale)}`,
     footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
              ${
@@ -132,7 +140,11 @@ function paymentsHtml(sale) {
                 <td class="nowrap">${dateText(r.date)}</td>
                 <td><span class="badge">${esc(methodText(r.method))}</span></td>
                 <td class="muted">${esc(r.note || '')}</td>
-                <td class="right"><b>${money(r.amount)}</b></td>
+                <td class="right"><b>${money(r.amount)}</b>${
+                  r.currency === 'second' && r.amount2
+                    ? `<div class="money2">${esc(formatSecond(r.amount2))} · ${esc(t('pay.at_rate', { r: Number(r.rate).toLocaleString() }))}</div>`
+                    : ''
+                }</td>
                 <td class="right">${
                   store.user.role === 'admin'
                     ? `<button class="btn btn-sm btn-ghost" data-del-pay="${r.id}" title="${esc(
@@ -150,38 +162,75 @@ function paymentsHtml(sale) {
 
 /** Take an instalment against an invoice. Resolves with the updated sale. */
 export async function recordPayment(sale) {
-  const data = await formModal({
+  const cur = second();
+  const fields = [
+    ...(cur
+      ? [
+          {
+            name: 'currency',
+            label: t('pay.currency'),
+            type: 'select',
+            value: 'base',
+            options: [
+              { value: 'base', label: store.settings.currency || '$' },
+              { value: 'second', label: cur.symbol },
+            ],
+          },
+        ]
+      : []),
+    {
+      name: 'amount',
+      label: t('pay.amount'),
+      type: 'number',
+      step: 'any',
+      min: 0,
+      // Pre-filled with the whole balance: settling in full is the common case,
+      // and anything less is just a smaller number typed over it.
+      value: sale.balance.toFixed(2),
+      required: true,
+      autofocus: true,
+      help: cur
+        ? t('pay.amount_help_second', { v: formatSecond(toSecond(sale.balance, cur), cur) })
+        : t('pay.amount_help'),
+    },
+    {
+      name: 'method',
+      label: t('pos.payment_method'),
+      type: 'select',
+      value: 'cash',
+      options: PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) })),
+    },
+    { name: 'date', label: t('common.date'), type: 'date', value: todayISO() },
+    { name: 'note', label: t('common.note'), span: 2 },
+  ];
+
+  const data = await modal({
     title: t('pay.record_title', { doc: sale.doc_no }),
     subtitle: t('pay.record_sub', { balance: money(sale.balance), total: money(sale.total) }),
-    submitLabel: t('pay.record'),
-    fields: [
-      {
-        name: 'amount',
-        label: t('pay.amount'),
-        type: 'number',
-        step: '0.01',
-        min: 0,
-        // Pre-filled with the whole balance: settling in full is the common case,
-        // and anything less is just a smaller number typed over it.
-        value: sale.balance.toFixed(2),
-        required: true,
-        autofocus: true,
-        help: t('pay.amount_help'),
-      },
-      {
-        name: 'method',
-        label: t('pos.payment_method'),
-        type: 'select',
-        value: 'cash',
-        options: PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) })),
-      },
-      { name: 'date', label: t('common.date'), type: 'date', value: todayISO() },
-      { name: 'note', label: t('common.note'), span: 2 },
-    ],
+    body: `<form id="modal-form" class="form-grid" style="padding:8px 0 12px">${renderFields(fields)}</form>`,
+    footer: `<div class="spacer"></div>
+      <button class="btn" data-close>${esc(t('common.cancel'))}</button>
+      <button class="btn btn-primary" form="modal-form" type="submit">${esc(t('pay.record'))}</button>`,
+    setup: (root, close) => {
+      const form = root.querySelector('#modal-form');
+      // Switching currency converts the amount, so the balance stays the balance.
+      form.currency?.addEventListener('change', () => {
+        const value = Number(form.amount.value) || 0;
+        form.amount.value =
+          form.currency.value === 'second' ? toSecond(value, cur) : (Math.round((value / cur.rate) * 100) / 100).toFixed(2);
+      });
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        close(readFields(root, fields));
+      });
+    },
   });
   if (!data) return null;
   try {
-    const updated = await api.addPayment(sale.id, data);
+    const updated = await api.addPayment(sale.id, {
+      ...data,
+      currency: data.currency === 'second' ? 'second' : '',
+    });
     toast(
       updated.balance > 0.004 ? t('pay.added', { balance: money(updated.balance) }) : t('pay.settled'),
       'success',
@@ -237,6 +286,13 @@ async function renderSale(root, ctx, id) {
               ${row(t('common.total'), money(sale.total), 'strong')}
               ${row(t('pay.paid'), money(sale.paid))}
               ${row(t('pay.balance'), money(sale.balance), owing ? 'strong money-neg' : 'muted')}
+              ${
+                second()
+                  ? `<div class="sum-sep"></div>
+                     ${sale.rate2 ? row(t('sales.total_in', { c: second().symbol }), esc(money2(sale.total, sale.rate2)), 'muted') : ''}
+                     ${owing ? row(t('sales.balance_in', { c: second().symbol }), esc(money2(sale.balance)), 'money-neg') : ''}`
+                  : ''
+              }
               ${
                 admin && sale.cogs !== undefined
                   ? `<div class="sum-sep"></div>${row(t('common.cost'), money(sale.cogs), 'muted')}

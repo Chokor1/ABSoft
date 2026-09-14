@@ -98,6 +98,8 @@ export const api = {
 
   settings: () => api.get('/api/settings'),
   saveSettings: (s) => api.put('/api/settings', s),
+  saveExchangeRate: (rate) => api.put('/api/exchange-rate', { rate }),
+  exchangeRates: () => api.get('/api/exchange-rates'),
 
   entityKinds: () => api.get('/api/entity-kinds'),
   entities: (kind, query) => api.get(`/api/entities/${kind}`, query),

@@ -266,6 +266,31 @@ keeps the total and **Make payment** in reach while you scroll.
 
 ---
 
+## A second currency (for example L.L beside $)
+
+Turn it on under **Settings → Second currency**: tick *Use a second currency*, give its symbol
+(`L.L`), how many decimals it is counted in (`0`) and the rate — how much of it one unit of the
+main currency buys (`89500`). The books stay in the main currency: prices, costs, totals, profit
+and every report. The second currency is for showing amounts and taking money.
+
+- **The rate lives in the sidebar.** Everyone sees *1 $ = 89,500 L.L*; an administrator clicks the
+  pencil, types the new rate and presses Enter. Every price on screen changes at once, and other
+  tills pick the new rate up within a minute. Each change is kept with who made it.
+- **Prices in both.** The till's product cards, the cart total, the product list (a *Price in L.L*
+  column), the product page, purchases and invoices show the second currency beside the first.
+- **Paying in either, or both.** The payment dialog has *Received in $* and *Received in L.L*.
+  Type the L.L handed over and the dollar box shows what is left to pay; **All in L.L** puts the
+  whole invoice in L.L. Change and anything still owed are shown in both currencies.
+- **Taking the rest later**, on the invoice page, lets you choose the currency; switching it
+  converts the balance.
+- **Rates are remembered.** An invoice keeps the rate of its day, and a payment in L.L keeps what
+  was handed over and the rate it was taken at — so changing the rate tomorrow never rewrites
+  yesterday. The receipt prints the total and what was paid in L.L.
+
+Switching the second currency off hides it everywhere and keeps the rate for next time.
+
+---
+
 ## Payments, in full or in instalments
 
 A sale does not have to be paid all at once. At the till, type any amount into

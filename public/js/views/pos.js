@@ -16,6 +16,7 @@ import {
 } from '../ui.js';
 import { showReceipt } from './sales.js';
 import { celebrateSale, playSaleChime, primeAudio } from '../feedback.js';
+import { money2, money2Html, onRateChange, second, toBase, toSecond } from '../currency.js';
 
 const methodOptions = () => PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) }));
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -117,7 +118,7 @@ export async function render(root, ctx) {
             <div class="t-name">${esc(p.name)}</div>
             ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
             <div class="t-meta">
-              <span class="t-price">${money(p.price)}</span>
+              <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
               <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
             </div>
           </button>`,
@@ -350,12 +351,13 @@ export async function render(root, ctx) {
             )}</span></div>`
           : ''
       }
-      <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v">${money(tot.total)}</span></div>`;
+      <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v">${money(tot.total)}</span></div>
+      ${second() ? `<div class="sum-row total2"><span></span><span class="v">${money2Html(tot.total)}</span></div>` : ''}`;
 
     const empty = state.cart.length === 0;
     $('#checkout').disabled = empty;
     $('#bar-checkout').disabled = empty;
-    $('#bar-total').textContent = money(tot.total);
+    $('#bar-total').innerHTML = `${esc(money(tot.total))} ${money2Html(tot.total)}`;
     $('#bar-count').textContent = t('pos.item_count', { n: state.cart.length });
     $('#pos-bar').classList.toggle('has-items', !empty);
   }
@@ -428,6 +430,7 @@ export async function render(root, ctx) {
     const draft = state.draft;
     const initial = cartTotals(draft.discount);
 
+    let stopRate = () => {};
     const sale = await modal({
       title: t('pos.take_payment'),
       subtitle: t('pos.payment_sub', { n: state.cart.length, t: money(initial.subtotal) }),
@@ -455,13 +458,32 @@ export async function render(root, ctx) {
 
           <div class="pay-due">
             <span>${esc(t('pos.amount_due'))}</span>
-            <span class="amount" id="pay-due"></span>
+            <span class="amount"><span id="pay-due"></span><small class="pay-due2" id="pay-due2"></small></span>
           </div>
 
-          <div class="field">
-            <label>${esc(t('pos.amount_received'))}</label>
-            <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/>
-          </div>
+          ${
+            second()
+              ? `<div class="pay-tenders">
+                  <div class="field">
+                    <label>${esc(t('pos.received_in', { c: store.settings.currency || '$' }))}</label>
+                    <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/>
+                  </div>
+                  <div class="field">
+                    <label>${esc(t('pos.received_in', { c: second().symbol }))}</label>
+                    <div class="pay-amount2-wrap">
+                      <input class="input pay-amount" id="pay-amount2" type="number" step="any" min="0" placeholder="0"/>
+                      <button type="button" class="btn btn-sm" id="pay-all2" title="${esc(t('pos.all_in', { c: second().symbol }))}">${esc(
+                        t('pos.all_in', { c: second().symbol }),
+                      )}</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="pay-rate muted" id="pay-rate"></div>`
+              : `<div class="field">
+                  <label>${esc(t('pos.amount_received'))}</label>
+                  <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/>
+                </div>`
+          }
 
           <div class="pay-result" id="pay-result"></div>
 
@@ -495,25 +517,39 @@ export async function render(root, ctx) {
       setup: (dialog, close) => {
         const $d = (sel) => dialog.querySelector(sel);
         const amount = $d('#pay-amount');
+        const amount2 = $d('#pay-amount2'); // only when a second currency is on
         let amountTouched = false;
+        const received2 = () => (amount2 && second() ? toBase(amount2.value) : 0);
+        const received = () => round2((Number(amount.value) || 0) + received2());
+        // A second amount beside a first-currency one, e.g. "  ·  552,500 L.L".
+        const both = (v) => `${esc(money(v))}${second() ? ` <small class="money2">${esc(money2(v))}</small>` : ''}`;
 
         const current = () => cartTotals($d('#pay-discount').value);
 
         const paint = () => {
           const tot = current();
           $d('#pay-due').textContent = money(tot.total);
+          $d('#pay-due2').textContent = second() ? money2(tot.total) : '';
           if ($d('#pay-tax')) $d('#pay-tax').textContent = money(tot.tax);
-          // Until the cashier types an amount, it follows what is due.
-          if (!amountTouched) amount.value = tot.total.toFixed(2);
+          // Until the cashier types a first-currency amount, it covers whatever the
+          // second-currency notes do not.
+          if (!amountTouched) amount.value = Math.max(0, round2(tot.total - received2())).toFixed(2);
+          const cur = second();
+          if ($d('#pay-rate') && cur) {
+            $d('#pay-rate').textContent = t('pos.rate_line', {
+              a: `1 ${store.settings.currency || '$'}`,
+              b: `${cur.rate.toLocaleString()} ${cur.symbol}`,
+            });
+          }
 
-          const diff = round2((Number(amount.value) || 0) - tot.total);
+          const diff = round2(received() - tot.total);
           const result = $d('#pay-result');
           if (diff > 0.004) {
             result.className = 'pay-result change';
-            result.innerHTML = `<span>${esc(t('receipt.change'))}</span><span class="amount">${money(diff)}</span>`;
+            result.innerHTML = `<span>${esc(t('receipt.change'))}</span><span class="amount">${both(diff)}</span>`;
           } else if (diff < -0.004) {
             result.className = 'pay-result owing';
-            result.innerHTML = `<span>${esc(t('pay.remaining'))}</span><span class="amount">${money(-diff)}</span>`;
+            result.innerHTML = `<span>${esc(t('pay.remaining'))}</span><span class="amount">${both(-diff)}</span>`;
           } else {
             result.className = 'pay-result settled';
             result.innerHTML = `<span>${esc(t('pay.settled_now'))}</span><span class="amount">${money(0)}</span>`;
@@ -541,12 +577,27 @@ export async function render(root, ctx) {
           amountTouched = true;
           paint();
         });
-        amount.addEventListener('keydown', (e) => {
+        const confirmOnEnter = (e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
             $d('#pay-confirm').click();
           }
-        });
+        };
+        amount.addEventListener('keydown', confirmOnEnter);
+        if (amount2) {
+          amount2.addEventListener('input', paint);
+          amount2.addEventListener('keydown', confirmOnEnter);
+          // The whole invoice in the second currency.
+          $d('#pay-all2').addEventListener('click', () => {
+            amount2.value = toSecond(current().total);
+            amountTouched = true;
+            amount.value = '0';
+            paint();
+            amount2.focus();
+          });
+        }
+        // The rate changed while the dialog was open (another till, the sidebar).
+        stopRate = onRateChange(paint);
 
         $d('#pay-confirm').addEventListener('click', async () => {
           const btn = $d('#pay-confirm');
@@ -560,7 +611,14 @@ export async function render(root, ctx) {
               customer: draft.customer.trim(),
               method: draft.method,
               discount: draft.discount,
-              paid: Math.max(0, Number(amount.value) || 0),
+              ...(amount2 && second()
+                ? {
+                    tenders: [
+                      { currency: 'base', amount: Math.max(0, Number(amount.value) || 0) },
+                      { currency: 'second', amount: Math.max(0, Number(amount2.value) || 0) },
+                    ],
+                  }
+                : { paid: Math.max(0, Number(amount.value) || 0) }),
               note: draft.note.trim(),
               items: state.cart.map((l) => ({
                 product_id: l.product_id,
@@ -569,7 +627,7 @@ export async function render(root, ctx) {
                 discount: l.discount,
               })),
             });
-            saved.change = round2(Math.max(0, (Number(amount.value) || 0) - saved.total));
+            saved.change = saved.change ?? round2(Math.max(0, received() - saved.total));
             close(saved);
           } catch (err) {
             toast(errorText(err), 'error');
@@ -581,6 +639,7 @@ export async function render(root, ctx) {
       },
     });
 
+    stopRate();
     if (!sale) return; // cancelled: the cart and the draft are left exactly as they were
 
     if (sale.shortages?.length) {
@@ -597,7 +656,7 @@ export async function render(root, ctx) {
     await celebrateSale(sale);
 
     // Then the document: print it, or close it and carry on selling.
-    await showReceipt(sale, { change: sale.change, afterSale: true });
+    await showReceipt(sale, { change: sale.change, change2: sale.change2, afterSale: true });
     scan.focus();
   }
 
@@ -612,6 +671,14 @@ export async function render(root, ctx) {
   drawCart();
   scan.focus();
 
-  // main.js calls this when navigating away.
+  // Switching the second currency on or off redraws the prices; a new rate
+  // alone is handled by the live amounts themselves.
+  const stopWatching = onRateChange(() => {
+    drawTiles();
+    applyFilter({ animate: false });
+    paintTotals();
+  });
 
+  // main.js calls this when navigating away.
+  return stopWatching;
 }

@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { money2, money2Html } from '../currency.js';
 import { attachPicker } from '../picker.js';
 import { productOption } from '../product-option.js';
 import { wireNamePickers } from '../name-picker.js';
@@ -187,7 +188,7 @@ async function renderDoc(root, ctx, id) {
   const body = docPage(root, {
     title: t('buy.view_title', { doc: p.doc_no }),
     subtitle: [dateText(p.date), p.supplier, p.username].filter(Boolean).join(' · '),
-    badges: `<span class="badge accent">${money(p.total)}</span>
+    badges: `<span class="badge accent">${money(p.total)} ${money2Html(p.total)}</span>
              ${p.edit_count ? `<span class="badge warn">${esc(t('buy.edited'))}</span>` : ''}`,
     actions: `<button class="btn" data-print>${icon('print')} ${esc(t('common.print'))}</button>
               ${
@@ -371,7 +372,8 @@ async function renderForm(root, ctx, editId = null) {
             )
             .join('')}</tbody>
           <tfoot><tr><td colspan="3">${esc(t('buy.purchase_total'))}</td>
-            <td class="right">${money(lines.reduce((s, l) => s + l.qty * l.unit_cost, 0))}</td><td></td></tr></tfoot>
+            <td class="right"><span data-foot-total>${money(lines.reduce((s, l) => s + l.qty * l.unit_cost, 0))}</span>
+              <span class="money2 block" data-foot-total2>${esc(money2(lines.reduce((s, l) => s + l.qty * l.unit_cost, 0)))}</span></td><td></td></tr></tfoot>
         </table>`
       : emptyState(t('buy.no_lines'), t('buy.no_lines_sub'), 'package');
 
@@ -439,8 +441,11 @@ async function renderForm(root, ctx, editId = null) {
       const cell = linesEl.querySelector(`tbody tr:nth-child(${i + 1}) td:nth-child(4) b`);
       if (cell) cell.textContent = money(l.qty * l.unit_cost);
     });
-    const foot = linesEl.querySelector('tfoot td.right');
-    if (foot) foot.textContent = money(lines.reduce((s, l) => s + l.qty * l.unit_cost, 0));
+    const sum = lines.reduce((s, l) => s + l.qty * l.unit_cost, 0);
+    const foot = linesEl.querySelector('[data-foot-total]');
+    if (foot) foot.textContent = money(sum);
+    const foot2 = linesEl.querySelector('[data-foot-total2]');
+    if (foot2) foot2.textContent = money2(sum);
   };
 
   const wire = () => {
