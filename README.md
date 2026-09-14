@@ -252,12 +252,14 @@ scanned barcode straight away, or the product itself when only one card is left;
 **Clear** brings every card back.
 
 The cart is only what is being sold. The newest item goes on top, scanning an item that is
-already there adds one to its line, and each line's quantity, unit price and discount are
-edited right where they sit.
+already there adds one to its line, and each line's quantity, unit price and **discount %** are
+edited right where they sit (the invoice records the discount as money). With a second currency
+on, each line and the total show it too.
 
-**Make payment** opens the payment dialog: customer, payment method, an invoice discount
-(separate from the line discounts), the amount handed over and — as you type — the change to
-give back or the amount still owing. Confirming saves the sale, plays a short chime with a
+**Make payment** opens the payment dialog. On one side, the amount due in large type, the amount
+handed over (in each currency, when a second one is on) and — as you type — the change to give
+back or the amount still owing. On the other, the customer, the payment method as a row of
+buttons, an invoice discount in money **or** as a percentage, the totals, and a note. Confirming saves the sale, plays a short chime with a
 check mark, and opens the receipt to print or close. The chime can be switched off per device
 under **Settings → Till**.
 

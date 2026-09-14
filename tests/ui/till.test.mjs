@@ -173,12 +173,15 @@ await page.waitForTimeout(150);
 check('changing the unit price updates the line (3 × 16 = 48)',
   (await text(`${espresso} [data-total]`)).includes('$48.00'), await text(`${espresso} [data-total]`));
 
-await page.fill(`${espresso} [data-field="discount"]`, '8');
+check('the line discount is a percentage, and says so',
+  (await page.getAttribute(`${espresso} [data-field="discount"]`, 'placeholder')) === 'Discount %' &&
+    (await text('.cl-head')).includes('Discount %'), await page.getAttribute(`${espresso} [data-field="discount"]`, 'placeholder'));
+await page.fill(`${espresso} [data-field="discount"]`, '25');
 await page.waitForTimeout(150);
-check('a line discount comes off that line (48 − 8 = 40)',
-  (await text(`${espresso} [data-total]`)).includes('$40.00'), await text(`${espresso} [data-total]`));
-check('the cart total follows (2 + 2.50 + 40 = 44.50)', (await text('#totals')).includes('$44.50'), await text('#totals'));
-check('and shows the discount given', (await text('#totals')).includes('$8.00'), await text('#totals'));
+check('25% comes off that line (48 − 12 = 36)',
+  (await text(`${espresso} [data-total]`)).includes('$36.00'), await text(`${espresso} [data-total]`));
+check('the cart total follows (2 + 2.50 + 36 = 40.50)', (await text('#totals')).includes('$40.50'), await text('#totals'));
+check('and shows the discount given in money', (await text('#totals')).includes('$12.00'), await text('#totals'));
 check('typing never threw focus out of the field',
   await page.evaluate(() => document.activeElement?.dataset?.field === 'discount'));
 
@@ -198,7 +201,7 @@ await shot('91-till-inline-edits');
 
 /* ----------------------------------------------------------- the payment */
 console.log('\n[paying]');
-await scan('7622210992796');   // muffin back, 2.50 -> cart total 42.50
+await scan('7622210992796');   // muffin back, 2.50 -> cart total 38.50
 await page.click('#checkout');
 await page.waitForSelector('#pay-amount');
 check('Make payment opens the payment dialog', await page.isVisible('.modal-backdrop'));
@@ -211,15 +214,15 @@ check('there are no Full amount / Half / Pay later buttons', (await page.$$('[da
 check('customer is chosen here', await page.isVisible('#pay-customer'));
 check('and the payment method', await page.isVisible('#pay-method'));
 check('and an invoice discount, separate from line discounts', await page.isVisible('#pay-discount'));
-check('what is due matches the cart', (await text('#pay-due')).includes('$42.50'), await text('#pay-due'));
+check('what is due matches the cart', (await text('#pay-due')).includes('$38.50'), await text('#pay-due'));
 
 await page.fill('#pay-customer', 'Till Customer');
 await page.fill('#pay-discount', '2.50');
 await page.waitForTimeout(200);
-check('an invoice discount reduces what is due (42.50 − 2.50)', (await text('#pay-due')).includes('$40.00'),
+check('an invoice discount reduces what is due (38.50 − 2.50)', (await text('#pay-due')).includes('$36.00'),
   await text('#pay-due'));
 check('and the amount received follows it until typed into',
-  Number(await page.inputValue('#pay-amount')) === 40, await page.inputValue('#pay-amount'));
+  Number(await page.inputValue('#pay-amount')) === 36, await page.inputValue('#pay-amount'));
 
 await page.click('.modal-foot [data-close]');
 await page.waitForTimeout(300);
@@ -230,15 +233,35 @@ check('and reopening keeps what was typed',
   (await page.inputValue('#pay-customer')) === 'Till Customer' && (await page.inputValue('#pay-discount')) === '2.5',
   `${await page.inputValue('#pay-customer')} / ${await page.inputValue('#pay-discount')}`);
 
+console.log('\n[the payment dialog, improved]');
+check('the payment method is a row of buttons, cash chosen', (await page.getAttribute('#pay-method [data-method="cash"]', 'aria-checked')) === 'true');
+await page.click('#pay-method [data-method="card"]');
+check('clicking Card chooses it', (await page.getAttribute('#pay-method [data-method="card"]', 'aria-checked')) === 'true' &&
+  (await page.getAttribute('#pay-method [data-method="cash"]', 'aria-checked')) === 'false');
+await page.click('#pay-method [data-method="cash"]');
+await page.click('#pay-discount-mode [data-mode="percent"]');
+await page.fill('#pay-discount', '10');
+await page.waitForTimeout(200);
+check('the invoice discount can be a percentage (38.50 − 10% = 34.65)', (await text('#pay-due')).includes('$34.65'), await text('#pay-due'));
+await page.click('#pay-discount-mode [data-mode="amount"]');
+await page.fill('#pay-discount', '2.50');
+await page.waitForTimeout(200);
+check('and back to an amount', (await text('#pay-due')).includes('$36.00'), await text('#pay-due'));
+const layout = await page.evaluate(() => {
+  const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+  return { dueLeft: r('.pay-due').left, sideLeft: r('.pay-side').left, dueTop: r('.pay-due').top, sideTop: r('.pay-side').top };
+});
+check('what is due and the details sit side by side on a wide screen', layout.sideLeft > layout.dueLeft + 100 && Math.abs(layout.sideTop - layout.dueTop) < 30, JSON.stringify(layout));
+
 await page.fill('#pay-amount', '25');
 await page.waitForTimeout(200);
-check('paying part shows the remainder', (await text('#pay-result')).includes('$15.00'), await text('#pay-result'));
+check('paying part shows the remainder', (await text('#pay-result')).includes('$11.00'), await text('#pay-result'));
 await shot('92-till-payment');
 
 await page.click('#pay-confirm');
 await page.waitForSelector('.sale-done', { timeout: 8000 });
 check('confirming shows the sale-complete moment', await page.isVisible('.sale-done'));
-check('with the amount', (await text('.sale-done')).includes('$40.00'), await text('.sale-done'));
+check('with the amount', (await text('.sale-done')).includes('$36.00'), await text('.sale-done'));
 check('and the document number', /INV-\d+/.test(await text('.sale-done')), await text('.sale-done'));
 check('the check mark draws itself', await page.evaluate(() =>
   getComputedStyle(document.querySelector('.sale-done-check .tick')).animationName.includes('sale-tick')));
@@ -253,9 +276,9 @@ check('the receipt right after a sale has no Record payment button', (await page
 check('nor the payment history section', !(await text('.modal-body')).includes('Payments'));
 const doc = await text('.receipt');
 check('with the customer', (await text('.modal-head')).includes('Till Customer'), await text('.modal-head'));
-check('the total after both discounts', doc.includes('$40.00'), doc.replace(/\s+/g, ' ').slice(0, 300));
+check('the total after both discounts', doc.includes('$36.00'), doc.replace(/\s+/g, ' ').slice(0, 300));
 check('what was paid', doc.includes('$25.00'));
-check('and what remains', doc.includes('$15.00'));
+check('and what remains', doc.includes('$11.00'));
 check('a Print button', await page.isVisible('.modal-foot [data-print]'));
 check('and a close button', await page.isVisible('.modal-head [data-close]'));
 await shot('93-till-receipt');
@@ -267,7 +290,7 @@ check('ready for the next sale', await page.isDisabled('#checkout'));
 
 const saved = (await page.evaluate(async () => (await fetch('/api/sales?limit=1')).json()))[0];
 check('the sale was stored with both line and invoice discounts',
-  saved.customer === 'Till Customer' && Math.abs(saved.total - 40) < 0.005 && Math.abs(saved.discount - 2.5) < 0.005,
+  saved.customer === 'Till Customer' && Math.abs(saved.total - 36) < 0.005 && Math.abs(saved.discount - 2.5) < 0.005,
   JSON.stringify({ customer: saved.customer, total: saved.total, discount: saved.discount }));
 
 /* ---------------------------------------------------------- sound setting */

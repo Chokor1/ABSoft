@@ -19,6 +19,8 @@ import { celebrateSale, playSaleChime, primeAudio } from '../feedback.js';
 import { money2, money2Html, onRateChange, second, toBase, toSecond } from '../currency.js';
 
 const methodOptions = () => PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) }));
+const METHOD_ICONS = { cash: 'coins', card: 'wallet', transfer: 'refresh', credit: 'receipt' };
+const freshDraft = () => ({ customer: '', method: 'cash', discount: 0, discountInput: 0, discountMode: 'amount', note: '' });
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /**
@@ -37,7 +39,7 @@ export async function render(root, ctx) {
     // Newest line first, so whatever was just scanned is always at the top.
     cart: [],
     // Kept between openings of the payment dialog, so cancelling it loses nothing.
-    draft: { customer: '', method: 'cash', discount: 0, note: '' },
+    draft: freshDraft(),
   };
 
   const taxRate = Number(store.settings.tax_rate) || 0;
@@ -233,7 +235,9 @@ export async function render(root, ctx) {
 
   /* ----------------------------------------------------------------- cart -- */
 
-  const lineTotal = (l) => Math.max(0, round2(l.qty * l.unit_price - l.discount));
+  /** A line's discount is typed as a percentage; the invoice records it as money. */
+  const lineDiscount = (l) => round2((l.qty * l.unit_price * Math.min(100, Math.max(0, Number(l.discountPct) || 0))) / 100);
+  const lineTotal = (l) => Math.max(0, round2(l.qty * l.unit_price - lineDiscount(l)));
 
   function addToCart(product) {
     if (!product) return;
@@ -251,7 +255,7 @@ export async function render(root, ctx) {
         unit_price: Number(product.price) || 0,
         stock: Number(product.stock) || 0,
         qty: 1,
-        discount: 0,
+        discountPct: 0,
       });
     }
     drawCart(product.id);
@@ -270,7 +274,7 @@ export async function render(root, ctx) {
         <div class="cl-name" title="${esc(l.name)}">${esc(l.name)}</div>
         <span class="cl-short" data-stock ${l.qty > l.stock ? '' : 'hidden'}
               title="${esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }))}">${esc(t('pos.low_badge'))}</span>
-        <span class="cl-total" data-total>${money(lineTotal(l))}</span>
+        <span class="cl-totals"><span class="cl-total" data-total>${money(lineTotal(l))}</span>${money2Html(lineTotal(l), { cls: 'cl-total2' })}</span>
         <button class="cl-remove" data-remove title="${esc(t('pos.remove_line'))}">${icon('trash')}</button>
       </div>
       <div class="cl-fields">
@@ -287,8 +291,12 @@ export async function render(root, ctx) {
                  aria-label="${esc(t('pos.unit_price'))}" title="${esc(t('pos.unit_price'))}"/>
         </div>
         <div class="cl-field">
-          <input class="input" type="number" step="0.01" min="0" value="${l.discount || ''}" placeholder="0.00"
-                 data-field="discount" aria-label="${esc(t('common.discount'))}" title="${esc(t('common.discount'))}"/>
+          <div class="pct-box">
+            <input class="input" type="number" step="any" min="0" max="100" value="${l.discountPct || ''}"
+                   placeholder="${esc(t('pos.discount_pct'))}" data-field="discount"
+                   aria-label="${esc(t('pos.discount_pct'))}" title="${esc(t('pos.discount_pct'))}"/>
+            <span aria-hidden="true">%</span>
+          </div>
         </div>
       </div>
     </div>`;
@@ -297,7 +305,7 @@ export async function render(root, ctx) {
   const linesHeader = () => `<div class="cl-head">
       <span>${esc(t('common.qty'))}</span>
       <span>${esc(t('pos.unit_price'))}</span>
-      <span>${esc(t('common.discount'))}</span>
+      <span>${esc(t('pos.discount_pct'))}</span>
     </div>`;
 
   function drawCart(highlightId) {
@@ -320,6 +328,11 @@ export async function render(root, ctx) {
     const el = linesEl.querySelector(`[data-line="${line.product_id}"]`);
     if (!el) return;
     el.querySelector('[data-total]').textContent = money(lineTotal(line));
+    const total2 = el.querySelector('.cl-total2');
+    if (total2) {
+      total2.dataset.base = lineTotal(line);
+      total2.textContent = money2(lineTotal(line));
+    }
     el.querySelector('[data-stock]').hidden = line.qty <= line.stock;
     paintTotals();
   }
@@ -335,7 +348,7 @@ export async function render(root, ctx) {
 
   function paintTotals() {
     const tot = cartTotals();
-    const lineDiscounts = round2(state.cart.reduce((s, l) => s + Math.min(l.discount, l.qty * l.unit_price), 0));
+    const lineDiscounts = round2(state.cart.reduce((s, l) => s + lineDiscount(l), 0));
     $('#totals').innerHTML = `
       ${
         lineDiscounts > 0
@@ -352,7 +365,11 @@ export async function render(root, ctx) {
           : ''
       }
       <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v">${money(tot.total)}</span></div>
-      ${second() ? `<div class="sum-row total2"><span></span><span class="v">${money2Html(tot.total)}</span></div>` : ''}`;
+      ${
+        second()
+          ? `<div class="sum-row total2"><span>${esc(t('pos.total_in', { c: second().symbol }))}</span><span class="v">${money2Html(tot.total)}</span></div>`
+          : ''
+      }`;
 
     const empty = state.cart.length === 0;
     $('#checkout').disabled = empty;
@@ -368,7 +385,9 @@ export async function render(root, ctx) {
     if (!input) return;
     const line = lineOf(input);
     if (!line) return;
-    line[input.dataset.field] = Math.max(0, Number(input.value) || 0);
+    const value = Math.max(0, Number(input.value) || 0);
+    if (input.dataset.field === 'discount') line.discountPct = Math.min(100, value);
+    else line[input.dataset.field] = value;
     repaintLine(line);
   });
 
@@ -413,7 +432,7 @@ export async function render(root, ctx) {
   $('#clear-cart').addEventListener('click', () => {
     if (!state.cart.length) return;
     state.cart = [];
-    state.draft = { customer: '', method: 'cash', discount: 0, note: '' };
+    state.draft = freshDraft();
     drawCart();
     scan.focus();
   });
@@ -428,151 +447,190 @@ export async function render(root, ctx) {
   async function openPayment() {
     if (!state.cart.length) return;
     const draft = state.draft;
-    const initial = cartTotals(draft.discount);
+    const cur = second();
+    const base = store.settings.currency || '$';
+    const lineDiscounts = round2(state.cart.reduce((s, l) => s + lineDiscount(l), 0));
+
+    /** The invoice discount as money, whether it was typed as an amount or a percentage. */
+    const invoiceDiscount = (value, mode) => {
+      const v = Math.max(0, Number(value) || 0);
+      return mode === 'percent' ? round2((cartTotals().subtotal * Math.min(v, 100)) / 100) : v;
+    };
 
     let stopRate = () => {};
     const sale = await modal({
       title: t('pos.take_payment'),
-      subtitle: t('pos.payment_sub', { n: state.cart.length, t: money(initial.subtotal) }),
+      subtitle: t('pos.payment_sub', { n: state.cart.length, t: money(cartTotals().subtotal) }),
+      wide: true,
       body: `
-        <div class="pay-form">
-          <div class="form-grid">
+        <div class="pay-layout">
+          <section class="pay-main">
+            <div class="pay-due">
+              <span class="pay-due-label">${esc(t('pos.amount_due'))}</span>
+              <span class="amount"><span id="pay-due"></span><small class="pay-due2" id="pay-due2"></small></span>
+            </div>
+
+            ${
+              cur
+                ? `<div class="pay-tenders">
+                    <div class="field">
+                      <label>${esc(t('pos.received_in', { c: base }))}</label>
+                      <div class="pay-input"><span class="pay-cur">${esc(base)}</span>
+                        <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/></div>
+                    </div>
+                    <div class="field">
+                      <div class="pay-label-row">
+                        <label for="pay-amount2">${esc(t('pos.received_in', { c: cur.symbol }))}</label>
+                        <button type="button" class="btn btn-sm btn-ghost pay-all2" id="pay-all2">${esc(t('pos.all_in', { c: cur.symbol }))}</button>
+                      </div>
+                      <div class="pay-input"><span class="pay-cur">${esc(cur.symbol)}</span>
+                        <input class="input pay-amount" id="pay-amount2" type="number" step="any" min="0" placeholder="0"/></div>
+                    </div>
+                  </div>
+                  <div class="pay-rate" id="pay-rate"></div>`
+                : `<div class="field">
+                    <label>${esc(t('pos.amount_received'))}</label>
+                    <div class="pay-input"><span class="pay-cur">${esc(base)}</span>
+                      <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/></div>
+                  </div>`
+            }
+
+            <div class="pay-result" id="pay-result"></div>
+          </section>
+
+          <aside class="pay-side">
             <div class="field">
               <label>${esc(t('common.customer'))}</label>
               <div class="combo"><input class="input" id="pay-customer" data-names="customer" value="${esc(
                 draft.customer,
               )}" placeholder="${esc(t('common.walk_in'))}" autocomplete="off"/></div>
             </div>
+
             <div class="field">
               <label>${esc(t('pos.payment_method'))}</label>
-              <select class="select" id="pay-method">
+              <div class="pay-methods" id="pay-method" role="radiogroup">
                 ${methodOptions()
                   .map(
-                    (o) =>
-                      `<option value="${o.value}" ${o.value === draft.method ? 'selected' : ''}>${esc(o.label)}</option>`,
+                    (o) => `<button type="button" role="radio" data-method="${o.value}"
+                              class="${o.value === draft.method ? 'active' : ''}" aria-checked="${o.value === draft.method}">
+                              ${icon(METHOD_ICONS[o.value] || 'coins')}<span>${esc(o.label)}</span></button>`,
                   )
                   .join('')}
-              </select>
+              </div>
             </div>
-          </div>
 
-          <div class="pay-due">
-            <span>${esc(t('pos.amount_due'))}</span>
-            <span class="amount"><span id="pay-due"></span><small class="pay-due2" id="pay-due2"></small></span>
-          </div>
-
-          ${
-            second()
-              ? `<div class="pay-tenders">
-                  <div class="field">
-                    <label>${esc(t('pos.received_in', { c: store.settings.currency || '$' }))}</label>
-                    <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/>
-                  </div>
-                  <div class="field">
-                    <label>${esc(t('pos.received_in', { c: second().symbol }))}</label>
-                    <div class="pay-amount2-wrap">
-                      <input class="input pay-amount" id="pay-amount2" type="number" step="any" min="0" placeholder="0"/>
-                      <button type="button" class="btn btn-sm" id="pay-all2" title="${esc(t('pos.all_in', { c: second().symbol }))}">${esc(
-                        t('pos.all_in', { c: second().symbol }),
-                      )}</button>
-                    </div>
-                  </div>
-                </div>
-                <div class="pay-rate muted" id="pay-rate"></div>`
-              : `<div class="field">
-                  <label>${esc(t('pos.amount_received'))}</label>
-                  <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/>
-                </div>`
-          }
-
-          <div class="pay-result" id="pay-result"></div>
-
-          <div class="pay-summary">
-            <div class="sum-row"><span>${esc(t('common.subtotal'))}</span>
-              <span class="v">${money(initial.subtotal)}</span></div>
-            <div class="sum-row">
-              <span>${esc(t('pos.invoice_discount'))}</span>
-              <span class="v"><input class="input sum-input" id="pay-discount" type="number" step="0.01" min="0"
-                value="${draft.discount || ''}" placeholder="0.00"/></span>
+            <div class="pay-summary">
+              <div class="sum-row"><span>${esc(t('common.subtotal'))}</span><span class="v">${money(cartTotals().subtotal)}</span></div>
+              ${
+                lineDiscounts > 0
+                  ? `<div class="sum-row muted"><span>${esc(t('pos.line_discounts'))}</span><span class="v">−${money(lineDiscounts)}</span></div>`
+                  : ''
+              }
+              <div class="sum-row">
+                <span>${esc(t('pos.invoice_discount'))}</span>
+                <span class="v pay-discount-box">
+                  <input class="input sum-input" id="pay-discount" type="number" step="0.01" min="0"
+                         value="${draft.discountInput || ''}" placeholder="${esc(draft.discountMode === 'percent' ? t('pos.discount_pct') : '0.00')}"/>
+                  <span class="seg seg-sm" id="pay-discount-mode">
+                    <button type="button" data-mode="amount" class="${draft.discountMode !== 'percent' ? 'active' : ''}">${esc(base)}</button>
+                    <button type="button" data-mode="percent" class="${draft.discountMode === 'percent' ? 'active' : ''}">%</button>
+                  </span>
+                </span>
+              </div>
+              ${taxRate ? `<div class="sum-row"><span>${esc(t('pos.tax_label', { r: taxRate }))}</span><span class="v" id="pay-tax"></span></div>` : ''}
+              <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v" id="pay-total"></span></div>
             </div>
-            ${
-              taxRate
-                ? `<div class="sum-row"><span>${esc(t('pos.tax_label', { r: taxRate }))}</span>
-                     <span class="v" id="pay-tax"></span></div>`
-                : ''
-            }
-          </div>
 
-          <div class="field">
-            <label>${esc(t('pos.note_optional'))}</label>
-            <input class="input" id="pay-note" value="${esc(draft.note)}" placeholder="${esc(
-              t('pos.note_placeholder'),
-            )}" autocomplete="off"/>
-          </div>
+            <div class="field">
+              <label>${esc(t('pos.note_optional'))}</label>
+              <input class="input" id="pay-note" value="${esc(draft.note)}" placeholder="${esc(t('pos.note_placeholder'))}" autocomplete="off"/>
+            </div>
+          </aside>
         </div>`,
-      footer: `<button class="btn" data-close>${esc(t('common.cancel'))}</button>
-               <button class="btn btn-primary btn-lg" id="pay-confirm">${icon('check')} ${esc(
-                 t('pos.confirm_sale'),
-               )}</button>`,
+      footer: `<div class="spacer"></div>
+               <button class="btn" data-close>${esc(t('common.cancel'))}</button>
+               <button class="btn btn-primary btn-lg" id="pay-confirm">${icon('check')} ${esc(t('pos.confirm_sale'))}</button>`,
       setup: (dialog, close) => {
         const $d = (sel) => dialog.querySelector(sel);
         const amount = $d('#pay-amount');
         const amount2 = $d('#pay-amount2'); // only when a second currency is on
         let amountTouched = false;
+        let mode = draft.discountMode === 'percent' ? 'percent' : 'amount';
+
+        const current = () => cartTotals(invoiceDiscount($d('#pay-discount').value, mode));
         const received2 = () => (amount2 && second() ? toBase(amount2.value) : 0);
         const received = () => round2((Number(amount.value) || 0) + received2());
-        // A second amount beside a first-currency one, e.g. "  ·  552,500 L.L".
+        // A second-currency amount beside a first-currency one.
         const both = (v) => `${esc(money(v))}${second() ? ` <small class="money2">${esc(money2(v))}</small>` : ''}`;
-
-        const current = () => cartTotals($d('#pay-discount').value);
 
         const paint = () => {
           const tot = current();
           $d('#pay-due').textContent = money(tot.total);
           $d('#pay-due2').textContent = second() ? money2(tot.total) : '';
+          $d('#pay-total').textContent = money(tot.total);
           if ($d('#pay-tax')) $d('#pay-tax').textContent = money(tot.tax);
           // Until the cashier types a first-currency amount, it covers whatever the
           // second-currency notes do not.
           if (!amountTouched) amount.value = Math.max(0, round2(tot.total - received2())).toFixed(2);
-          const cur = second();
-          if ($d('#pay-rate') && cur) {
-            $d('#pay-rate').textContent = t('pos.rate_line', {
-              a: `1 ${store.settings.currency || '$'}`,
-              b: `${cur.rate.toLocaleString()} ${cur.symbol}`,
-            });
+          const c = second();
+          if ($d('#pay-rate') && c) {
+            $d('#pay-rate').textContent = t('pos.rate_line', { a: `1 ${base}`, b: `${c.rate.toLocaleString()} ${c.symbol}` });
           }
 
           const diff = round2(received() - tot.total);
           const result = $d('#pay-result');
           if (diff > 0.004) {
             result.className = 'pay-result change';
-            result.innerHTML = `<span>${esc(t('receipt.change'))}</span><span class="amount">${both(diff)}</span>`;
+            result.innerHTML = `<span>${icon('coins')} ${esc(t('receipt.change'))}</span><span class="amount">${both(diff)}</span>`;
           } else if (diff < -0.004) {
             result.className = 'pay-result owing';
-            result.innerHTML = `<span>${esc(t('pay.remaining'))}</span><span class="amount">${both(-diff)}</span>`;
+            result.innerHTML = `<span>${icon('alert')} ${esc(t('pay.remaining'))}</span><span class="amount">${both(-diff)}</span>`;
           } else {
             result.className = 'pay-result settled';
-            result.innerHTML = `<span>${esc(t('pay.settled_now'))}</span><span class="amount">${money(0)}</span>`;
+            result.innerHTML = `<span>${icon('check')} ${esc(t('pay.settled_now'))}</span><span class="amount">${money(0)}</span>`;
           }
         };
 
         // Remember what was typed, so closing and reopening the dialog keeps it.
         const keepDraft = () => {
           draft.customer = $d('#pay-customer').value;
-          draft.method = $d('#pay-method').value;
-          draft.discount = Math.max(0, Number($d('#pay-discount').value) || 0);
+          draft.method = $d('#pay-method [data-method].active')?.dataset.method || 'cash';
+          draft.discountMode = mode;
+          draft.discountInput = Math.max(0, Number($d('#pay-discount').value) || 0);
+          draft.discount = invoiceDiscount(draft.discountInput, mode);
           draft.note = $d('#pay-note').value;
         };
 
         wireNamePickers(dialog);
         $d('#pay-customer').addEventListener('change', keepDraft);
+        ['#pay-customer', '#pay-note'].forEach((sel) => $d(sel).addEventListener('input', keepDraft));
+
+        $d('#pay-method').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-method]');
+          if (!btn) return;
+          $d('#pay-method').querySelectorAll('[data-method]').forEach((b) => {
+            b.classList.toggle('active', b === btn);
+            b.setAttribute('aria-checked', String(b === btn));
+          });
+          keepDraft();
+        });
+
         $d('#pay-discount').addEventListener('input', () => {
           keepDraft();
           paint();
         });
-        ['#pay-customer', '#pay-method', '#pay-note'].forEach((sel) =>
-          $d(sel).addEventListener('input', keepDraft),
-        );
+        $d('#pay-discount-mode').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-mode]');
+          if (!btn || btn.dataset.mode === mode) return;
+          mode = btn.dataset.mode;
+          $d('#pay-discount-mode').querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('active', b === btn));
+          $d('#pay-discount').placeholder = mode === 'percent' ? t('pos.discount_pct') : '0.00';
+          $d('#pay-discount').step = mode === 'percent' ? '1' : '0.01';
+          keepDraft();
+          paint();
+          $d('#pay-discount').focus();
+        });
+
         amount.addEventListener('input', () => {
           amountTouched = true;
           paint();
@@ -624,7 +682,7 @@ export async function render(root, ctx) {
                 product_id: l.product_id,
                 qty: l.qty,
                 unit_price: l.unit_price,
-                discount: l.discount,
+                discount: lineDiscount(l),
               })),
             });
             saved.change = saved.change ?? round2(Math.max(0, received() - saved.total));
@@ -648,7 +706,7 @@ export async function render(root, ctx) {
     if (sale.customer) forgetSuggestions('customer');
 
     state.cart = [];
-    state.draft = { customer: '', method: 'cash', discount: 0, note: '' };
+    state.draft = freshDraft();
     drawCart();
     loadProducts();
 
