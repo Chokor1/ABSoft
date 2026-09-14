@@ -104,7 +104,7 @@ async function renderList(root, ctx) {
       <div class="card"><div class="card-body flush">
         ${
           rows.length
-            ? `<div class="table-wrap"><table class="data">
+            ? `<div class="table-wrap table-scroll"><table class="data">
                 <thead><tr>
                   <th>${esc(t('nav.products'))}</th><th>${esc(t('common.barcode'))}</th>
                   <th>${esc(t('common.category'))}</th>

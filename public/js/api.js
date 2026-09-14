@@ -57,6 +57,7 @@ export const api = {
   purchases: (query) => api.get('/api/purchases', query),
   purchase: (id) => api.get(`/api/purchases/${id}`),
   createPurchase: (p) => api.post('/api/purchases', p),
+  updatePurchase: (id, p) => api.put(`/api/purchases/${id}`, p),
   deletePurchase: (id) => api.del(`/api/purchases/${id}`),
 
   sales: (query) => api.get('/api/sales', query),

@@ -25,7 +25,7 @@ async function renderList(root, ctx) {
       <div class="card"><div class="card-body flush">
         ${
           rows.length
-            ? `<div class="table-wrap"><table class="data">
+            ? `<div class="table-wrap table-scroll"><table class="data">
                 <thead><tr><th>${esc(t('common.user'))}</th><th>${esc(t('users.role'))}</th>
                   <th>${esc(t('users.status'))}</th><th class="right">${esc(t('users.sales'))}</th>
                   <th>${esc(t('users.added'))}</th><th></th></tr></thead>

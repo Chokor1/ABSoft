@@ -6,6 +6,7 @@ import { count, errorText, t } from '../i18n.js';
 import {
   confirmDialog,
   dateText,
+  dateTimeText,
   debounce,
   downloadCsv,
   emptyState,
@@ -22,11 +23,14 @@ import {
   todayISO,
 } from '../ui.js';
 
-/** #/purchases, #/purchases/new */
+/** #/purchases, #/purchases/new, #/purchases/:id/edit */
 export async function render(root, ctx) {
   if (ctx.params[0] === 'new') return renderForm(root, ctx);
+  if (ctx.params[1] === 'edit' && ctx.params[0]) return renderForm(root, ctx, ctx.params[0]);
   return renderList(root, ctx);
 }
+
+const isAdmin = () => store.user?.role === 'admin';
 
 async function renderList(root, ctx) {
   const state = { from: monthStart(), to: todayISO(), search: '' };
@@ -91,7 +95,7 @@ async function renderList(root, ctx) {
         <div class="card-body flush">
           ${
             rows.length
-              ? `<div class="table-wrap"><table class="data">
+              ? `<div class="table-wrap table-scroll"><table class="data">
                   <thead><tr><th>${esc(t('buy.document'))}</th><th>${esc(t('common.date'))}</th>
                     <th>${esc(t('common.supplier'))}</th><th class="right">${esc(t('common.lines'))}</th>
                     <th class="right">${esc(t('common.quantity'))}</th><th class="right">${esc(t('common.total'))}</th>
@@ -99,7 +103,13 @@ async function renderList(root, ctx) {
                   <tbody>${rows
                     .map(
                       (p) => `<tr class="row-click" data-open="${p.id}">
-                        <td class="mono">${esc(p.doc_no)}</td>
+                        <td class="nowrap"><span class="mono">${esc(p.doc_no)}</span>${
+                          p.edit_count
+                            ? ` <span class="badge warn" title="${esc(t('buy.edited_times', { n: p.edit_count }))}">${esc(
+                                t('buy.edited'),
+                              )}</span>`
+                            : ''
+                        }</td>
                         <td class="nowrap">${dateText(p.date)}</td>
                         <td>${esc(p.supplier || t('common.none'))}</td>
                         <td class="right">${p.line_count}</td>
@@ -107,9 +117,11 @@ async function renderList(root, ctx) {
                         <td class="right"><b>${money(p.total)}</b></td>
                         <td class="muted">${esc(p.note || '')}</td>
                         <td class="muted">${esc(p.username || t('common.none'))}</td>
-                        <td class="right">${
-                          store.user.role === 'admin'
-                            ? `<button class="btn btn-sm btn-ghost" data-del="${p.id}" title="${esc(
+                        <td class="right nowrap">${
+                          isAdmin()
+                            ? `<button class="btn btn-sm btn-ghost" data-edit="${p.id}" title="${esc(
+                                t('common.edit'),
+                              )}">${icon('edit')}</button><button class="btn btn-sm btn-ghost" data-del="${p.id}" title="${esc(
                                 t('common.delete'),
                               )}">${icon('trash')}</button>`
                             : ''
@@ -128,7 +140,13 @@ async function renderList(root, ctx) {
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {
         if (e.target.closest('button')) return;
-        showPurchase(await api.purchase(tr.dataset.open));
+        showPurchase(await api.purchase(tr.dataset.open), ctx);
+      }),
+    );
+    body.querySelectorAll('[data-edit]').forEach((b) =>
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ctx.navigate(`purchases/${b.dataset.edit}/edit`);
       }),
     );
     body.querySelectorAll('[data-del]').forEach((b) =>
@@ -155,7 +173,7 @@ async function renderList(root, ctx) {
   await load();
 }
 
-function showPurchase(p) {
+function showPurchase(p, ctx) {
   modal({
     title: t('buy.view_title', { doc: p.doc_no }),
     subtitle: `${dateText(p.date)}${p.supplier ? ` · ${p.supplier}` : ''}`,
@@ -176,14 +194,96 @@ function showPurchase(p) {
           .join('')}</tbody>
         <tfoot><tr><td colspan="3">${esc(t('common.total'))}</td><td class="right">${money(p.total)}</td></tr></tfoot>
       </table></div>
-      ${p.note ? `<p class="muted" style="padding:12px 2px">${esc(p.note)}</p>` : ''}`,
-    footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>`,
+      ${p.note ? `<p class="muted" style="padding:12px 2px">${esc(p.note)}</p>` : ''}
+      ${logHtml(p.log || [])}`,
+    footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
+             ${isAdmin() ? `<button class="btn btn-primary" data-edit>${icon('edit')} ${esc(t('common.edit'))}</button>` : ''}`,
+    setup: (root, close) => {
+      root.querySelector('[data-edit]')?.addEventListener('click', () => {
+        close();
+        ctx.navigate(`purchases/${p.id}/edit`);
+      });
+    },
   });
 }
 
-/** The stock-in document builder, as a full page. */
-async function renderForm(root, ctx) {
+const FIELD_KEYS = { supplier: 'common.supplier', date: 'common.date', note: 'buy.ref' };
+const fieldValue = (field, v) => (field === 'date' ? dateText(v) : v) || t('common.none');
+const lineText = (x) => `${qtyText(x.qty)} × ${money(x.unit_cost)}`;
+
+/** One entry of the purchase log, as a list of plain sentences. */
+function logChangesHtml(entry) {
+  const c = entry.changes || {};
+  if (entry.action !== 'edited') {
+    return c.total !== undefined
+      ? `<li>${esc(t('buy.log_total', { v: money(c.total) }))}${
+          c.lines !== undefined ? ` · ${esc(count('buy.lines', c.lines))}` : ''
+        }</li>`
+      : '';
+  }
+  const items = [];
+  for (const f of c.fields || []) {
+    items.push(
+      `<li><b>${esc(t(FIELD_KEYS[f.field] || f.field))}</b>: <s>${esc(fieldValue(f.field, f.from))}</s> → ${esc(
+        fieldValue(f.field, f.to),
+      )}</li>`,
+    );
+  }
+  for (const l of c.lines || []) {
+    const name = `<b>${esc(l.name)}</b>`;
+    if (l.type === 'added') items.push(`<li class="log-add">${esc(t('buy.log_added'))} ${name}: ${esc(lineText(l.to))}</li>`);
+    else if (l.type === 'removed')
+      items.push(`<li class="log-remove">${esc(t('buy.log_removed'))} ${name}: <s>${esc(lineText(l.from))}</s></li>`);
+    else items.push(`<li>${name}: <s>${esc(lineText(l.from))}</s> → ${esc(lineText(l.to))}</li>`);
+  }
+  if (c.total) {
+    items.push(`<li><b>${esc(t('common.total'))}</b>: <s>${money(c.total.from)}</s> → ${money(c.total.to)}</li>`);
+  }
+  return items.join('');
+}
+
+function logHtml(log) {
+  if (!log.length) return '';
+  return `<div class="purchase-log no-print">
+    <div class="card-head" style="padding:0 0 8px;border-bottom:0">
+      <div><h3 style="font-size:14px">${icon('history')} ${esc(t('buy.log'))}</h3></div>
+    </div>
+    <ol class="log-list">${log
+      .map(
+        (e) => `<li class="log-entry log-${esc(e.action)}">
+          <div class="log-head">
+            <span class="badge ${e.action === 'edited' ? 'warn' : e.action === 'deleted' ? 'danger' : 'success'}">${esc(
+              t(`buy.log_${e.action}`),
+            )}</span>
+            <span>${esc(e.full_name || e.username || t('common.none'))}</span>
+            <span class="spacer"></span>
+            <span class="muted nowrap">${esc(dateTimeText(`${e.created_at}Z`))}</span>
+          </div>
+          <ul class="log-changes">${logChangesHtml(e)}</ul>
+          ${e.reason ? `<div class="log-reason muted">“${esc(e.reason)}”</div>` : ''}
+        </li>`,
+      )
+      .join('')}</ol>
+  </div>`;
+}
+
+/** The stock-in document builder, as a full page. With `editId`, it edits a saved purchase. */
+async function renderForm(root, ctx, editId = null) {
   const back = () => ctx.navigate('purchases');
+
+  let editing = null;
+  if (editId) {
+    if (!isAdmin()) {
+      toast(t('err.PURCHASE_EDIT_ADMIN_ONLY'), 'warn');
+      return back();
+    }
+    try {
+      editing = await api.purchase(editId);
+    } catch (err) {
+      toast(errorText(err), 'error');
+      return back();
+    }
+  }
 
   // Only a count, to refuse an empty catalogue. Lines are searched, not preloaded.
   if (!(await api.products({ limit: 1 })).length) {
@@ -191,7 +291,16 @@ async function renderForm(root, ctx) {
     return back();
   }
   const supplierNames = await suggestions('supplier');
-  const lines = [];
+  const lines = editing
+    ? editing.items.map((i) => ({
+        product_id: i.product_id,
+        name: i.name,
+        barcode: i.barcode || '',
+        qty: i.qty,
+        unit_cost: i.unit_cost,
+        touchedCost: true,
+      }))
+    : [];
 
   const linesHtml = () =>
     lines.length
@@ -226,21 +335,30 @@ async function renderForm(root, ctx) {
       <div class="card-head">
         <button type="button" class="btn btn-ghost btn-icon" data-cancel
                 aria-label="${esc(t('common.back'))}">${icon('back')}</button>
-        <div><h3>${esc(t('buy.title'))}</h3><div class="sub">${esc(t('buy.sub'))}</div></div>
+        <div><h3>${esc(editing ? t('buy.edit_title', { doc: editing.doc_no }) : t('buy.title'))}</h3>
+          <div class="sub">${esc(editing ? t('buy.edit_sub') : t('buy.sub'))}</div></div>
       </div>
       <div class="card-body">
         <div class="form-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
           <div class="field"><label>${esc(t('common.supplier'))}</label>
             <input class="input" name="supplier" list="supplier-names" placeholder="${esc(
               t('buy.supplier_placeholder'),
-            )}" autocomplete="off"/>
+            )}" value="${esc(editing?.supplier || '')}" autocomplete="off"/>
             <datalist id="supplier-names">${supplierNames
               .map((n) => `<option value="${esc(n)}"></option>`)
               .join('')}</datalist></div>
           <div class="field"><label>${esc(t('common.date'))}</label>
-            <input class="input" type="date" name="date" value="${todayISO()}"/></div>
+            <input class="input" type="date" name="date" value="${editing?.date || todayISO()}"/></div>
           <div class="field"><label>${esc(t('buy.ref'))}</label>
-            <input class="input" name="note" placeholder="${esc(t('buy.ref_placeholder'))}" autocomplete="off"/></div>
+            <input class="input" name="note" placeholder="${esc(t('buy.ref_placeholder'))}" value="${esc(
+              editing?.note || '',
+            )}" autocomplete="off"/></div>
+          ${
+            editing
+              ? `<div class="field" style="grid-column:1/-1"><label>${esc(t('buy.reason'))}</label>
+                  <input class="input" name="reason" placeholder="${esc(t('buy.reason_placeholder'))}" autocomplete="off"/></div>`
+              : ''
+          }
         </div>
       </div>
       <div class="card-head" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
@@ -251,7 +369,7 @@ async function renderForm(root, ctx) {
       <div class="card-head form-actions">
         <div class="spacer"></div>
         <button type="button" class="btn" data-cancel>${esc(t('common.cancel'))}</button>
-        <button type="button" class="btn btn-primary" id="save-purchase">${icon('check')} ${esc(t('buy.save'))}</button>
+        <button type="button" class="btn btn-primary" id="save-purchase">${icon('check')} ${esc(editing ? t('buy.save_changes') : t('buy.save'))}</button>
       </div>
     </form>`;
 
@@ -337,13 +455,20 @@ async function renderForm(root, ctx) {
   root.querySelector('#save-purchase').addEventListener('click', async () => {
     const valid = lines.filter((l) => l.product_id && l.qty > 0);
     if (!valid.length) return toast(t('buy.need_line'), 'warn');
+    const payload = {
+      supplier: form.supplier.value.trim(),
+      date: form.date.value,
+      note: form.note.value.trim(),
+      items: valid.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_cost: l.unit_cost })),
+    };
     try {
-      const saved = await api.createPurchase({
-        supplier: form.supplier.value.trim(),
-        date: form.date.value,
-        note: form.note.value.trim(),
-        items: valid.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_cost: l.unit_cost })),
-      });
+      if (editing) {
+        const saved = await api.updatePurchase(editing.id, { ...payload, reason: form.reason.value.trim() });
+        toast(t('buy.updated', { doc: saved.doc_no, v: money(saved.total) }), 'success');
+        if (saved.supplier) forgetSuggestions('supplier');
+        return back();
+      }
+      const saved = await api.createPurchase(payload);
       toast(t('buy.saved', { doc: saved.doc_no, v: money(saved.total) }), 'success');
       if (saved.supplier) forgetSuggestions('supplier');
       back();
@@ -352,8 +477,9 @@ async function renderForm(root, ctx) {
     }
   });
 
-  // Start with one empty line so the form is immediately usable.
-  root.querySelector('#add-line').click();
+  // A new purchase starts with one empty line so the form is immediately usable.
+  if (editing) wire();
+  else root.querySelector('#add-line').click();
 
   // main.js calls this when navigating away.
   return dropPickers;

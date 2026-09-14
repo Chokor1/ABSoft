@@ -395,6 +395,30 @@ textarea.input { resize: vertical; min-height: 68px; }
    ========================================================================== */
 
 .table-wrap { overflow-x: auto; }
+
+/* List pages (products, lists, sales, purchases, expenses, users): on a screen
+   tall and wide enough, the page stops scrolling and the main table scrolls
+   inside its card, with its header row (and totals row) held in place.
+   Every box between the page and the table becomes a flex column that fills
+   the space left, so it works whatever sits above the table. */
+@media (min-width: 900px) and (min-height: 560px) {
+  .shell:has(.table-scroll) .main { height: 100vh; }
+  .shell:has(.table-scroll) .page {
+    flex: 1; min-height: 0; padding-bottom: 22px;
+    display: flex; flex-direction: column;
+  }
+  .page > * { flex: none; }
+  .page :has(.table-scroll):not(.grid),
+  .page > :has(.table-scroll) {
+    display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+  }
+  .page .grid:has(.table-scroll) { display: grid; grid-auto-rows: minmax(0, 1fr); }
+  .page .grid:has(.table-scroll) > .card { display: flex; flex-direction: column; min-height: 0; }
+  .page .grid:has(.table-scroll) > .card > .card-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  .page :has(.table-scroll) > .card-head { flex: none; }
+  .table-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  .table-scroll tfoot td { position: sticky; bottom: 0; z-index: 1; }
+}
 table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.data th {
   position: sticky; top: 0; z-index: 1;
@@ -995,3 +1019,18 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
   .modal-backdrop { position: static; background: none; padding: 0; }
   .modal { box-shadow: none; border: 0; max-height: none; }
 }
+
+/* Purchase history */
+.purchase-log { margin-top: 18px; }
+.purchase-log h3 { display: flex; align-items: center; gap: 6px; }
+.purchase-log h3 svg { width: 15px; height: 15px; }
+.log-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.log-entry { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; }
+.log-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.log-changes { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+.log-changes:empty { display: none; }
+.log-changes li { unicode-bidi: plaintext; }
+.log-changes s { color: var(--muted); }
+.log-add::marker { color: var(--success, #16a34a); }
+.log-remove::marker { color: var(--danger, #dc2626); }
+.log-reason { margin-top: 6px; font-size: 13px; font-style: italic; }

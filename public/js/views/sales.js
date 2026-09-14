@@ -288,7 +288,7 @@ export async function render(root, ctx) {
         <div class="card-body flush">
           ${
             rows.length
-              ? `<div class="table-wrap"><table class="data">
+              ? `<div class="table-wrap table-scroll"><table class="data">
                   <thead><tr>
                     <th>${esc(t('sales.invoice'))}</th><th>${esc(t('common.date'))}</th>
                     <th>${esc(t('common.customer'))}</th><th class="right">${esc(t('common.items'))}</th>

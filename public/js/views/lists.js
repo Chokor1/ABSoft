@@ -111,7 +111,7 @@ async function renderList(root, ctx, startKind) {
         <div class="card-body flush">
           ${
             state.rows.length
-              ? `<div class="table-wrap"><table class="data">
+              ? `<div class="table-wrap table-scroll"><table class="data">
                   <thead><tr>
                     <th>${esc(t('lists.name'))}</th>
                     ${showContact ? `<th>${esc(t('lists.contact'))}</th>` : ''}

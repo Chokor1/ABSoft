@@ -108,6 +108,39 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Purchases can be edited after they are saved, so every create, edit and
+    // delete is written to an audit log. purchase_id carries no foreign key on
+    // purpose: the trail of a deleted purchase must outlive the purchase.
+    name: 'purchase-log',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS purchase_log (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          purchase_id INTEGER NOT NULL,
+          doc_no      TEXT    NOT NULL DEFAULT '',
+          action      TEXT    NOT NULL,
+          changes     TEXT    NOT NULL DEFAULT '{}',
+          reason      TEXT    NOT NULL DEFAULT '',
+          user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_purchase_log_purchase ON purchase_log(purchase_id);
+      `);
+      addColumn(db, 'purchases', 'updated_at', 'TEXT');
+
+      // Existing purchases start their history with the moment they were recorded.
+      db.exec(`
+        INSERT INTO purchase_log (purchase_id, doc_no, action, changes, user_id, created_at)
+        SELECT pu.id, pu.doc_no, 'created',
+               json_object('total', pu.total,
+                           'lines', (SELECT COUNT(*) FROM purchase_items i WHERE i.purchase_id = pu.id)),
+               pu.user_id, pu.created_at
+        FROM purchases pu
+        WHERE NOT EXISTS (SELECT 1 FROM purchase_log l WHERE l.purchase_id = pu.id)
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

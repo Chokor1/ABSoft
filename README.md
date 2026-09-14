@@ -50,8 +50,8 @@ invoice loses a line.
 | Screen | What it is for |
 | --- | --- |
 | **Dashboard** | Today and this month at a glance: sales, profit, stock value, low-stock warnings, 30-day trend. |
-| **Sell** (`F2`) | The till. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
-| **Buy — Stock In** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. |
+| **Sell — POS** (`F2`) | The till. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
+| **Buy — Stock In** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. Administrators can edit a saved purchase; every change is logged. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
 | **Products** (`F3`) | Define what you sell: name, optional description, barcode, category, cost, default price, unit, low-stock level. Click any row for its full movement history. |
 | **Lists** | Customers, suppliers, product categories, units and expense categories — the names you reuse. |
@@ -61,6 +61,8 @@ invoice loses a line.
 | **Settings** | Store name, currency, sales tax rate, receipt footer, language, and database backups. |
 
 Press `/` anywhere to jump to the search box. Every list has an **Export CSV** button.
+On a computer screen, list pages stay put while their table scrolls inside its own section,
+with the column headings and totals row held in place; on a phone the page scrolls as usual.
 The ⛶ button in the top bar puts ABSoft **full screen** — useful on a till, where the browser
 chrome is just clutter. (Your browser's own `F11` works too.)
 
@@ -153,6 +155,26 @@ and the stock goes negative so you can see it needs fixing.
 Deleting is protective: a product or user that already appears in history is archived
 instead of deleted, so past reports never change. Voiding a sale or deleting a purchase
 (administrators only) reverses its stock movements.
+
+---
+
+## Correcting a purchase
+
+Got the quantity or cost wrong on a delivery? An administrator can open the purchase and
+click **Edit** (or the pencil on its row). Change the supplier, date, note or lines, add an
+optional reason, and save. ABSoft then:
+
+- takes the old lines back out of stock and out of the average cost, and puts the new ones in;
+- leaves sales already made alone — they keep the cost they were sold at, so past profit
+  does not shift;
+- writes the change to the purchase's **History**: who, when, the reason, and exactly what
+  changed (for example *Flour: 100 × $6.00 → 50 × $6.00*, *Total: $600.00 → $480.00*).
+
+Edited purchases carry an **Edited** badge in the list. The log also records when a purchase
+was created and deleted, and it is kept even after the purchase itself is gone.
+
+Once some of the goods have been sold, the cost correction is a best estimate — the same
+blending the average cost always uses — rather than a replay of every sale since.
 
 ---
 
