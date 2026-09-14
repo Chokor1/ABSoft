@@ -77,6 +77,15 @@ check('no paying-now field in the cart', (await page.$$('.cart #paid-now')).leng
 check('the button says Make payment', (await text('#checkout')).includes('Make payment'));
 check('and is disabled with nothing to sell', await page.isDisabled('#checkout'));
 
+/* ------------------------------------------------ full height, compact lines */
+console.log('\n[the cart takes the full height]');
+const emptyCart = await page.evaluate(() => ({
+  cart: Math.round(document.querySelector('.cart').getBoundingClientRect().height),
+  vh: window.innerHeight,
+}));
+check('an empty cart already fills the height of the screen', emptyCart.cart >= emptyCart.vh - 140,
+  JSON.stringify(emptyCart));
+
 /* ------------------------------------------------------- newest line first */
 console.log('\n[a new item goes on top]');
 await scan('5449000000996');   // Bottled Water 500ml, 1.00
@@ -91,16 +100,26 @@ order = await names();
 check('scanning an item already in the cart does not add a second line', order.length === 3, order.join(' | '));
 check('its line comes back to the top', order[0].includes('Bottled Water'), order.join(' | '));
 check('with its quantity increased',
-  (await page.inputValue('.cart-line:first-child [data-field="qty"]')) === '2',
-  await page.inputValue('.cart-line:first-child [data-field="qty"]'));
+  (await page.inputValue('.cl-head + .cart-line [data-field="qty"]')) === '2',
+  await page.inputValue('.cl-head + .cart-line [data-field="qty"]'));
 check('the total is 2×1.00 + 2.50 + 18.00 = 22.50', (await text('#totals')).includes('$22.50'), await text('#totals'));
 await shot('90-till-cart');
+const sizes = await page.evaluate(() => ({
+  line: Math.round(document.querySelector('.cart-line').getBoundingClientRect().height),
+  cart: Math.round(document.querySelector('.cart').getBoundingClientRect().height),
+  foot: Math.round(document.querySelector('.cart-foot').getBoundingClientRect().bottom),
+  cartBottom: Math.round(document.querySelector('.cart').getBoundingClientRect().bottom),
+}));
+check('each line is compact', sizes.line <= 64, JSON.stringify(sizes));
+check('the height does not change as items are added', Math.abs(sizes.cart - emptyCart.cart) <= 1, JSON.stringify(sizes));
+check('the total stays pinned to the bottom of the cart', Math.abs(sizes.foot - sizes.cartBottom) <= 2, JSON.stringify(sizes));
+check('column names appear once, above the lines', (await page.$$('.cl-head')).length === 1);
 
 /* ------------------------------------------------------ edit where it sits */
 console.log('\n[lines are edited in place]');
 check('there is no edit button to open', (await page.$$('.cart-line [data-edit]')).length === 0);
 check('each line has quantity, unit price and discount fields',
-  (await page.$$('.cart-line:first-child [data-field]')).length === 3);
+  (await page.$$('.cl-head + .cart-line [data-field]')).length === 3);
 
 const espresso = '.cart-line:has-text("Espresso")';
 await page.fill(`${espresso} [data-field="qty"]`, '3');
@@ -144,6 +163,12 @@ await scan('7622210992796');   // muffin back, 2.50 -> cart total 42.50
 await page.click('#checkout');
 await page.waitForSelector('#pay-amount');
 check('Make payment opens the payment dialog', await page.isVisible('.modal-backdrop'));
+const dialogOrder = await page.evaluate(() => {
+  const top = (sel) => document.querySelector(sel).getBoundingClientRect().top;
+  return { received: top('#pay-amount'), discount: top('#pay-discount') };
+});
+check('amount received comes before the invoice discount', dialogOrder.received < dialogOrder.discount, JSON.stringify(dialogOrder));
+check('there are no Full amount / Half / Pay later buttons', (await page.$$('[data-quick]')).length === 0);
 check('customer is chosen here', await page.isVisible('#pay-customer'));
 check('and the payment method', await page.isVisible('#pay-method'));
 check('and an invoice discount, separate from line discounts', await page.isVisible('#pay-discount'));
@@ -241,7 +266,7 @@ for (const [w, h, label] of [[1024, 800, 'tablet'], [390, 844, 'phone']]) {
     const cart = box('.cart');
     const tiles = box('#tiles');
     const scanBar = box('.scan-bar');
-    const fields = [...document.querySelectorAll('.cart-line:first-child .cl-field')].map((f) => f.getBoundingClientRect());
+    const fields = [...document.querySelectorAll('.cl-head + .cart-line .cl-field')].map((f) => f.getBoundingClientRect());
     return {
       overflow: document.body.scrollWidth > document.documentElement.clientWidth + 1,
       cartBelowScan: cart.top >= scanBar.bottom - 1,

@@ -205,48 +205,52 @@ export async function render(root, ctx) {
 
   const lineOf = (el) => state.cart.find((l) => l.product_id === Number(el.closest('[data-line]')?.dataset.line));
 
+  /**
+   * One compact line: name, total and remove on top; quantity, unit price and
+   * discount underneath. The column names are shown once, above the list, rather
+   * than repeated on every line.
+   */
   function lineHtml(l) {
     return `<div class="cart-line" data-line="${l.product_id}">
       <div class="cl-top">
-        <div class="cl-name">${esc(l.name)}</div>
+        <div class="cl-name" title="${esc(l.name)}">${esc(l.name)}</div>
+        <span class="cl-short" data-stock ${l.qty > l.stock ? '' : 'hidden'}
+              title="${esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }))}">${esc(t('pos.low_badge'))}</span>
+        <span class="cl-total" data-total>${money(lineTotal(l))}</span>
         <button class="cl-remove" data-remove title="${esc(t('pos.remove_line'))}">${icon('trash')}</button>
       </div>
       <div class="cl-fields">
         <div class="cl-field">
-          <label>${esc(t('common.qty'))}</label>
           <div class="qty-box">
             <button type="button" data-step="-1" title="${esc(t('pos.less'))}">−</button>
-            <input type="number" step="any" min="0" value="${l.qty}" data-field="qty"/>
+            <input type="number" step="any" min="0" value="${l.qty}" data-field="qty"
+                   aria-label="${esc(t('common.qty'))}"/>
             <button type="button" data-step="1" title="${esc(t('pos.more'))}">+</button>
           </div>
         </div>
         <div class="cl-field">
-          <label>${esc(t('pos.unit_price'))}</label>
-          <input class="input" type="number" step="0.01" min="0" value="${l.unit_price}" data-field="unit_price"/>
+          <input class="input" type="number" step="0.01" min="0" value="${l.unit_price}" data-field="unit_price"
+                 aria-label="${esc(t('pos.unit_price'))}" title="${esc(t('pos.unit_price'))}"/>
         </div>
         <div class="cl-field">
-          <label>${esc(t('common.discount'))}</label>
           <input class="input" type="number" step="0.01" min="0" value="${l.discount || ''}" placeholder="0.00"
-                 data-field="discount"/>
+                 data-field="discount" aria-label="${esc(t('common.discount'))}" title="${esc(t('common.discount'))}"/>
         </div>
-      </div>
-      <div class="cl-bottom">
-        <span class="cl-stock ${l.qty > l.stock ? 'short' : ''}" data-stock>${stockText(l)}</span>
-        <span class="cl-total" data-total>${money(lineTotal(l))}</span>
       </div>
     </div>`;
   }
 
-  const stockText = (l) =>
-    l.qty > l.stock
-      ? `${esc(t('pos.low_badge'))} · ${esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }))}`
-      : esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }));
+  const linesHeader = () => `<div class="cl-head">
+      <span>${esc(t('common.qty'))}</span>
+      <span>${esc(t('pos.unit_price'))}</span>
+      <span>${esc(t('common.discount'))}</span>
+    </div>`;
 
   function drawCart(highlightId) {
     const count = state.cart.length;
     $('#cart-count').textContent = t('pos.item_count', { n: count });
     linesEl.innerHTML = count
-      ? state.cart.map(lineHtml).join('')
+      ? linesHeader() + state.cart.map(lineHtml).join('')
       : emptyState(t('pos.cart_empty'), t('pos.cart_empty_sub'), 'cart');
 
     if (highlightId) {
@@ -262,9 +266,7 @@ export async function render(root, ctx) {
     const el = linesEl.querySelector(`[data-line="${line.product_id}"]`);
     if (!el) return;
     el.querySelector('[data-total]').textContent = money(lineTotal(line));
-    const stock = el.querySelector('[data-stock]');
-    stock.innerHTML = stockText(line);
-    stock.classList.toggle('short', line.qty > line.stock);
+    el.querySelector('[data-stock]').hidden = line.qty <= line.stock;
     paintTotals();
   }
 
@@ -401,6 +403,18 @@ export async function render(root, ctx) {
             </div>
           </div>
 
+          <div class="pay-due">
+            <span>${esc(t('pos.amount_due'))}</span>
+            <span class="amount" id="pay-due"></span>
+          </div>
+
+          <div class="field">
+            <label>${esc(t('pos.amount_received'))}</label>
+            <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/>
+          </div>
+
+          <div class="pay-result" id="pay-result"></div>
+
           <div class="pay-summary">
             <div class="sum-row"><span>${esc(t('common.subtotal'))}</span>
               <span class="v">${money(initial.subtotal)}</span></div>
@@ -416,24 +430,6 @@ export async function render(root, ctx) {
                 : ''
             }
           </div>
-
-          <div class="pay-due">
-            <span>${esc(t('pos.amount_due'))}</span>
-            <span class="amount" id="pay-due"></span>
-          </div>
-
-          <div class="field">
-            <label>${esc(t('pos.amount_received'))}</label>
-            <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/>
-          </div>
-
-          <div class="pay-quick">
-            <button type="button" class="btn" data-quick="full">${esc(t('pay.full'))}</button>
-            <button type="button" class="btn" data-quick="half">${esc(t('pay.half'))}</button>
-            <button type="button" class="btn" data-quick="none">${esc(t('pay.nothing'))}</button>
-          </div>
-
-          <div class="pay-result" id="pay-result"></div>
 
           <div class="field">
             <label>${esc(t('pos.note_optional'))}</label>
@@ -493,17 +489,6 @@ export async function render(root, ctx) {
           amountTouched = true;
           paint();
         });
-        dialog.querySelectorAll('[data-quick]').forEach((b) =>
-          b.addEventListener('click', () => {
-            const due = current().total;
-            const value = { full: due, half: round2(due / 2), none: 0 }[b.dataset.quick];
-            amountTouched = true;
-            amount.value = value.toFixed(2);
-            paint();
-            amount.focus();
-            amount.select();
-          }),
-        );
         amount.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') {
             e.preventDefault();

@@ -490,70 +490,83 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .cart {
   position: sticky; top: 86px;
   display: flex; flex-direction: column;
-  max-height: calc(100vh - 106px);
+  /* Full height from the start, not only once it fills up: the list grows into
+     the space and scrolls inside, and the total stays pinned at the bottom. */
+  height: calc(100vh - 108px);
+  min-height: 420px;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow);
   overflow: hidden;
 }
 .cart-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 .cart-head h3 { font-size: 14.5px; flex: 1; }
-.cart-lines { flex: 1; overflow-y: auto; padding: 8px; min-height: 140px; }
-.cart-line {
-  padding: 11px 10px;
-  border-radius: 10px;
+.cart-lines { flex: 1; overflow-y: auto; padding: 0 8px 8px; min-height: 0; }
+.cart-lines > .empty { height: 100%; display: grid; place-content: center; }
+/* Shared by the column header and every line, so they stay aligned. */
+.cl-head,
+.cl-fields {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
 }
-.cart-line + .cart-line { border-top: 1px solid var(--border); border-radius: 0; }
+
+.cl-head {
+  position: sticky; top: 0; z-index: 1;
+  padding: 8px 8px 6px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--muted);
+}
+.cl-head span:not(:first-child) { text-align: end; padding-inline-end: 7px; }
+
+.cart-line { padding: 6px 8px; }
+.cart-line + .cart-line { border-top: 1px solid var(--border); }
 .cart-line.flash { animation: line-in 1s ease-out; }
 @keyframes line-in {
   from { background: var(--accent-soft); }
   to { background: transparent; }
 }
 
-.cl-top { display: flex; align-items: flex-start; gap: 8px; }
-.cl-name { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; line-height: 1.35; }
-
-.cl-fields {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-  margin-top: 8px;
-  align-items: end;
+.cl-top { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.cl-name {
+  flex: 1; min-width: 0;
+  font-weight: 600; font-size: 12.5px; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.cl-short {
+  flex: none; padding: 0 6px; border-radius: 99px;
+  font-size: 10px; font-weight: 700; line-height: 16px;
+  background: var(--danger-soft); color: var(--danger);
+}
+.cl-total { flex: none; font-weight: 750; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+
+.cl-fields { margin-top: 3px; align-items: center; }
 .cl-field { min-width: 0; }
-.cl-field > label {
-  display: block; margin-bottom: 3px;
-  font-size: 10.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--muted);
-}
 .cl-field .input {
-  height: 32px; padding: 4px 8px;
-  text-align: end; font-size: 13px; font-variant-numeric: tabular-nums;
+  height: 26px; padding: 2px 7px; border-radius: 7px;
+  text-align: end; font-size: 12.5px; font-variant-numeric: tabular-nums;
 }
 
-.qty-box { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden; background: var(--surface); }
+.qty-box { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; background: var(--surface); }
 .qty-box button {
-  width: 30px; height: 30px; border: 0; background: var(--surface-2);
-  color: var(--text-2); cursor: pointer; font-size: 16px; line-height: 1;
+  width: 24px; height: 24px; flex: none; border: 0; background: var(--surface-2);
+  color: var(--text-2); cursor: pointer; font-size: 14px; line-height: 1;
   display: grid; place-items: center;
 }
 .qty-box button:hover { background: var(--surface-3); color: var(--text); }
 .qty-box input {
-  width: 46px; height: 30px; border: 0; text-align: center;
-  background: var(--surface); font-size: 13px; font-variant-numeric: tabular-nums;
+  width: 100%; min-width: 0; height: 24px; border: 0; text-align: center;
+  background: var(--surface); font-size: 12.5px; font-variant-numeric: tabular-nums;
   outline: none; -moz-appearance: textfield;
 }
 .qty-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .qty-box input::-webkit-outer-spin-button, .qty-box input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .cl-field .input::-webkit-outer-spin-button, .cl-field .input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-.cl-bottom { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 7px; }
-.cl-stock { font-size: 11.5px; color: var(--muted); }
-.cl-stock.short { color: var(--danger); font-weight: 600; }
-.cl-total { font-weight: 750; font-size: 15px; font-variant-numeric: tabular-nums; }
-
-.cl-remove { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 7px; display: grid; place-items: center; flex: none; }
+.cl-remove { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 3px; border-radius: 6px; display: grid; place-items: center; flex: none; }
 .cl-remove:hover { background: var(--danger-soft); color: var(--danger); }
-.cl-remove svg { width: 16px; height: 16px; }
+.cl-remove svg { width: 14px; height: 14px; }
 
 .cart-foot { padding: 14px 16px; border-top: 1px solid var(--border); background: var(--surface-2); }
 .cart-foot .btn-block { margin-top: 12px; }
@@ -596,8 +609,6 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 }
 .pay-due .amount { font-size: 26px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 
-.pay-quick { display: flex; gap: 8px; flex-wrap: wrap; }
-.pay-quick .btn { flex: 1; min-width: 96px; }
 
 /* The running result of what has been typed: change owed back, or money still
    owing. It is the whole point of the screen, so it is the loudest thing on it. */
@@ -833,8 +844,8 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
     grid-template-areas: "scan" "cart" "tiles";
     grid-template-rows: auto;
   }
-  .cart { position: static; max-height: none; }
-  .cart-lines { max-height: 46vh; min-height: 0; }
+  .cart { position: static; height: auto; min-height: 0; }
+  .cart-lines { max-height: 46vh; min-height: 120px; }
   .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -891,9 +902,7 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 420px) {
   /* Too narrow for three fields side by side: quantity gets its own row. */
-  .cl-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .cl-fields .cl-field:first-child { grid-column: 1 / -1; }
-  .cl-fields .qty-box { width: max-content; }
+  .cl-head, .cl-fields { grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr); gap: 5px; }
   .scan-bar .btn { padding-inline: 10px; }
 }
 

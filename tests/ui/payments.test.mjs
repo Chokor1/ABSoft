@@ -80,7 +80,7 @@ await page.waitForTimeout(200);
 check('underpaying shows what remains, live',
   (await page.textContent('#pay-result')).includes('Remaining') &&
   (await page.textContent('#pay-result')).includes('$13.00'), await page.textContent('#pay-result'));
-check('quick amounts are offered', (await page.$$('[data-quick]')).length === 3);
+check('there are no quick-amount buttons', (await page.$$('[data-quick]')).length === 0);
 await shot('79-payment-step');
 
 await page.click('#pay-confirm');
