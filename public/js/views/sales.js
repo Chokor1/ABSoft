@@ -8,6 +8,8 @@ import {
   dateTimeText,
   debounce,
   docPage,
+  filterSelect,
+  pager,
   downloadCsv,
   emptyState,
   esc,
@@ -356,14 +358,20 @@ async function renderSale(root, ctx, id) {
 /** #/sales, #/sales/<id> */
 export async function render(root, ctx) {
   if (/^\d+$/.test(ctx.params[0] || '')) return renderSale(root, ctx, Number(ctx.params[0]));
-  const state = { from: monthStart(), to: todayISO(), search: '', unpaid: false };
+  const state = { from: monthStart(), to: todayISO(), search: '', status: '', page: 1, per: 50 };
   // Cost and profit are for administrators; the server leaves them out for cashiers.
   const admin = store.user.role === 'admin';
 
   const bar = rangeBar(state, (r) => {
     Object.assign(state, r);
-    load();
+    refilter();
   });
+  bar.classList.add('sticky-bar');
+  // Any change of filter starts again at the first page.
+  const refilter = () => {
+    state.page = 1;
+    load();
+  };
 
   const searchWrap = document.createElement('div');
   searchWrap.className = 'input-icon';
@@ -373,19 +381,38 @@ export async function render(root, ctx) {
     'input',
     debounce((e) => {
       state.search = e.target.value.trim();
-      load();
+      refilter();
     }, 250),
   );
   bar.appendChild(searchWrap);
 
-  const unpaidWrap = document.createElement('label');
-  unpaidWrap.className = 'check';
-  unpaidWrap.innerHTML = `<input type="checkbox" id="unpaid-only"/> ${esc(t('pay.unpaid_only'))}`;
-  unpaidWrap.querySelector('input').addEventListener('change', (e) => {
-    state.unpaid = e.target.checked;
-    load();
-  });
-  bar.appendChild(unpaidWrap);
+  bar.appendChild(
+    filterSelect({
+      label: t('filter.status'),
+      value: state.status,
+      options: [
+        { value: '', label: t('filter.all') },
+        { value: 'paid', label: t('pay.status_paid') },
+        { value: 'partial', label: t('pay.status_partial') },
+        { value: 'unpaid', label: t('pay.status_unpaid') },
+      ],
+      onChange: (v) => {
+        state.status = v;
+        refilter();
+      },
+    }),
+  );
+  bar.appendChild(
+    filterSelect({
+      label: t('filter.method'),
+      value: '',
+      options: [{ value: '', label: t('filter.all') }, ...PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) }))],
+      onChange: (v) => {
+        state.method = v;
+        refilter();
+      },
+    }),
+  );
 
   const body = document.createElement('div');
   root.innerHTML = '';
@@ -418,23 +445,34 @@ export async function render(root, ctx) {
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;
-    rows = await api.sales({ from: state.from, to: state.to, search: state.search, unpaid: state.unpaid ? '1' : '' });
+    const result = await api.sales({
+      from: state.from,
+      to: state.to,
+      search: state.search,
+      status: state.status,
+      method: state.method,
+      page: state.page,
+      per: state.per,
+    });
+    rows = result.rows;
 
-    const sum = rows.reduce(
+    // The badges above the list count every invoice that matches; the row under
+    // the table adds up the page you are looking at.
+    const sum = { ...result.sums, qty: rows.reduce((a, s) => a + s.total_qty, 0) };
+    const page = rows.reduce(
       (a, s) => ({
         total: a.total + s.total,
-        profit: a.profit + s.profit,
-        cogs: a.cogs + s.cogs,
-        qty: a.qty + s.total_qty,
+        profit: a.profit + (s.profit ?? 0),
+        cogs: a.cogs + (s.cogs ?? 0),
         balance: a.balance + s.balance,
       }),
-      { total: 0, profit: 0, cogs: 0, qty: 0, balance: 0 },
+      { total: 0, profit: 0, cogs: 0, balance: 0 },
     );
 
     body.innerHTML = `
       <div class="card">
         <div class="card-head">
-          <div><h3>${esc(count('sales', rows.length))}</h3>
+          <div><h3>${esc(count('sales', result.total))}</h3>
           <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
           <div class="spacer"></div>
           <span class="badge accent">${esc(t('sales.revenue_badge', { v: money(sum.total) }))}</span>
@@ -503,16 +541,16 @@ export async function render(root, ctx) {
                     )
                     .join('')}</tbody>
                   <tfoot><tr>
-                    <td colspan="4">${esc(t('common.totals'))}</td>
-                    <td class="right">${money(sum.total)}</td>
+                    <td colspan="4">${esc(t('page.page_total'))}</td>
+                    <td class="right">${money(page.total)}</td>
                     ${
                       admin
-                        ? `<td class="right">${money(sum.cogs)}</td>
-                           <td class="right ${signClass(sum.profit)}">${money(sum.profit)}</td>`
+                        ? `<td class="right">${money(page.cogs)}</td>
+                           <td class="right ${signClass(page.profit)}">${money(page.profit)}</td>`
                         : ''
                     }
-                    <td class="right">${money(sum.total - sum.balance)}</td>
-                    <td class="right ${sum.balance > 0.004 ? 'money-neg' : ''}">${money(sum.balance)}</td>
+                    <td class="right">${money(page.total - page.balance)}</td>
+                    <td class="right ${page.balance > 0.004 ? 'money-neg' : ''}">${money(page.balance)}</td>
                     <td colspan="3"></td>
                   </tr></tfoot>
                 </table></div>`
@@ -520,6 +558,16 @@ export async function render(root, ctx) {
           }
         </div>
       </div>`;
+
+    if (rows.length) {
+      body.querySelector('.card').append(
+        pager(result, ({ page: p, per }) => {
+          state.page = p;
+          state.per = per;
+          load();
+        }),
+      );
+    }
 
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {

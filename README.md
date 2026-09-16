@@ -63,6 +63,14 @@ invoice loses a line.
 | **Settings** | Store name, currency, sales tax rate, receipt footer, language, and database backups. |
 
 Press `/` anywhere to jump to the search box. Every list has an **Export CSV** button.
+**Lists come a page at a time.** Products, sales, purchases, stock adjustments, expenses and the
+customer/supplier lists ask the server for one page (50 rows by default; 25, 100 or 200 from the
+strip under the table), so a shop with years of invoices opens as fast as a new one. Each list has
+filters that narrow the page before it loads — products by category, stock (in, low, out) and
+archived; sales by payment status and method; adjustments by reason; expenses by category — and
+any change of filter goes back to page one. The badges above a list count everything that
+matches; the row under the table adds up the page on screen.
+
 Tables — lists and reports alike — scroll their rows inside their own section, with the column
 headings and the totals row always in view. With only a few rows, the table simply ends at its
 totals. The report menu stays pinned under the top bar while a long report scrolls.
@@ -192,7 +200,8 @@ product's initials stand in.
 
 ## Stock count (جردة)
 
-**Stock Count** and **Stock Adjustment** live together under **Stock** in the menu.
+**Products** sits under **Stock** in the menu, and **Stock Count** and **Stock Adjustment** open from
+the buttons at the top of the Products screen, beside Export and New product.
 
 Open Stock Count and choose what to count: **All items**, **By category**, or **Pick items**
 (scan a barcode or search). Each row shows what the system holds beside a box for what you

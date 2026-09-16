@@ -28,9 +28,10 @@ const VIEWS = {
   pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true },
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
-  'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
-  adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
-  products: { key: 'products', icon: 'box', mod: products, group: 'catalogue' },
+  products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
+  // Reached from the products screen rather than the menu.
+  'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock', hidden: true },
+  adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock', hidden: true },
   lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
   sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'reports', cashier: true },
   reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports' },
@@ -166,7 +167,7 @@ function renderLogin(message = '') {
 function navHtml() {
   return GROUPS.map((group) => {
     const items = Object.entries(VIEWS).filter(
-      ([, v]) => v.group === group && canSee(v),
+      ([, v]) => v.group === group && canSee(v) && !v.hidden,
     );
     if (!items.length) return '';
     return `<div class="nav-label">${esc(t(`nav.group.${group}`))}</div>${items

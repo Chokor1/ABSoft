@@ -1,7 +1,7 @@
 ﻿import { db, getSettings, lastId, transact } from '../db.js';
 import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { isoDate, money, nextDocNo, num, qty, str } from '../util.js';
+import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
 import { secondCurrency, toBase, toSecond } from '../currency.js';
 
 /**
@@ -84,15 +84,39 @@ export function register(router) {
     if (str(ctx.query.user_id)) (where.push('s.user_id = ?'), args.push(num(ctx.query.user_id)));
     // Anything still owed, however small the remainder.
     if (ctx.query.unpaid === '1') where.push('ROUND(s.total - s.paid, 2) > 0.005');
+    const status = str(ctx.query.status);
+    if (status === 'paid') where.push('ROUND(s.total - s.paid, 2) <= 0.005');
+    if (status === 'partial') where.push('ROUND(s.total - s.paid, 2) > 0.005 AND s.paid > 0.005');
+    if (status === 'unpaid') where.push('s.paid <= 0.005 AND s.total > 0.005');
+    if (str(ctx.query.method)) (where.push('s.method = ?'), args.push(str(ctx.query.method)));
     if (str(ctx.query.customer)) (where.push('s.customer = ? COLLATE NOCASE'), args.push(str(ctx.query.customer)));
     if (str(ctx.query.search)) {
       where.push('(s.doc_no LIKE ? OR s.customer LIKE ?)');
       const like = `%${str(ctx.query.search)}%`;
       args.push(like, like);
     }
-    const sql = `${LIST_SQL} ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-                 ORDER BY s.date DESC, s.id DESC LIMIT ${Math.min(500, num(ctx.query.limit, 200))}`;
-    return db.prepare(sql).all(...args);
+    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const paging = pageParams(ctx.query, { per: 50 });
+    if (paging) {
+      const total = db.prepare(`SELECT COUNT(*) AS n FROM sales s ${clause}`).get(...args).n;
+      const rows = db
+        .prepare(`${LIST_SQL} ${clause} ORDER BY s.date DESC, s.id DESC LIMIT ? OFFSET ?`)
+        .all(...args, paging.per, paging.offset);
+      // The figures above the list are for everything that matches, not just this page.
+      const sums = db
+        .prepare(
+          `SELECT ROUND(COALESCE(SUM(s.total), 0), 2) AS total,
+                  ROUND(COALESCE(SUM(s.total - s.tax - s.cogs), 0), 2) AS profit,
+                  ROUND(COALESCE(SUM(s.cogs), 0), 2) AS cogs,
+                  ROUND(COALESCE(SUM(s.total - s.paid), 0), 2) AS balance
+           FROM sales s ${clause}`,
+        )
+        .get(...args);
+      return { ...pageResult(rows, total, paging), sums };
+    }
+    return db
+      .prepare(`${LIST_SQL} ${clause} ORDER BY s.date DESC, s.id DESC LIMIT ${Math.min(500, num(ctx.query.limit, 200))}`)
+      .all(...args);
   });
 
   router.get('/api/sales/:id', (ctx) => {

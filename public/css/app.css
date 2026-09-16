@@ -453,6 +453,12 @@ table.data th {
   border-bottom: 1px solid var(--border);
 }
 table.data td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+/* A column heading follows its column: `table.data th` is more specific than a
+   bare `.right`, so without this every right-aligned heading drifted to the left
+   of the numbers underneath it. */
+table.data th.right, table.data td.right, table.data th.center, table.data td.center { text-align: inherit; }
+table.data th.right, table.data td.right { text-align: end; }
+table.data th.center, table.data td.center { text-align: center; }
 table.data tbody tr { transition: background 0.1s; }
 table.data tbody tr:hover { background: var(--surface-2); }
 table.data tbody tr:last-child td { border-bottom: 0; }
@@ -1343,3 +1349,19 @@ table.data.compact td { padding: 8px 14px; }
 .count-table tr.counted td { background: color-mix(in srgb, var(--success-soft) 45%, transparent); }
 .count-table tr.differs td { background: color-mix(in srgb, var(--warn-soft) 55%, transparent); }
 .count-table tfoot td { font-weight: 600; }
+
+/* One page of a list at a time */
+.pager {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; border-top: 1px solid var(--border);
+  background: var(--surface-2); font-size: 12.5px; color: var(--muted);
+}
+.pager-count { font-variant-numeric: tabular-nums; }
+.pager-per { display: flex; align-items: center; gap: 6px; }
+.pager-per .select { height: 30px; padding: 0 26px 0 8px; font-size: 12.5px; }
+.pager-nav { display: flex; align-items: center; gap: 6px; }
+.pager-page { font-variant-numeric: tabular-nums; padding: 0 4px; white-space: nowrap; }
+.pager [data-go]:disabled { opacity: 0.4; cursor: default; }
+.filter-select { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.filter-select .select { height: 36px; padding: 0 28px 0 10px; font-size: 13px; }
+.filter-select .combo { min-width: 170px; }

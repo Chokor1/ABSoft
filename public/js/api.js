@@ -65,6 +65,7 @@ export const api = {
   deletePurchase: (id) => api.del(`/api/purchases/${id}`),
 
   adjustments: (query) => api.get('/api/adjustments', query),
+  adjustmentReasons: () => api.get('/api/adjustment-reasons'),
   adjustment: (id) => api.get(`/api/adjustments/${id}`),
   createAdjustment: (a) => api.post('/api/adjustments', a),
   deleteAdjustment: (id) => api.del(`/api/adjustments/${id}`),

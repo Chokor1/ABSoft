@@ -62,13 +62,16 @@ const menu = await page.evaluate(() => {
   }
   return { found: !!label, items };
 });
-check('Stock Count and Stock Adjustment sit together under Stock',
-  menu.found && menu.items.join() === 'stock-count,adjustments', JSON.stringify(menu));
-check('the count page is named in the menu', (await page.textContent('[data-route="stock-count"]')).includes('Stock Count'));
+check('Products sits under Stock', menu.found && menu.items.join() === 'products', JSON.stringify(menu));
+check('the count and adjustment screens are not in the menu',
+  (await page.$$('.nav-item[data-route="stock-count"], .nav-item[data-route="adjustments"]')).length === 0);
 
 /* ------------------------------------------------------- the whole shelf */
 console.log('\n[the sheet opens with every item]');
-await page.click('[data-route="stock-count"]');
+await page.goto(`${BASE}#/products`);
+await page.waitForSelector('#stock-count');
+check('Products opens it, beside Export and New product', await page.isVisible('#stock-count') && (await page.isVisible('#adjustments')));
+await page.click('#stock-count');
 await page.waitForSelector('.count-table tbody tr');
 const products = await api('GET', '/api/products');
 const rows = await page.$$eval('.count-table tbody tr', (r) => r.length);

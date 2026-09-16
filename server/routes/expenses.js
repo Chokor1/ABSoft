@@ -1,7 +1,7 @@
 ﻿import { db, lastId } from '../db.js';
 import { canonicalName, listEntities, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { isoDate, money, num, str } from '../util.js';
+import { isoDate, money, num, pageParams, pageResult, str } from '../util.js';
 
 const SELECT = `SELECT e.*, u.username FROM expenses e LEFT JOIN users u ON u.id = e.user_id`;
 
@@ -17,9 +17,24 @@ export function register(router) {
       const like = `%${str(ctx.query.search)}%`;
       args.push(like, like);
     }
-    const sql = `${SELECT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-                 ORDER BY e.date DESC, e.id DESC LIMIT ${Math.min(1000, num(ctx.query.limit, 300))}`;
-    return db.prepare(sql).all(...args);
+    if (str(ctx.query.method)) (where.push('e.method = ?'), args.push(str(ctx.query.method)));
+    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const paging = pageParams(ctx.query, { per: 50 });
+    if (paging) {
+      const total = db.prepare(`SELECT COUNT(*) AS n FROM expenses e ${clause}`).get(...args).n;
+      const rows = db
+        .prepare(`${SELECT} ${clause} ORDER BY e.date DESC, e.id DESC LIMIT ? OFFSET ?`)
+        .all(...args, paging.per, paging.offset);
+      // The breakdown beside the list covers the whole period, not just this page.
+      const byCategory = db
+        .prepare(`SELECT e.category, ROUND(SUM(e.amount), 2) AS amount FROM expenses e ${clause} GROUP BY e.category ORDER BY amount DESC`)
+        .all(...args);
+      const sums = db.prepare(`SELECT ROUND(COALESCE(SUM(e.amount), 0), 2) AS total FROM expenses e ${clause}`).get(...args);
+      return { ...pageResult(rows, total, paging), sums, byCategory };
+    }
+    return db
+      .prepare(`${SELECT} ${clause} ORDER BY e.date DESC, e.id DESC LIMIT ${Math.min(1000, num(ctx.query.limit, 300))}`)
+      .all(...args);
   });
 
   router.get('/api/expenses/:id', (ctx) => {

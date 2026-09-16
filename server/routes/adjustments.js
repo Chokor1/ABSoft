@@ -1,6 +1,6 @@
 import { db, lastId, transact } from '../db.js';
 import { badRequest, notFound } from '../http.js';
-import { isoDate, money, nextDocNo, num, qty, str } from '../util.js';
+import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
 
 const LIST_SQL = `
   SELECT a.*, u.username, u.full_name,
@@ -102,10 +102,34 @@ export function register(router) {
       const like = `%${str(ctx.query.search)}%`;
       args.push(like, like, like, like, like);
     }
-    const sql = `${LIST_SQL} ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-                 ORDER BY a.date DESC, a.id DESC LIMIT ${Math.min(500, num(ctx.query.limit, 200))}`;
-    return db.prepare(sql).all(...args);
+    if (str(ctx.query.reason)) (where.push('a.reason = ? COLLATE NOCASE'), args.push(str(ctx.query.reason)));
+    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const paging = pageParams(ctx.query, { per: 50 });
+    if (paging) {
+      const total = db.prepare(`SELECT COUNT(*) AS n FROM adjustments a ${clause}`).get(...args).n;
+      const rows = db
+        .prepare(`${LIST_SQL} ${clause} ORDER BY a.date DESC, a.id DESC LIMIT ? OFFSET ?`)
+        .all(...args, paging.per, paging.offset);
+      const sums = db
+        .prepare(
+          `SELECT ROUND(COALESCE(SUM(i.qty * i.unit_cost), 0), 2) AS value
+           FROM adjustment_items i WHERE i.adjustment_id IN (SELECT a.id FROM adjustments a ${clause})`,
+        )
+        .get(...args);
+      return { ...pageResult(rows, total, paging), sums };
+    }
+    return db
+      .prepare(`${LIST_SQL} ${clause} ORDER BY a.date DESC, a.id DESC LIMIT ${Math.min(500, num(ctx.query.limit, 200))}`)
+      .all(...args);
   });
+
+  /** The reasons actually used, for the filter. */
+  router.get('/api/adjustment-reasons', () =>
+    db
+      .prepare(`SELECT reason, COUNT(*) AS n FROM adjustments WHERE reason <> '' GROUP BY reason ORDER BY n DESC`)
+      .all()
+      .map((r) => r.reason),
+  );
 
   router.get('/api/adjustments/:id', (ctx) => {
     const doc = loadAdjustment(ctx.params.id);

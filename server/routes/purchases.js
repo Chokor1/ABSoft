@@ -1,7 +1,7 @@
 import { db, lastId, transact } from '../db.js';
 import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { isoDate, money, nextDocNo, num, qty, str } from '../util.js';
+import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
 
 const LIST_SQL = `
   SELECT pu.*, u.username,
@@ -174,9 +174,22 @@ export function register(router) {
       const like = `%${str(ctx.query.search)}%`;
       args.push(like, like);
     }
-    const sql = `${LIST_SQL} ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-                 ORDER BY pu.date DESC, pu.id DESC LIMIT ${Math.min(500, num(ctx.query.limit, 200))}`;
-    return db.prepare(sql).all(...args);
+    if (str(ctx.query.supplier)) (where.push('pu.supplier = ? COLLATE NOCASE'), args.push(str(ctx.query.supplier)));
+    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const paging = pageParams(ctx.query, { per: 50 });
+    if (paging) {
+      const total = db.prepare(`SELECT COUNT(*) AS n FROM purchases pu ${clause}`).get(...args).n;
+      const rows = db
+        .prepare(`${LIST_SQL} ${clause} ORDER BY pu.date DESC, pu.id DESC LIMIT ? OFFSET ?`)
+        .all(...args, paging.per, paging.offset);
+      const sums = db
+        .prepare(`SELECT ROUND(COALESCE(SUM(pu.total), 0), 2) AS total FROM purchases pu ${clause}`)
+        .get(...args);
+      return { ...pageResult(rows, total, paging), sums };
+    }
+    return db
+      .prepare(`${LIST_SQL} ${clause} ORDER BY pu.date DESC, pu.id DESC LIMIT ${Math.min(500, num(ctx.query.limit, 200))}`)
+      .all(...args);
   });
 
   router.get('/api/purchases/:id', (ctx) => {

@@ -12,6 +12,8 @@ import {
   downloadCsv,
   emptyState,
   esc,
+  filterSelect,
+  pager,
   money,
   monthStart,
   qtyText,
@@ -35,7 +37,7 @@ export async function render(root, ctx) {
 }
 
 async function renderList(root, ctx) {
-  const state = { from: monthStart(), to: todayISO(), search: '' };
+  const state = { from: monthStart(), to: todayISO(), search: '', reason: '', page: 1, per: 50 };
   let rows = [];
 
   ctx.actions.innerHTML = `
@@ -61,8 +63,13 @@ async function renderList(root, ctx) {
 
   const bar = rangeBar(state, (r) => {
     Object.assign(state, r);
-    load();
+    refilter();
   });
+  bar.classList.add('sticky-bar');
+  const refilter = () => {
+    state.page = 1;
+    load();
+  };
   const searchWrap = document.createElement('div');
   searchWrap.className = 'input-icon';
   searchWrap.style.minWidth = '240px';
@@ -71,10 +78,26 @@ async function renderList(root, ctx) {
     'input',
     debounce((e) => {
       state.search = e.target.value.trim();
-      load();
+      refilter();
     }, 250),
   );
   bar.appendChild(searchWrap);
+
+  // Only the reasons actually used are worth offering.
+  const reasons = await api.adjustmentReasons().catch(() => []);
+  if (reasons.length) {
+    bar.appendChild(
+      filterSelect({
+        label: t('filter.reason'),
+        value: state.reason,
+        options: [{ value: '', label: t('filter.all') }, ...reasons.map((r) => ({ value: r, label: r }))],
+        onChange: (v) => {
+          state.reason = v;
+          refilter();
+        },
+      }),
+    );
+  }
 
   const body = document.createElement('div');
   root.innerHTML = '';
@@ -84,13 +107,22 @@ async function renderList(root, ctx) {
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;
-    rows = await api.adjustments({ from: state.from, to: state.to, search: state.search });
-    const value = rows.reduce((s, a) => s + a.value, 0);
+    const result = await api.adjustments({
+      from: state.from,
+      to: state.to,
+      search: state.search,
+      reason: state.reason,
+      page: state.page,
+      per: state.per,
+    });
+    rows = result.rows;
+    const value = result.sums.value; // everything that matches, not just this page
+    const pageValue = rows.reduce((s, a) => s + a.value, 0);
 
     body.innerHTML = `
       <div class="card">
         <div class="card-head">
-          <div><h3>${esc(count('adj', rows.length))}</h3>
+          <div><h3>${esc(count('adj', result.total))}</h3>
             <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
           <div class="spacer"></div>
           <span class="badge ${value < 0 ? 'danger' : 'success'}">${esc(t('adj.value_badge', { v: money(value) }))}</span>
@@ -122,13 +154,23 @@ async function renderList(root, ctx) {
                       </tr>`,
                     )
                     .join('')}</tbody>
-                  <tfoot><tr><td colspan="6">${esc(t('common.total'))}</td>
-                    <td class="right ${signClass(value)}">${money(value)}</td><td colspan="3"></td></tr></tfoot>
+                  <tfoot><tr><td colspan="6">${esc(t('page.page_total'))}</td>
+                    <td class="right ${signClass(pageValue)}">${money(pageValue)}</td><td colspan="3"></td></tr></tfoot>
                 </table></div>`
               : emptyState(t('adj.none'), t('adj.none_sub'), 'adjust')
           }
         </div>
       </div>`;
+
+    if (rows.length) {
+      body.querySelector('.card').append(
+        pager(result, ({ page, per }) => {
+          state.page = page;
+          state.per = per;
+          load();
+        }),
+      );
+    }
 
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {

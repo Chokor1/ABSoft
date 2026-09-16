@@ -3,6 +3,7 @@ import { icon } from '../icons.js';
 import { errorText, moveText, t } from '../i18n.js';
 import { wireNamePickers } from '../name-picker.js';
 import { money2, money2Html, onRateChange, second } from '../currency.js';
+import { attachNamePicker } from '../name-picker.js';
 import {
   chartSvg,
   confirmDialog,
@@ -16,6 +17,8 @@ import {
   formModal,
   formPage,
   money,
+  filterSelect,
+  pager,
   pct,
   productThumb,
   qtyText,
@@ -126,15 +129,22 @@ async function removeProduct(product) {
 /* ------------------------------------------------------------------ list -- */
 
 async function renderList(root, ctx) {
-  const state = { search: '', showInactive: false, lowOnly: false, rows: [] };
+  const state = { search: '', showInactive: false, stock: '', category: '', rows: [], page: 1, per: 50, result: null };
+  let dropPicker = () => {};
 
   ctx.actions.innerHTML = `
+    <button class="btn" id="stock-count">${icon('clipboard')} ${esc(t('nav.stockcount'))}</button>
+    <button class="btn" id="adjustments">${icon('adjust')} ${esc(t('nav.adjustments'))}</button>
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('prod.new'))}</button>`;
   ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('products/new'));
+  // The stock screens belong with the catalogue, not in the menu.
+  ctx.actions.querySelector('#stock-count').addEventListener('click', () => ctx.navigate('stock-count'));
+  ctx.actions.querySelector('#adjustments').addEventListener('click', () => ctx.navigate('adjustments'));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       'absoft-products.csv',
+      // What is on screen: the filters you set, this page of them.
       state.rows.map((p) => ({
         name: p.name,
         description: p.description || '',
@@ -152,11 +162,14 @@ async function renderList(root, ctx) {
   );
 
   root.innerHTML = `
-    <div class="toolbar">
+    <div class="toolbar sticky-bar">
       <div class="input-icon">${icon('search')}
         <input class="input" data-search id="search" placeholder="${esc(t('prod.search'))}"/>
       </div>
-      <label class="check"><input type="checkbox" id="low"/> ${esc(t('prod.low_only'))}</label>
+      <div class="filter-select"><span>${esc(t('filter.category'))}</span>
+        <div class="combo"><input class="input" id="filter-category" placeholder="${esc(t('filter.all'))}" autocomplete="off"/></div>
+      </div>
+      <div id="stock-filter"></div>
       <label class="check"><input type="checkbox" id="inactive"/> ${esc(t('prod.include_archived'))}</label>
       <div class="spacer"></div>
       <div id="summary" class="muted" style="font-size:12.5px"></div>
@@ -164,35 +177,76 @@ async function renderList(root, ctx) {
     <div id="list"></div>`;
 
   const list = root.querySelector('#list');
+  // Any change of filter starts again at the first page.
+  const refilter = () => {
+    state.page = 1;
+    load();
+  };
   root.querySelector('#search').addEventListener(
     'input',
     debounce((e) => {
       state.search = e.target.value.trim();
-      load();
+      refilter();
     }, 220),
   );
-  root.querySelector('#low').addEventListener('change', (e) => {
-    state.lowOnly = e.target.checked;
-    load();
-  });
   root.querySelector('#inactive').addEventListener('change', (e) => {
     state.showInactive = e.target.checked;
-    load();
+    refilter();
+  });
+  root.querySelector('#stock-filter').append(
+    filterSelect({
+      label: t('filter.stock'),
+      value: state.stock,
+      options: [
+        { value: '', label: t('filter.all') },
+        { value: 'in', label: t('filter.in_stock') },
+        { value: 'low', label: t('filter.low_stock') },
+        { value: 'out', label: t('filter.out_of_stock') },
+      ],
+      onChange: (v) => {
+        state.stock = v;
+        refilter();
+      },
+    }),
+  );
+  // Typing a category narrows to it; clearing the box brings everything back.
+  const categoryInput = root.querySelector('#filter-category');
+  const categoryPicker = attachNamePicker(categoryInput, {
+    kind: 'category',
+    onPick: (c) => {
+      state.category = c.name;
+      refilter();
+    },
+  });
+  dropPicker = () => categoryPicker.destroy();
+  categoryInput.addEventListener('change', () => {
+    if (!categoryInput.value.trim() && state.category) {
+      state.category = '';
+      refilter();
+    }
   });
 
   async function load() {
     list.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;
-    const rows = await api.products({
+    const result = await api.products({
       search: state.search,
       all: state.showInactive ? '1' : '',
-      low: state.lowOnly ? '1' : '',
+      category: state.category,
+      stock: state.stock,
+      page: state.page,
+      per: state.per,
     });
+    state.result = result;
+    const rows = result.rows;
     state.rows = rows;
 
     const stockValue = rows.reduce((s, p) => s + p.stock_value, 0);
-    root.querySelector('#summary').textContent = t('prod.summary', { n: rows.length, v: money(stockValue) });
+    root.querySelector('#summary').textContent = t('prod.summary', {
+      n: result.total,
+      v: money(result.sums?.stock_value ?? stockValue),
+    });
 
     list.innerHTML = `
       <div class="card"><div class="card-body flush">
@@ -235,7 +289,7 @@ async function renderList(root, ctx) {
                   )
                   .join('')}</tbody>
                 <tfoot><tr>
-                  <td colspan="${second() ? 8 : 7}">${esc(t('prod.totals', { n: rows.length }))}</td>
+                  <td colspan="${second() ? 8 : 7}">${esc(t('page.page_total'))} · ${esc(t('prod.totals', { n: rows.length }))}</td>
                   <td class="right">${money(stockValue)}</td>
                 </tr></tfoot>
               </table></div>`
@@ -251,9 +305,22 @@ async function renderList(root, ctx) {
     list.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', () => ctx.navigate(`products/${tr.dataset.open}`)),
     );
+
+    if (rows.length) {
+      list.querySelector('.card').append(
+        pager(result, ({ page, per }) => {
+          state.page = page;
+          state.per = per;
+          load();
+        }),
+      );
+    }
   }
 
   await load();
+
+  // main.js calls this when navigating away.
+  return () => dropPicker();
 }
 
 /* ------------------------------------------------------------- new page -- */

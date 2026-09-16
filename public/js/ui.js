@@ -265,6 +265,58 @@ function fieldHtml(f) {
   </div>`;
 }
 
+/* ---------------------------------------------------------------- paging -- */
+
+export const PER_PAGE = [25, 50, 100, 200];
+
+/**
+ * The strip under a list: how much is being shown, how many fit on a page, and
+ * the way through them. Lists ask the server for one page at a time, so a shop
+ * with thousands of invoices opens as quickly as a new one.
+ *
+ *   root.append(pager(result, ({ page, per }) => { state.page = page; load(); }))
+ */
+export function pager({ page = 1, pages = 1, total = 0, per = 50 }, onChange) {
+  const el = document.createElement('div');
+  el.className = 'pager';
+  const from = total ? (page - 1) * per + 1 : 0;
+  const to = Math.min(total, page * per);
+  el.innerHTML = `
+    <span class="pager-count">${esc(t('page.showing', { from: number(from), to: number(to), total: number(total) }))}</span>
+    <div class="spacer"></div>
+    <label class="pager-per">${esc(t('page.per_page'))}
+      <select class="select">${PER_PAGE.map(
+        (n) => `<option value="${n}" ${n === per ? 'selected' : ''}>${n}</option>`,
+      ).join('')}</select>
+    </label>
+    <div class="pager-nav">
+      <button class="btn btn-sm btn-ghost" data-go="1" ${page <= 1 ? 'disabled' : ''} title="${esc(t('page.first'))}">«</button>
+      <button class="btn btn-sm" data-go="${page - 1}" ${page <= 1 ? 'disabled' : ''}>${esc(t('page.prev'))}</button>
+      <span class="pager-page">${esc(t('page.of', { page: number(page), pages: number(pages) }))}</span>
+      <button class="btn btn-sm" data-go="${page + 1}" ${page >= pages ? 'disabled' : ''}>${esc(t('page.next'))}</button>
+      <button class="btn btn-sm btn-ghost" data-go="${pages}" ${page >= pages ? 'disabled' : ''} title="${esc(t('page.last'))}">»</button>
+    </div>`;
+  el.querySelectorAll('[data-go]').forEach((b) =>
+    b.addEventListener('click', () => onChange({ page: Math.min(pages, Math.max(1, Number(b.dataset.go))), per })),
+  );
+  el.querySelector('.pager-per select').addEventListener('change', (e) =>
+    onChange({ page: 1, per: Number(e.target.value) }),
+  );
+  return el;
+}
+
+/** A labelled dropdown for a list's filter bar. */
+export function filterSelect({ label, value, options, onChange }) {
+  const el = document.createElement('label');
+  el.className = 'filter-select';
+  el.innerHTML = `<span>${esc(label)}</span>
+    <select class="select">${options
+      .map((o) => `<option value="${esc(o.value)}" ${String(o.value) === String(value ?? '') ? 'selected' : ''}>${esc(o.label)}</option>`)
+      .join('')}</select>`;
+  el.querySelector('select').addEventListener('change', (e) => onChange(e.target.value));
+  return el;
+}
+
 /* ------------------------------------------------------------- fragments -- */
 
 /**

@@ -9,6 +9,8 @@ import {
   downloadCsv,
   emptyState,
   esc,
+  filterSelect,
+  pager,
   forgetSuggestions,
   formPage,
   money,
@@ -33,7 +35,7 @@ export async function render(root, ctx) {
 }
 
 async function renderList(root, ctx) {
-  const state = { from: monthStart(), to: todayISO(), search: '' };
+  const state = { from: monthStart(), to: todayISO(), search: '', category: '', page: 1, per: 50 };
   let rows = [];
   let used = await suggestions('expense_category');
 
@@ -57,8 +59,13 @@ async function renderList(root, ctx) {
 
   const bar = rangeBar(state, (r) => {
     Object.assign(state, r);
-    load();
+    refilter();
   });
+  bar.classList.add('sticky-bar');
+  const refilter = () => {
+    state.page = 1;
+    load();
+  };
   const searchWrap = document.createElement('div');
   searchWrap.className = 'input-icon';
   searchWrap.style.minWidth = '230px';
@@ -72,6 +79,18 @@ async function renderList(root, ctx) {
   );
   bar.appendChild(searchWrap);
 
+  bar.appendChild(
+    filterSelect({
+      label: t('filter.category'),
+      value: state.category,
+      options: [{ value: '', label: t('filter.all') }, ...used.map((c) => ({ value: c, label: c }))],
+      onChange: (v) => {
+        state.category = v;
+        refilter();
+      },
+    }),
+  );
+
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(bar, body);
@@ -80,20 +99,24 @@ async function renderList(root, ctx) {
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;
-    rows = await api.expenses({ from: state.from, to: state.to, search: state.search });
-
-    const total = rows.reduce((s, e) => s + e.amount, 0);
-    const byCategory = Object.entries(
-      rows.reduce((acc, e) => ({ ...acc, [e.category]: (acc[e.category] || 0) + e.amount }), {}),
-    )
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value);
+    const result = await api.expenses({
+      from: state.from,
+      to: state.to,
+      search: state.search,
+      category: state.category,
+      page: state.page,
+      per: state.per,
+    });
+    rows = result.rows;
+    // The badge and the breakdown cover the whole period; the table shows a page.
+    const total = result.sums.total;
+    const byCategory = result.byCategory.map((c) => ({ label: c.category, value: c.amount }));
 
     body.innerHTML = `
       <div class="grid cols-2 split-wide">
         <div class="card">
           <div class="card-head">
-            <div><h3>${esc(count('exp', rows.length))}</h3>
+            <div><h3>${esc(count('exp', result.total))}</h3>
               <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
             <div class="spacer"></div>
             <span class="badge danger">${esc(t('exp.total_badge', { v: money(total) }))}</span>
@@ -141,6 +164,16 @@ async function renderList(root, ctx) {
           </div>
         </div>
       </div>`;
+
+    if (rows.length) {
+      body.querySelector('.card').append(
+        pager(result, ({ page, per }) => {
+          state.page = page;
+          state.per = per;
+          load();
+        }),
+      );
+    }
 
     body.querySelectorAll('[data-edit]').forEach((b) =>
       b.addEventListener('click', () => ctx.navigate(`expenses/${b.dataset.edit}/edit`)),

@@ -1,6 +1,6 @@
 import { db, lastId } from './db.js';
 import { badRequest, notFound } from './http.js';
-import { required, str } from './util.js';
+import { pageResult, required, str } from './util.js';
 
 /**
  * Reusable names: customers, suppliers, product categories, units, expense categories.
@@ -83,7 +83,7 @@ const SELECT = `
        AS in_use
   FROM entities e`;
 
-export function listEntities(kind, { search = '', all = false } = {}) {
+export function listEntities(kind, { search = '', all = false, page = null } = {}) {
   assertKind(kind);
   const where = ['e.kind = ?'];
   const args = [kind];
@@ -93,9 +93,13 @@ export function listEntities(kind, { search = '', all = false } = {}) {
     const like = `%${str(search)}%`;
     args.push(like, like, like, like);
   }
-  return db
-    .prepare(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY e.used_count DESC, e.name COLLATE NOCASE`)
-    .all(...args);
+  const clause = `WHERE ${where.join(' AND ')}`;
+  const order = 'ORDER BY e.used_count DESC, e.name COLLATE NOCASE';
+  // Without paging this answers as it always has: every name, for the pickers.
+  if (!page) return db.prepare(`${SELECT} ${clause} ${order}`).all(...args);
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM entities e ${clause}`).get(...args).n;
+  const rows = db.prepare(`${SELECT} ${clause} ${order} LIMIT ? OFFSET ?`).all(...args, page.per, page.offset);
+  return pageResult(rows, total, page);
 }
 
 export const getEntity = (id) => db.prepare(`${SELECT} WHERE e.id = ?`).get(id);

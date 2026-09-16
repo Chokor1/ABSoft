@@ -1,7 +1,7 @@
 import { db, lastId, transact } from '../db.js';
 import { canonicalName, listEntities, rememberAll } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { dateRange, money, num, qty, required, shiftDays, str, today } from '../util.js';
+import { dateRange, money, num, pageParams, pageResult, qty, required, shiftDays, str, today } from '../util.js';
 
 // After the browser has shrunk it; a phone photo straight off the camera is refused.
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
@@ -54,13 +54,38 @@ export function register(router) {
       args.push(like, like, like, like);
     }
     if (lowStock) where.push('COALESCE(s.stock, 0) <= p.min_stock');
+    if (str(ctx.query.category)) (where.push('p.category = ? COLLATE NOCASE'), args.push(str(ctx.query.category)));
+    // What is on the shelf: running low, none left, or some in hand.
+    const stock = str(ctx.query.stock);
+    if (stock === 'low') where.push('COALESCE(s.stock, 0) <= p.min_stock AND COALESCE(s.stock, 0) > 0');
+    if (stock === 'out') where.push('COALESCE(s.stock, 0) <= 0');
+    if (stock === 'in') where.push('COALESCE(s.stock, 0) > 0');
+
+    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const order = 'ORDER BY p.name COLLATE NOCASE';
+    const paging = pageParams(ctx.query, { per: 50 });
+    if (paging) {
+      const total = db
+        .prepare(`SELECT COUNT(*) AS n FROM products p LEFT JOIN product_stock s ON s.product_id = p.id ${clause}`)
+        .get(...args).n;
+      const rows = db
+        .prepare(`${SELECT_PRODUCT} ${clause} ${order} LIMIT ? OFFSET ?`)
+        .all(...args, paging.per, paging.offset);
+      // The figure above the list covers everything that matches, not this page.
+      const sums = db
+        .prepare(
+          `SELECT ROUND(COALESCE(SUM(COALESCE(s.stock, 0) * p.cost), 0), 2) AS stock_value
+           FROM products p LEFT JOIN product_stock s ON s.product_id = p.id ${clause}`,
+        )
+        .get(...args);
+      return { ...pageResult(rows, total, paging), sums };
+    }
     // `limit` keeps the type-ahead pickers light on a large catalogue; the
-    // management screens omit it and get everything.
+    // till and the reports omit it and get everything.
     const limit = num(ctx.query.limit, 0);
-    const sql = `${SELECT_PRODUCT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-                 ORDER BY p.name COLLATE NOCASE
-                 ${limit > 0 ? `LIMIT ${Math.min(200, limit)}` : ''}`;
-    return db.prepare(sql).all(...args);
+    return db
+      .prepare(`${SELECT_PRODUCT} ${clause} ${order} ${limit > 0 ? `LIMIT ${Math.min(200, limit)}` : ''}`)
+      .all(...args);
   });
 
   // Barcode scanner endpoint.

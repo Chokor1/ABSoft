@@ -107,14 +107,15 @@ check('rows that owe offer to take payment directly',
 check('settled rows do not', (await page.$$('tr:has-text("Walk-in") [data-pay-row]')).length === 0);
 await shot('81-sales-balances');
 
-await page.check('#unpaid-only');
+// The old "unpaid only" tick box is a status filter now.
+const statusFilter = '.toolbar .filter-select:has(option[value="partial"]) select';
+await page.selectOption(statusFilter, 'partial');
 await page.waitForTimeout(900);
 const filtered = await page.$$eval('table.data tbody tr', (r) => r.map((x) => x.textContent));
-check('the unpaid filter narrows to invoices with a balance',
-  filtered.length > 0 && filtered.every((r) => !r.includes('paid') || r.includes('part paid') || r.includes('unpaid')),
-  String(filtered.length));
+check('filtering by part paid narrows to invoices with a balance',
+  filtered.length > 0 && filtered.every((r) => r.includes('part paid')), String(filtered.length));
 check('our partly paid invoice is among them', filtered.some((r) => r.includes('Part Payer')));
-await page.uncheck('#unpaid-only');
+await page.selectOption(statusFilter, '');
 await page.waitForTimeout(800);
 
 /* ------------------------------------------------------------ settling it later */

@@ -221,9 +221,18 @@ await page.waitForTimeout(900);
 const short = await page.evaluate(() => {
   const card = document.querySelector('.table-scroll').closest('.card').getBoundingClientRect();
   const td = document.querySelector('.table-scroll tfoot td').getBoundingClientRect();
-  return { cardBottom: Math.round(card.bottom), footBottom: Math.round(td.bottom), rows: document.querySelectorAll('.table-scroll tbody tr').length };
+  // The paging strip sits under the table, inside the same card.
+  const pager = document.querySelector('.pager')?.getBoundingClientRect();
+  return {
+    cardBottom: Math.round(card.bottom),
+    footBottom: Math.round(td.bottom),
+    pagerTop: pager ? Math.round(pager.top) : null,
+    pagerBottom: pager ? Math.round(pager.bottom) : null,
+    rows: document.querySelectorAll('.table-scroll tbody tr').length,
+  };
 });
-check('with one row, the card ends right under the totals', short.rows === 1 && short.cardBottom - short.footBottom <= 2, JSON.stringify(short));
+check('with one row, the card ends right under the table and its paging strip',
+  short.rows === 1 && short.pagerTop - short.footBottom <= 2 && short.cardBottom - short.pagerBottom <= 2, JSON.stringify(short));
 
 console.log('\n[on a small window the totals still stay in view]');
 await page.setViewportSize({ width: 820, height: 640 });
@@ -301,8 +310,10 @@ await shot('95-reports-sticky');
 
 /* ---------------------------------------------------------------- icon */
 console.log('\n[the stock adjustment icon]');
-check('the menu uses the clipboard icon, not sliders',
-  (await page.$eval('.nav-item[data-route="adjustments"] svg', (s) => s.innerHTML)).includes('rect x="8" y="2"'));
+await page.goto(`${BASE}#/products`);
+await page.waitForSelector('#adjustments');
+check('the Stock Adjustment button uses the clipboard icon, not sliders',
+  (await page.$eval('#adjustments svg', (s) => s.innerHTML)).includes('rect x="8" y="2"'));
 
 /* ------------------------------------------------------ restart notice */
 console.log('\n[a server older than the screens]');

@@ -47,6 +47,26 @@ export function dateRange(query) {
   return from <= to ? { from, to } : { from: to, to: from };
 }
 
+/**
+ * Paging for the list screens. A request without `page` is answered as before —
+ * a plain array — so the till, the pickers and the reports keep working; with
+ * `page` the answer becomes { rows, total, page, per, pages }.
+ */
+export function pageParams(query, { per = 50, max = 200 } = {}) {
+  if (!str(query.page)) return null;
+  const size = Math.min(max, Math.max(5, Math.round(num(query.per, per))));
+  const page = Math.max(1, Math.round(num(query.page, 1)));
+  return { page, per: size, offset: (page - 1) * size };
+}
+
+export const pageResult = (rows, total, p) => ({
+  rows,
+  total,
+  page: p.page,
+  per: p.per,
+  pages: Math.max(1, Math.ceil(total / p.per)),
+});
+
 /** Sequential document numbers, e.g. INV-000042. */
 export function nextDocNo(db, table, prefix) {
   const row = db.prepare(`SELECT COALESCE(MAX(id), 0) AS last FROM ${table}`).get();

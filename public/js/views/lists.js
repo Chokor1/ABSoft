@@ -8,6 +8,7 @@ import {
   downloadCsv,
   emptyState,
   esc,
+  pager,
   forgetSuggestions,
   formPage,
   number,
@@ -34,7 +35,7 @@ export async function render(root, ctx) {
 }
 
 async function renderList(root, ctx, startKind) {
-  const state = { kind: startKind, search: '', rows: [] };
+  const state = { kind: startKind, search: '', rows: [], page: 1, per: 50 };
   const isAdmin = store.user.role === 'admin';
   const meta = () => KINDS.find((k) => k.kind === state.kind);
   const one = () => t(`lists.one.${state.kind}`);
@@ -44,7 +45,7 @@ async function renderList(root, ctx, startKind) {
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('lists.add', { one: one() }))}</button>`;
 
   const tabs = document.createElement('div');
-  tabs.className = 'toolbar';
+  tabs.className = 'toolbar sticky-bar';
   tabs.innerHTML = `
     <div class="seg">${KINDS.map((k) => `<button data-kind="${k.kind}">${esc(t(`lists.tab.${k.kind}`))}</button>`).join(
       '',
@@ -58,11 +59,17 @@ async function renderList(root, ctx, startKind) {
   root.innerHTML = '';
   root.append(tabs, body);
 
+  // A new tab or a new search starts again at the first page.
+  const refilter = () => {
+    state.page = 1;
+    load();
+  };
   tabs.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-kind]');
     if (!btn) return;
     state.kind = btn.dataset.kind;
     state.search = '';
+    state.page = 1;
     tabs.querySelector('#list-search').value = '';
     ctx.actions.querySelector('#new').innerHTML = `${icon('plus')} ${esc(t('lists.add', { one: one() }))}`;
     load();
@@ -71,7 +78,7 @@ async function renderList(root, ctx, startKind) {
     'input',
     debounce((e) => {
       state.search = e.target.value.trim();
-      load();
+      refilter();
     }, 220),
   );
 
@@ -99,14 +106,15 @@ async function renderList(root, ctx, startKind) {
       t('common.loading'),
     )}</p></div></div></div>`;
 
-    state.rows = await api.entities(state.kind, { search: state.search, all: '1' });
+    const result = await api.entities(state.kind, { search: state.search, all: '1', page: state.page, per: state.per });
+    state.rows = result.rows;
     const showContact = meta().contact;
 
     body.innerHTML = `
       <div class="card">
         <div class="card-head">
           <div><h3>${esc(t(`lists.tab.${state.kind}`))}</h3>
-            <div class="sub">${esc(count('lists', state.rows.length))}</div></div>
+            <div class="sub">${esc(count('lists', result.total))}</div></div>
         </div>
         <div class="card-body flush">
           ${
@@ -169,6 +177,16 @@ async function renderList(root, ctx, startKind) {
       <p class="muted" style="font-size:12.5px;margin-top:14px;max-width:70ch">${esc(t('lists.hint'))}</p>`;
 
     if (!isAdmin) return;
+    if (state.rows.length) {
+      body.querySelector('.card').append(
+        pager(result, ({ page, per }) => {
+          state.page = page;
+          state.per = per;
+          load();
+        }),
+      );
+    }
+
     body.querySelectorAll('[data-edit]').forEach((tr) =>
       tr.addEventListener('click', (e) => {
         if (e.target.closest('[data-del]')) return;

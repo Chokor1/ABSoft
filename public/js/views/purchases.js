@@ -11,6 +11,7 @@ import {
   dateTimeText,
   debounce,
   docPage,
+  pager,
   downloadCsv,
   emptyState,
   esc,
@@ -35,7 +36,7 @@ export async function render(root, ctx) {
 const isAdmin = () => store.user?.role === 'admin';
 
 async function renderList(root, ctx) {
-  const state = { from: monthStart(), to: todayISO(), search: '' };
+  const state = { from: monthStart(), to: todayISO(), search: '', page: 1, per: 50 };
   let rows = [];
 
   ctx.actions.innerHTML = `
@@ -60,8 +61,13 @@ async function renderList(root, ctx) {
 
   const bar = rangeBar(state, (r) => {
     Object.assign(state, r);
-    load();
+    refilter();
   });
+  bar.classList.add('sticky-bar');
+  const refilter = () => {
+    state.page = 1;
+    load();
+  };
   const searchWrap = document.createElement('div');
   searchWrap.className = 'input-icon';
   searchWrap.style.minWidth = '240px';
@@ -70,7 +76,7 @@ async function renderList(root, ctx) {
     'input',
     debounce((e) => {
       state.search = e.target.value.trim();
-      load();
+      refilter();
     }, 250),
   );
   bar.appendChild(searchWrap);
@@ -83,13 +89,21 @@ async function renderList(root, ctx) {
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;
-    rows = await api.purchases({ from: state.from, to: state.to, search: state.search });
-    const total = rows.reduce((s, p) => s + p.total, 0);
+    const result = await api.purchases({
+      from: state.from,
+      to: state.to,
+      search: state.search,
+      page: state.page,
+      per: state.per,
+    });
+    rows = result.rows;
+    const total = result.sums.total; // every purchase that matches, not just this page
+    const pageTotal = rows.reduce((s, p) => s + p.total, 0);
 
     body.innerHTML = `
       <div class="card">
         <div class="card-head">
-          <div><h3>${esc(count('buy', rows.length))}</h3>
+          <div><h3>${esc(count('buy', result.total))}</h3>
             <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
           <div class="spacer"></div>
           <span class="badge accent">${esc(t('buy.spent', { v: money(total) }))}</span>
@@ -131,13 +145,23 @@ async function renderList(root, ctx) {
                       </tr>`,
                     )
                     .join('')}</tbody>
-                  <tfoot><tr><td colspan="5">${esc(t('common.total'))}</td>
-                    <td class="right">${money(total)}</td><td colspan="3"></td></tr></tfoot>
+                  <tfoot><tr><td colspan="5">${esc(t('page.page_total'))}</td>
+                    <td class="right">${money(pageTotal)}</td><td colspan="3"></td></tr></tfoot>
                 </table></div>`
               : emptyState(t('buy.none'), t('buy.none_sub'), 'truck')
           }
         </div>
       </div>`;
+
+    if (rows.length) {
+      body.querySelector('.card').append(
+        pager(result, ({ page, per }) => {
+          state.page = page;
+          state.per = per;
+          load();
+        }),
+      );
+    }
 
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {
