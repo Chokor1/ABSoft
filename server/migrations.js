@@ -207,6 +207,34 @@ const MIGRATIONS = [
       addColumn(db, 'payments', 'rate', 'REAL');
     },
   },
+  {
+    // Opening stock as documents: what was on the shelf when a product (or the
+    // whole shop) started in ABSoft, with its cost. Opening balances entered
+    // before this stay in the movement ledger as they are.
+    name: 'opening-stock-documents',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS openings (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_no     TEXT    NOT NULL,
+          date       TEXT    NOT NULL,
+          note       TEXT    NOT NULL DEFAULT '',
+          user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_openings_date ON openings(date);
+
+        CREATE TABLE IF NOT EXISTS opening_items (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          opening_id INTEGER NOT NULL REFERENCES openings(id) ON DELETE CASCADE,
+          product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+          qty        REAL    NOT NULL,
+          unit_cost  REAL    NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_opening_items_doc ON opening_items(opening_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

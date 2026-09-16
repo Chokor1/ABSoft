@@ -4,6 +4,7 @@ import { errorText, moveText, t } from '../i18n.js';
 import { wireNamePickers } from '../name-picker.js';
 import { money2, money2Html, onRateChange, second } from '../currency.js';
 import { attachNamePicker } from '../name-picker.js';
+import { renderImport } from './product-import.js';
 import {
   chartSvg,
   confirmDialog,
@@ -38,6 +39,7 @@ import {
 export async function render(root, ctx) {
   const [first, second] = ctx.params;
   if (first === 'new') return renderForm(root, ctx);
+  if (first === 'import') return renderImport(root, ctx);
   if (first && /^\d+$/.test(first)) return renderDetail(root, ctx, Number(first), second === 'edit' ? 'details' : second);
   return renderList(root, ctx);
 }
@@ -133,9 +135,11 @@ async function renderList(root, ctx) {
   let dropPicker = () => {};
 
   ctx.actions.innerHTML = `
+    <button class="btn" id="import">${icon('upload')} ${esc(t('imp.button'))}</button>
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('prod.new'))}</button>`;
   ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('products/new'));
+  ctx.actions.querySelector('#import').addEventListener('click', () => ctx.navigate('products/import'));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       'absoft-products.csv',

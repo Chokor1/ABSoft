@@ -6,6 +6,7 @@ import { dateRange, money, num, pageParams, pageResult, qty, required, shiftDays
 // After the browser has shrunk it; a phone photo straight off the camera is refused.
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 import { createAdjustment } from './adjustments.js';
+import { writeOpening } from './openings.js';
 
 const SELECT_PRODUCT = `
   SELECT p.*, COALESCE(s.stock, 0) AS stock,
@@ -239,17 +240,105 @@ export function register(router) {
         );
       const id = lastId(res);
 
+      // Stock already on hand becomes an opening stock document of its own.
       if (opening > 0) {
-        db.prepare(
-          `INSERT INTO stock_moves (product_id, qty, unit_cost, kind, note, user_id)
-           VALUES (?, ?, ?, 'opening', 'Opening balance', ?)`,
-        ).run(id, opening, data.cost, ctx.user.id);
+        writeOpening({ note: data.name, items: [{ product_id: id, qty: opening, unit_cost: data.cost }] }, ctx.user.id);
       }
       rememberAll([
         ['category', data.category],
         ['unit', data.unit],
       ]);
       return getProduct(id);
+    });
+  });
+
+  /**
+   * Import products from a spreadsheet. The browser reads the file and sends the
+   * rows; with dry_run it only checks them, for the preview. Rows whose barcode
+   * already exists are skipped, never overwritten. Every opening quantity in the
+   * file goes into one opening stock document, not one per product.
+   */
+  router.post('/api/products/import', (ctx) => {
+    const rows = Array.isArray(ctx.body.rows) ? ctx.body.rows : [];
+    if (!rows.length) throw badRequest('The file has no rows', 'IMPORT_EMPTY');
+    if (rows.length > 5000) throw badRequest('Import at most 5000 rows at a time', 'IMPORT_TOO_MANY');
+
+    const inFile = new Map();
+    const checked = rows.map((raw, index) => {
+      const row = { line: index + 2, name: str(raw.name), barcode: str(raw.barcode) }; // line 1 is the header
+      const fail = (code, field) => ({ ...row, status: 'error', code, field });
+      if (!row.name) return fail('IMPORT_NAME', 'name');
+      const numbers = {};
+      for (const field of ['cost', 'price', 'min_stock', 'opening_stock']) {
+        const text = str(raw[field]).replace(',', '.');
+        if (text === '') {
+          numbers[field] = 0;
+          continue;
+        }
+        const n = Number(text);
+        if (!Number.isFinite(n) || n < 0) return fail('IMPORT_NUMBER', field);
+        numbers[field] = n;
+      }
+      if (row.barcode) {
+        if (inFile.has(row.barcode)) return { ...fail('IMPORT_DUP_FILE', 'barcode'), other: inFile.get(row.barcode) };
+        inFile.set(row.barcode, row.line);
+        if (db.prepare(`SELECT 1 FROM products WHERE barcode = ?`).get(row.barcode)) {
+          return { ...row, status: 'skip', code: 'IMPORT_EXISTS', field: 'barcode' };
+        }
+      }
+      return {
+        ...row,
+        status: 'ok',
+        data: {
+          name: row.name,
+          description: str(raw.description),
+          barcode: row.barcode || null,
+          category: canonicalName('category', raw.category),
+          unit: canonicalName('unit', str(raw.unit) || 'pcs'),
+          cost: money(numbers.cost),
+          price: money(numbers.price),
+          min_stock: qty(numbers.min_stock),
+          opening: qty(numbers.opening_stock),
+        },
+      };
+    });
+
+    const ok = checked.filter((r) => r.status === 'ok');
+    const summary = {
+      ok: ok.length,
+      skip: checked.filter((r) => r.status === 'skip').length,
+      error: checked.filter((r) => r.status === 'error').length,
+      opening_lines: ok.filter((r) => r.data.opening > 0).length,
+      opening_qty: qty(ok.reduce((s, r) => s + r.data.opening, 0)),
+    };
+    const report = checked.map(({ data, ...r }) => ({ ...r, opening: data?.opening ?? 0 }));
+    if (ctx.body.dry_run || !ok.length) return { dry_run: !!ctx.body.dry_run, summary, rows: report, opening: null };
+
+    return transact(() => {
+      const insert = db.prepare(
+        `INSERT INTO products (name, description, barcode, category, unit, cost, price, min_stock, active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      );
+      const openingLines = [];
+      for (const r of ok) {
+        const d = r.data;
+        const id = lastId(insert.run(d.name, d.description, d.barcode, d.category, d.unit, d.cost, d.price, d.min_stock));
+        rememberAll([
+          ['category', d.category],
+          ['unit', d.unit],
+        ]);
+        if (d.opening > 0) openingLines.push({ product_id: id, qty: d.opening, unit_cost: d.cost });
+      }
+      // One document for the whole file.
+      let opening = null;
+      if (openingLines.length) {
+        const openingId = writeOpening(
+          { date: ctx.body.date, note: str(ctx.body.note) || 'Import', items: openingLines },
+          ctx.user.id,
+        );
+        opening = db.prepare(`SELECT id, doc_no FROM openings WHERE id = ?`).get(openingId);
+      }
+      return { dry_run: false, summary, rows: report, opening };
     });
   });
 
@@ -289,9 +378,10 @@ export function register(router) {
       .prepare(
         `SELECT (SELECT COUNT(*) FROM sale_items WHERE product_id = ?)
               + (SELECT COUNT(*) FROM purchase_items WHERE product_id = ?)
-              + (SELECT COUNT(*) FROM adjustment_items WHERE product_id = ?) AS n`,
+              + (SELECT COUNT(*) FROM adjustment_items WHERE product_id = ?)
+              + (SELECT COUNT(*) FROM opening_items WHERE product_id = ?) AS n`,
       )
-      .get(product.id, product.id, product.id);
+      .get(product.id, product.id, product.id, product.id);
     // Products with history are archived instead of deleted so reports stay intact.
     if (n > 0) {
       db.prepare(`UPDATE products SET active = 0 WHERE id = ?`).run(product.id);

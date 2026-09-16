@@ -198,9 +198,42 @@ product's initials stand in.
 
 ---
 
+## Opening stock
+
+What was already on the shelf when a product — or the whole shop — started in ABSoft is recorded as
+an **opening stock document** (`OPN-000001`…), with a quantity and a cost for each product.
+
+- **A new product.** The new-product form has an *Opening stock* field, 0 by default. Put 1 or more
+  and saving records an opening stock document for it. The field is not on the product's page
+  afterwards: from then on, stock changes through documents.
+- **By hand.** **Stock → Opening Stock → New opening stock**: scan or search products, type the
+  quantity and cost (the product's cost is filled in), save.
+- **Importing.** Opening quantities in an imported file all go into **one** document for the file.
+
+Opening stock blends into the average cost like a purchase. Deleting a document takes its stock back
+out (the average cost stays as it is).
+
+## Importing products
+
+**Products → Import**:
+
+1. **Download the template** — a CSV with the columns `name, description, barcode, category, unit,
+   cost, price, min_stock, opening_stock` and two example rows.
+2. Fill it in (Excel: *File → Save As → CSV UTF-8*). Semicolon-separated files, comma decimals
+   (`1,20`), quoted cells and Arabic names are all read correctly; English or Arabic column headings
+   are recognised.
+3. Choose the file. Nothing is saved yet: a **preview** checks every row and marks it *Ready*,
+   *Skipped* (a product with that barcode already exists — it is never overwritten) or *Error*
+   (missing name, a word where a number goes, a barcode repeated in the file), with the reason.
+4. Set the date and note for the opening stock, and press **Import**. The ready rows become
+   products; every opening quantity in the file goes into one opening stock document, linked from
+   the result.
+
+---
+
 ## Stock count (جردة)
 
-**Stock** in the menu folds open to show **Products**, **Stock Count** and **Stock Adjustment**. Click
+**Stock** in the menu folds open to show **Products**, **Opening Stock**, **Stock Count** and **Stock Adjustment**. Click
 it to fold it away; the choice is remembered, and opening one of its screens unfolds it again.
 
 Open Stock Count — nothing is loaded yet — and choose what to count: **All items**, **By category**, or **Pick items**

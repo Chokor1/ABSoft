@@ -9,6 +9,7 @@ import * as products from './views/products.js';
 import * as purchases from './views/purchases.js';
 import * as adjustments from './views/adjustments.js';
 import * as stockCount from './views/stock-count.js';
+import * as openings from './views/openings.js';
 import { sweepPickers } from './picker.js';
 import { onRateChange, saveRate, second, watchRate } from './currency.js';
 import * as salesView from './views/sales.js';
@@ -29,6 +30,7 @@ const VIEWS = {
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
+  openings: { key: 'openings', icon: 'package', mod: openings, group: 'stock' },
   'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
   adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
   lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },

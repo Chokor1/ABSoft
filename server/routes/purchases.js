@@ -1,3 +1,4 @@
+import { applyAverageCost } from '../costing.js';
 import { db, lastId, transact } from '../db.js';
 import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
@@ -42,24 +43,6 @@ function writeLog(purchase, action, changes, reason, userId) {
   db.prepare(
     `INSERT INTO purchase_log (purchase_id, doc_no, action, changes, reason, user_id) VALUES (?, ?, ?, ?, ?, ?)`,
   ).run(purchase.id, purchase.doc_no, action, JSON.stringify(changes), str(reason), userId);
-}
-
-/**
- * Weighted-average costing: blend the new landed cost into the existing stock
- * so margin reporting reflects what the goods on hand actually cost.
- */
-function applyAverageCost(productId, inQty, inCost) {
-  const row = db
-    .prepare(
-      `SELECT p.cost, COALESCE(s.stock, 0) AS stock FROM products p
-       LEFT JOIN product_stock s ON s.product_id = p.id WHERE p.id = ?`,
-    )
-    .get(productId);
-  const onHand = Math.max(0, num(row.stock));
-  const totalQty = onHand + inQty;
-  const newCost = totalQty > 0 ? money((onHand * num(row.cost) + inQty * inCost) / totalQty) : inCost;
-  db.prepare(`UPDATE products SET cost = ? WHERE id = ?`).run(newCost, productId);
-  return newCost;
 }
 
 /**

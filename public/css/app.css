@@ -1384,3 +1384,24 @@ table.data.compact td { padding: 8px 14px; }
 .nav-child { padding-inline-start: 30px; }
 .nav-child svg { width: 15px; height: 15px; }
 @media (prefers-reduced-motion: reduce) { .nav-children, .nav-chevron { transition: none; } }
+
+/* Product import */
+.imp-card { margin-bottom: 14px; }
+.imp-steps { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: center; }
+.imp-how { margin: 0; padding-inline-start: 20px; display: grid; gap: 10px; font-size: 13.5px; }
+.imp-how li b { margin-inline-end: 6px; }
+.imp-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  min-height: 150px; padding: 18px; border-radius: 14px; cursor: pointer; text-align: center;
+  border: 2px dashed var(--border-strong, var(--border)); background: var(--surface-2);
+  transition: border-color 0.15s, background 0.15s;
+}
+.imp-drop svg { width: 28px; height: 28px; color: var(--accent-text); transform: rotate(180deg); }
+.imp-drop:hover, .imp-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.imp-drop-title { font-weight: 650; }
+.imp-options, .imp-done { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.imp-opening-note { flex-basis: 100%; font-size: 13px; }
+.imp-done svg { width: 26px; height: 26px; color: var(--success); }
+.imp-table tr.imp-error td { background: color-mix(in srgb, var(--danger-soft) 45%, transparent); }
+.imp-table tr.imp-skip td { background: color-mix(in srgb, var(--warn-soft) 45%, transparent); }
+@media (max-width: 800px) { .imp-steps { grid-template-columns: minmax(0, 1fr); } }

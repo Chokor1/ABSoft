@@ -66,6 +66,12 @@ export const api = {
 
   adjustments: (query) => api.get('/api/adjustments', query),
   adjustmentReasons: () => api.get('/api/adjustment-reasons'),
+
+  openings: (query) => api.get('/api/openings', query),
+  opening: (id) => api.get(`/api/openings/${id}`),
+  createOpening: (o) => api.post('/api/openings', o),
+  deleteOpening: (id) => api.del(`/api/openings/${id}`),
+  importProducts: (body) => api.post('/api/products/import', body),
   adjustment: (id) => api.get(`/api/adjustments/${id}`),
   createAdjustment: (a) => api.post('/api/adjustments', a),
   deleteAdjustment: (id) => api.del(`/api/adjustments/${id}`),
