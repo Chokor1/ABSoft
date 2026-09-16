@@ -1329,3 +1329,17 @@ table.data.compact td { padding: 8px 14px; }
 .tile-pic .t-meta { margin-top: 0; }
 .tile-pic .t-price { color: var(--accent-text); }
 #toggle-images[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+
+/* Stock count sheet */
+.count-bar { gap: 10px; flex-wrap: wrap; }
+.count-bar .count-category, .count-bar .count-find { min-width: 240px; }
+.count-bar .count-search { min-width: 200px; }
+.count-head-fields { display: flex; gap: 12px; flex-wrap: wrap; }
+.field-inline { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
+.field-inline .input { height: 34px; width: 175px; }
+.count-table td { vertical-align: middle; }
+.count-table .input { height: 34px; font-variant-numeric: tabular-nums; }
+.count-table [data-counted] { max-width: 120px; }
+.count-table tr.counted td { background: color-mix(in srgb, var(--success-soft) 45%, transparent); }
+.count-table tr.differs td { background: color-mix(in srgb, var(--warn-soft) 55%, transparent); }
+.count-table tfoot td { font-weight: 600; }

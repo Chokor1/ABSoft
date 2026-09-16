@@ -115,9 +115,9 @@ await admin.waitForTimeout(200);
 
 /* ---------------------------------------------------------- adjustments */
 console.log('\n[a stock adjustment covers many products at once]');
-check('Stock Adjustment sits under Buy in the menu', await admin.evaluate(() => {
+check('Stock Adjustment sits in the Stock section, after the stock count', await admin.evaluate(() => {
   const items = [...document.querySelectorAll('.nav-item')].map((a) => a.dataset.route);
-  return items.indexOf('adjustments') === items.indexOf('purchases') + 1;
+  return items.indexOf('adjustments') === items.indexOf('stock-count') + 1;
 }));
 const [p1, p2] = (await api(admin, 'GET', '/api/products?limit=2')).data;
 await admin.goto(`${BASE}#/adjustments`);

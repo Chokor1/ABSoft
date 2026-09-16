@@ -52,6 +52,7 @@ invoice loses a line.
 | **Dashboard** | Today and this month at a glance: sales, profit, stock value, low-stock warnings, 30-day trend. |
 | **Sell — POS** (`F2`) | The till. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
 | **Buy — Stock In** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. Administrators can edit a saved purchase; every change is logged. |
+| **Stock Count** | Count the shelf — all items, one category or a few — and correct the stock in one go. |
 | **Stock Adjustment** | Counts, damage, expiry and write-offs as numbered documents covering many products at once. Scan or search products (or add a whole category), then type what you counted or how much changed. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
 | **Products** (`F3`) | Define what you sell: name, optional description, barcode, category, cost, default price, unit, low-stock level. Click a row to open the product's own page (see below). |
@@ -186,6 +187,24 @@ uploading, so even a phone photo ends up a few tens of kilobytes. It is stored i
 so backups carry it. The picture shows on the product page and on the till's product cards;
 the product list and search results stay compact and show none. Without a picture, the
 product's initials stand in.
+
+---
+
+## Stock count (جردة)
+
+**Stock Count** and **Stock Adjustment** live together under **Stock** in the menu.
+
+Open Stock Count and choose what to count: **All items**, **By category**, or **Pick items**
+(scan a barcode or search). Each row shows what the system holds beside a box for what you
+counted; the difference and the new balance appear as you type, the row turns amber when it
+differs and green when it matches, and the footer keeps a running tally of how many are counted,
+how many differ and what the difference is worth. Enter jumps to the next row, and the filter box
+narrows a long sheet without losing anything already typed.
+
+Rows left blank are simply not counted. **Save count** applies what you typed against the balance
+at that moment and records it as one stock adjustment document (reason *Stock count*), so the
+correction keeps a date, a note and a trail; that document opens straight afterwards. Products
+whose count matched change nothing.
 
 ---
 

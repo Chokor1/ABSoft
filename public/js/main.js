@@ -8,6 +8,7 @@ import * as pos from './views/pos.js';
 import * as products from './views/products.js';
 import * as purchases from './views/purchases.js';
 import * as adjustments from './views/adjustments.js';
+import * as stockCount from './views/stock-count.js';
 import { sweepPickers } from './picker.js';
 import { onRateChange, saveRate, second, watchRate } from './currency.js';
 import * as salesView from './views/sales.js';
@@ -26,8 +27,9 @@ const VIEWS = {
   dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'overview' },
   pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true },
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
-  adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
+  'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
+  adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
   products: { key: 'products', icon: 'box', mod: products, group: 'catalogue' },
   lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
   sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'reports', cashier: true },
@@ -40,7 +42,7 @@ const isAdmin = () => store.user?.role === 'admin';
 const canSee = (view) => isAdmin() || !!view.cashier;
 const homeRoute = () => (isAdmin() ? 'dashboard' : 'pos');
 
-const GROUPS = ['overview', 'daily', 'catalogue', 'reports', 'settings'];
+const GROUPS = ['overview', 'daily', 'stock', 'catalogue', 'reports', 'settings'];
 const SHORTCUTS = { pos: 'F2', products: 'F3', purchases: 'F4', expenses: 'F5' };
 
 const app = document.getElementById('app');
