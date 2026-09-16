@@ -1,4 +1,6 @@
-# ABSoft
+# ABSoft POS
+
+*by ABSoft*
 
 **Developed by Abbass Chokor**
 
@@ -77,7 +79,7 @@ totals. The report menu stays pinned under the top bar while a long report scrol
 
 Clicking a row opens a **page**, not a pop-up: an invoice, a purchase (with its change history
 and Edit) or a stock adjustment, each with Back, Print and its actions at the top.
-The ⛶ button in the top bar puts ABSoft **full screen** — useful on a till, where the browser
+The ⛶ button in the top bar puts ABSoft POS **full screen** — useful on a till, where the browser
 chrome is just clutter. (Your browser's own `F11` works too.)
 
 Product **descriptions** are optional. Fill one in and it appears under the name in the
@@ -89,7 +91,7 @@ a cashier can find "750ml bottle" without knowing the product name.
 ## Names you reuse — customers, suppliers, categories, units
 
 Type a customer on an invoice, a supplier on a purchase, or a category on a product, and
-ABSoft **remembers it**. Next time, click the field for a dropdown of the saved names (with
+ABSoft POS **remembers it**. Next time, click the field for a dropdown of the saved names (with
 phone numbers where you added them), or type to narrow it down. Nothing changes about
 how you work: the field is still an ordinary text box, an unfamiliar name is simply a new one,
 and none of it is ever required. A name that is not saved yet appears first as **Use “…”**, so
@@ -200,7 +202,7 @@ product's initials stand in.
 
 ## Opening stock
 
-What was already on the shelf when a product — or the whole shop — started in ABSoft is recorded as
+What was already on the shelf when a product — or the whole shop — started in ABSoft POS is recorded as
 a **stock adjustment of type *Opening stock*** (numbered with the other adjustments, `ADJ-…`), with a
 quantity and a cost for each product. There is no separate opening stock document.
 
@@ -294,7 +296,7 @@ what the till needs, and product and sale data sent to a cashier leaves out cost
 
 Got the quantity or cost wrong on a delivery? An administrator can open the purchase and
 click **Edit** (or the pencil on its row). Change the supplier, date, note or lines, add an
-optional reason, and save. ABSoft then:
+optional reason, and save. ABSoft POS then:
 
 - takes the old lines back out of stock and out of the average cost, and puts the new ones in;
 - leaves sales already made alone — they keep the cost they were sold at, so past profit
@@ -406,11 +408,11 @@ Everything the business owns is in one file: **`data/absoft.db`**. Three ways to
 | **Settings → Save a copy on this computer** | Writes into `data/backups/`. The 20 most recent are kept. |
 | `npm run backup` | The same thing from a terminal. This is what `update.cmd` runs. |
 
-All three are **safe while the shop is trading** — no need to close ABSoft. They use SQLite's
-`VACUUM INTO`, which writes a fully consistent copy in one step. That detail matters: ABSoft
+All three are **safe while the shop is trading** — no need to close ABSoft POS. They use SQLite's
+`VACUUM INTO`, which writes a fully consistent copy in one step. That detail matters: ABSoft POS
 runs in WAL mode, so hand-copying `absoft.db` while it is open can grab the file *without* its
 `-wal` companion and silently lose the most recent sales. Never back up by copying that one
-file — use one of the three above, or copy the whole `data` folder with ABSoft closed.
+file — use one of the three above, or copy the whole `data` folder with ABSoft POS closed.
 
 `npm run backup` is strictly read-only — it opens the database directly rather than through the
 app, so it never applies a pending migration. That is what makes it trustworthy as the first
@@ -418,7 +420,7 @@ step of an update: the snapshot always predates whatever the update is about to 
 
 Only administrators can take a backup; a cashier cannot walk off with the whole business.
 
-**To restore:** close ABSoft, replace `data/absoft.db` with the backup file (rename it to
+**To restore:** close ABSoft POS, replace `data/absoft.db` with the backup file (rename it to
 `absoft.db`), delete any leftover `absoft.db-wal` / `absoft.db-shm` next to it, and start again.
 
 ---
@@ -452,7 +454,7 @@ backups. Updating replaces program files only.
 
 ```
 git clone https://github.com/<you>/ABSoft.git
-cd ABSoft
+cd ABSoft POS
 start.cmd
 ```
 
@@ -469,14 +471,14 @@ download the ZIP from GitHub and unzip it; updates then work the same way but by
 
 Two Windows habits worth keeping, both learned the hard way:
 
-- **Save `package.json` as UTF-8 without a BOM.** ABSoft strips one if it finds it, but other
+- **Save `package.json` as UTF-8 without a BOM.** ABSoft POS strips one if it finds it, but other
   tools are less forgiving.
 - **Keep `.cmd` files pure ASCII.** Batch scripts run in the console's OEM codepage, and a
   stray em-dash in a comment is enough to make `cmd` try to execute part of it.
 
 ### Their loop on the till
 
-Close ABSoft, double-click **`update.cmd`**, start ABSoft again. It:
+Close ABSoft POS, double-click **`update.cmd`**, start ABSoft POS again. It:
 
 1. **Backs the database up first**, into `data/backups/`. If the backup fails it stops there
    rather than pressing on.
@@ -485,9 +487,9 @@ Close ABSoft, double-click **`update.cmd`**, start ABSoft again. It:
 
 The database upgrades itself the first time the new version starts. Nothing else to do.
 
-**Updated but not restarted?** If the files are newer than the ABSoft that is running, the app
-says so in a yellow bar — *"ABSoft was updated — restart it to finish"* — instead of failing on a
-new screen with an unhelpful error. Close ABSoft and start it again.
+**Updated but not restarted?** If the files are newer than the ABSoft POS that is running, the app
+says so in a yellow bar — *"ABSoft POS was updated — restart it to finish"* — instead of failing on a
+new screen with an unhelpful error. Close ABSoft POS and start it again.
 
 If someone has edited files on the shop's machine, the pull refuses rather than clobbering
 them, and the script tells them exactly how to discard those edits (`git reset --hard`) —
@@ -504,7 +506,7 @@ npm run test:ui     browser suites - needs Edge and playwright-core
 npm run test:all    both
 ```
 
-Each suite starts its own copy of ABSoft on its own port against a throwaway
+Each suite starts its own copy of ABSoft POS on its own port against a throwaway
 database under `.test-run/`, so running them never touches `data/`. The browser
 suites need one test-only package:
 
@@ -531,7 +533,7 @@ const MIGRATIONS = [
 ];
 ```
 
-Append to the array and you are done — ABSoft applies anything outstanding on the next start
+Append to the array and you are done — ABSoft POS applies anything outstanding on the next start
 and records how far it got in SQLite's own `user_version`. Each migration runs in a
 transaction, so a failure rolls back rather than leaving a half-changed database.
 
@@ -544,7 +546,7 @@ Three rules:
   backfill it in the same migration, and leave the old one alone.
 
 If a database is somehow *newer* than the code (an older build installed over a newer one),
-ABSoft refuses to start and says so, rather than guessing and corrupting it.
+ABSoft POS refuses to start and says so, rather than guessing and corrupting it.
 
 ### Checking what a shop is running
 
@@ -577,7 +579,7 @@ public/
 tests/              npm test - each suite runs its own server on a scratch database
 data/absoft.db      your database (created on first run)
 data/backups/       local snapshots (kept out of Git)
-start.cmd           run ABSoft
+start.cmd           run ABSoft POS
 update.cmd          back up, then pull the latest version from GitHub
 ```
 

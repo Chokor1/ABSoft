@@ -82,7 +82,7 @@ console.log('\n[the version sits beside the name]');
 {
   const pkg = JSON.parse((await import('node:fs')).readFileSync(resolve(APP, 'package.json'), 'utf8').replace(/^﻿/, ''));
   const brand = (await page.textContent('.sidebar .brand strong')).replace(/\s+/g, ' ').trim();
-  check('the sidebar says ABSoft and its version', brand === `ABSoft v${pkg.version}`, brand);
+  check('the sidebar says ABSoft POS and its version', brand === `ABSoft POS v${pkg.version}`, brand);
 }
 
 for (const [route, label] of [

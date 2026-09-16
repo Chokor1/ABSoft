@@ -146,7 +146,7 @@ const server = createServer(async (req, res) => {
     res.end('Not found');
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
-    if (status >= 500) console.error(`[ABSoft] ${req.method} ${pathname}`, err);
+    if (status >= 500) console.error(`[ABSoft POS] ${req.method} ${pathname}`, err);
     if (!res.headersSent && !res.writableEnded) {
       // `code`/`params` let the browser show this message in the user's language.
       sendJson(res, status, {

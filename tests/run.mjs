@@ -46,7 +46,7 @@ const run = (file) =>
     child.on('exit', (code) => done(code === 0));
   });
 
-console.log(`\nABSoft tests — ${suites.length} suite(s)\n${'='.repeat(46)}`);
+console.log(`\nABSoft POS tests — ${suites.length} suite(s)\n${'='.repeat(46)}`);
 
 let failed = 0;
 for (const file of suites) {

@@ -192,8 +192,7 @@ export async function render(root, ctx) {
           <div class="card-head"><div><h3>${esc(t('set.about'))}</h3></div></div>
           <div class="card-body">
             <div style="display:flex;align-items:center;gap:13px">
-              <div class="mark" style="width:42px;height:42px;border-radius:13px;display:grid;place-items:center;
-                background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;font-weight:800">AB</div>
+              <div class="about-mark" style="width:42px;height:42px;margin:0;border-radius:13px;font-size:15px"><img src="/img/logo-mark.svg" alt="ABSoft" /></div>
               <div>
                 <div style="font-weight:650">${esc(t('app.name'))} — ${esc(t('app.tagline'))}</div>
                 <div class="muted" style="font-size:12.5px">${esc(

@@ -281,8 +281,8 @@ export function runMigrations(db, { log = () => {} } = {}) {
 
   if (from > LATEST_VERSION) {
     throw new Error(
-      `This database was created by a newer version of ABSoft (schema v${from}, this build ` +
-        `understands v${LATEST_VERSION}). Update ABSoft before opening it, so your data stays safe.`,
+      `This database was created by a newer version of ABSoft POS (schema v${from}, this build ` +
+        `understands v${LATEST_VERSION}). Update ABSoft POS before opening it, so your data stays safe.`,
     );
   }
   if (from === LATEST_VERSION) return [];

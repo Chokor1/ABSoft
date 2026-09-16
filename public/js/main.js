@@ -113,8 +113,8 @@ function renderLogin(message = '') {
     <div class="login-screen">
       <form class="login-card" id="login-form">
         <div class="login-brand">
-          <div class="mark">AB</div>
-          <div><h1>${esc(t('app.name'))}</h1><span>${esc(t('app.tagline'))}</span></div>
+          <div class="mark"><img src="/img/logo-mark.svg" alt="ABSoft" /></div>
+          <div><h1>${esc(t('app.brand'))} <span class="brand-product">${esc(t('app.product'))}</span></h1><span>${esc(t('app.tagline'))}</span></div>
         </div>
         <div class="form-grid" style="grid-template-columns:minmax(0,1fr)">
           <div class="field">
@@ -213,8 +213,8 @@ function renderShell() {
     <div class="shell">
       <aside class="sidebar" id="sidebar">
         <div class="brand">
-          <div class="mark">AB</div>
-          <div class="brand-text"><strong>${esc(t('app.name'))}${
+          <div class="mark"><img src="/img/logo-mark.svg" alt="ABSoft" /></div>
+          <div class="brand-text"><strong>${esc(t('app.brand'))} <span class="brand-product">${esc(t('app.product'))}</span>${
             store.version ? ` <span class="brand-version" title="${esc(t('app.version', { v: store.version }))}">v${esc(store.version)}</span>` : ''
           }</strong><small>${esc(
             store.settings.store_name || t('app.tagline'),
@@ -458,7 +458,7 @@ function startApp() {
 
 /**
  * The files on disk are newer than the running server: an update was pulled but
- * ABSoft was not restarted, so new screens would call routes that do not exist yet.
+ * ABSoft POS was not restarted, so new screens would call routes that do not exist yet.
  */
 function showRestartNotice() {
   if (document.querySelector('.restart-notice')) return;

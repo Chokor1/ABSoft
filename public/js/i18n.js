@@ -1,5 +1,5 @@
 /**
- * Translations for ABSoft. English and Arabic.
+ * Translations for ABSoft POS. English and Arabic.
  *
  * Keys are flat and namespaced by screen. `t('key', { name: 'x' })` interpolates
  * `{name}` placeholders. A missing key falls back to the key itself so a gap is
@@ -14,7 +14,9 @@ export const LANGUAGES = [
 const DICT = {
   en: {
     /* ---------------------------------------------------------- common -- */
-    'app.name': 'ABSoft',
+    'app.brand': 'ABSoft',
+    'app.product': 'POS',
+    'app.name': 'ABSoft POS',
     'app.tagline': 'Point of Sale & Inventory',
     'app.author': 'Developed by Abbass Chokor',
     'common.loading': 'Loading…',
@@ -80,7 +82,7 @@ const DICT = {
     'nav.purchases': 'Buy — Stock In',
     'nav.purchases.sub': 'Record supplier purchases',
     'nav.adjustments': 'Stock Adjustment',
-    'app.restart_title': 'ABSoft was updated — restart it to finish.',
+    'app.restart_title': 'ABSoft POS was updated — restart it to finish.',
     'app.version': 'Version {v}',
     'adj.type.opening': 'Opening stock',
     'adj.type.adjustment': 'Adjustment',
@@ -228,7 +230,7 @@ const DICT = {
     'prod.price_in': 'Price in {c}',
     'err.RATE_POSITIVE': 'The exchange rate must be greater than zero',
     'err.SECOND_CURRENCY_OFF': 'The second currency is not switched on',
-    'app.restart_body': 'The new files are in place but the running server is the old one. Close ABSoft and start it again.',
+    'app.restart_body': 'The new files are in place but the running server is the old one. Close ABSoft POS and start it again.',
     'adj.lines_title': 'Products adjusted',
     'adj.lines_sub': '{n} lines · +{i} in · −{o} out',
     'buy.lines_sub': '{n} lines · {q} units',
@@ -325,7 +327,7 @@ const DICT = {
     'nav.reports': 'Reports',
     'nav.reports.sub': 'Profit & loss, stock and performance',
     'nav.users': 'Users',
-    'nav.users.sub': 'Who can access ABSoft',
+    'nav.users.sub': 'Who can access ABSoft POS',
     'nav.lists': 'Lists',
     'nav.lists.sub': 'Customers, suppliers, categories and units',
     'nav.settings': 'Settings',
@@ -720,7 +722,7 @@ const DICT = {
     'set.save': 'Save settings',
     'set.admin_only': 'Only an administrator can change these settings.',
     'set.saved': 'Settings saved',
-    'set.how_title': 'How ABSoft calculates profit',
+    'set.how_title': 'How ABSoft POS calculates profit',
     'set.how_revenue': 'Net revenue',
     'set.how_revenue_v': 'sales − tax',
     'set.how_cogs': '− Cost of goods sold',
@@ -783,7 +785,7 @@ const DICT = {
     'lists.count': '{n} entries',
     'lists.count_one': '1 entry',
     'lists.none': 'Nothing here yet',
-    'lists.none_sub': 'Type a name anywhere in ABSoft and it will appear here automatically.',
+    'lists.none_sub': 'Type a name anywhere in ABSoft POS and it will appear here automatically.',
     'lists.none_match': 'No matches',
     'lists.none_match_sub': 'Try a different search.',
     'lists.created': 'Added to the list',
@@ -821,7 +823,7 @@ const DICT = {
     'err.NOT_SIGNED_IN': 'Not signed in',
     'err.ADMIN_ONLY': 'Administrator access required',
     'err.NOT_FOUND': 'Not found',
-    'err.NO_ROUTE': 'The server is older than this screen — restart ABSoft to finish updating',
+    'err.NO_ROUTE': 'The server is older than this screen — restart ABSoft POS to finish updating',
     'err.BAD_JSON': 'The request could not be read',
     'err.BODY_TOO_LARGE': 'That request was too large',
     'err.BARCODE_TAKEN': 'Barcode "{barcode}" is already used by another product',
@@ -867,7 +869,9 @@ const DICT = {
 
   ar: {
     /* ---------------------------------------------------------- common -- */
-    'app.name': 'ABSoft',
+    'app.brand': 'ABSoft',
+    'app.product': 'POS',
+    'app.name': 'ABSoft POS',
     'app.tagline': 'نقطة بيع وإدارة مخزون',
     // Left in English on purpose: the author's credit reads the same in every language.
     'app.author': 'Developed by Abbass Chokor',
@@ -934,7 +938,7 @@ const DICT = {
     'nav.purchases': 'شراء — إدخال مخزون',
     'nav.purchases.sub': 'تسجيل مشتريات الموردين',
     'nav.adjustments': 'تسوية المخزون',
-    'app.restart_title': 'تم تحديث ABSoft — أعد تشغيله لإكمال التحديث.',
+    'app.restart_title': 'تم تحديث ABSoft POS — أعد تشغيله لإكمال التحديث.',
     'app.version': 'الإصدار {v}',
     'adj.type.opening': 'مخزون افتتاحي',
     'adj.type.adjustment': 'تسوية',
@@ -1082,7 +1086,7 @@ const DICT = {
     'prod.price_in': 'السعر بـ {c}',
     'err.RATE_POSITIVE': 'يجب أن يكون سعر الصرف أكبر من صفر',
     'err.SECOND_CURRENCY_OFF': 'العملة الثانية غير مفعّلة',
-    'app.restart_body': 'الملفات الجديدة جاهزة لكن الخادم الذي يعمل هو القديم. أغلق ABSoft ثم شغّله من جديد.',
+    'app.restart_body': 'الملفات الجديدة جاهزة لكن الخادم الذي يعمل هو القديم. أغلق ABSoft POS ثم شغّله من جديد.',
     'adj.lines_title': 'المنتجات المعدّلة',
     'adj.lines_sub': '{n} بنود · +{i} إدخال · −{o} إخراج',
     'buy.lines_sub': '{n} بنود · {q} وحدة',
@@ -1179,7 +1183,7 @@ const DICT = {
     'nav.reports': 'التقارير',
     'nav.reports.sub': 'الأرباح والخسائر والمخزون والأداء',
     'nav.users': 'المستخدمون',
-    'nav.users.sub': 'من يمكنه الدخول إلى ABSoft',
+    'nav.users.sub': 'من يمكنه الدخول إلى ABSoft POS',
     'nav.lists': 'القوائم',
     'nav.lists.sub': 'الزبائن والموردون والفئات والوحدات',
     'nav.settings': 'الإعدادات',
@@ -1572,7 +1576,7 @@ const DICT = {
     'set.save': 'حفظ الإعدادات',
     'set.admin_only': 'المدير فقط يستطيع تغيير هذه الإعدادات.',
     'set.saved': 'تم حفظ الإعدادات',
-    'set.how_title': 'كيف يحسب ABSoft الربح',
+    'set.how_title': 'كيف يحسب ABSoft POS الربح',
     'set.how_revenue': 'صافي الإيرادات',
     'set.how_revenue_v': 'المبيعات − الضريبة',
     'set.how_cogs': '− تكلفة البضاعة المباعة',
@@ -1635,7 +1639,7 @@ const DICT = {
     'lists.count': '{n} مدخلات',
     'lists.count_one': 'مدخل واحد',
     'lists.none': 'لا يوجد شيء هنا بعد',
-    'lists.none_sub': 'اكتب اسماً في أي مكان في ABSoft وسيظهر هنا تلقائياً.',
+    'lists.none_sub': 'اكتب اسماً في أي مكان في ABSoft POS وسيظهر هنا تلقائياً.',
     'lists.none_match': 'لا توجد نتائج',
     'lists.none_match_sub': 'جرّب بحثاً آخر.',
     'lists.created': 'أُضيف إلى القائمة',
@@ -1673,7 +1677,7 @@ const DICT = {
     'err.NOT_SIGNED_IN': 'لم يتم تسجيل الدخول',
     'err.ADMIN_ONLY': 'هذا الإجراء يتطلب صلاحية مدير',
     'err.NOT_FOUND': 'غير موجود',
-    'err.NO_ROUTE': 'الخادم أقدم من هذه الشاشة — أعد تشغيل ABSoft لإكمال التحديث',
+    'err.NO_ROUTE': 'الخادم أقدم من هذه الشاشة — أعد تشغيل ABSoft POS لإكمال التحديث',
     'err.BAD_JSON': 'تعذّرت قراءة الطلب',
     'err.BODY_TOO_LARGE': 'حجم الطلب كبير جداً',
     'err.BARCODE_TAKEN': 'الباركود "{barcode}" مستخدم من قبل منتج آخر',

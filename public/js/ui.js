@@ -8,7 +8,7 @@ import { sweepPickers } from './picker.js';
 
 export const store = {
   user: null,
-  settings: { currency: '$', store_name: 'ABSoft', tax_rate: '0', receipt_footer: '' },
+  settings: { currency: '$', store_name: 'ABSoft Store', tax_rate: '0', receipt_footer: '' },
 };
 
 const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
