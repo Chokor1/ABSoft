@@ -235,6 +235,36 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Opening stock is a type of stock adjustment after all, not a document of
+    // its own. Any opening stock documents already written become adjustments
+    // of type "opening", their stock movements follow them, and the separate
+    // tables go.
+    name: 'opening-stock-as-adjustments',
+    up: (db) => {
+      addColumn(db, 'adjustments', 'type', `TEXT NOT NULL DEFAULT 'adjustment'`);
+      if (!hasTable(db, 'openings')) return;
+
+      const openings = db.prepare(`SELECT * FROM openings ORDER BY id`).all();
+      const lastAdj = () => Number(db.prepare(`SELECT COALESCE(MAX(id), 0) AS n FROM adjustments`).get().n);
+      for (const o of openings) {
+        const docNo = `ADJ-${String(lastAdj() + 1).padStart(6, '0')}`;
+        const res = db
+          .prepare(
+            `INSERT INTO adjustments (doc_no, date, reason, note, user_id, created_at, type)
+             VALUES (?, ?, 'Opening stock', ?, ?, ?, 'opening')`,
+          )
+          .run(docNo, o.date, o.note, o.user_id, o.created_at);
+        const adjId = Number(res.lastInsertRowid);
+        db.prepare(
+          `INSERT INTO adjustment_items (adjustment_id, product_id, stock_before, qty, unit_cost)
+           SELECT ?, product_id, 0, qty, unit_cost FROM opening_items WHERE opening_id = ?`,
+        ).run(adjId, o.id);
+        db.prepare(`UPDATE stock_moves SET ref_table = 'adjustments', ref_id = ? WHERE ref_table = 'openings' AND ref_id = ?`).run(adjId, o.id);
+      }
+      db.exec(`DROP TABLE IF EXISTS opening_items; DROP TABLE IF EXISTS openings;`);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

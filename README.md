@@ -201,16 +201,21 @@ product's initials stand in.
 ## Opening stock
 
 What was already on the shelf when a product — or the whole shop — started in ABSoft is recorded as
-an **opening stock document** (`OPN-000001`…), with a quantity and a cost for each product.
+a **stock adjustment of type *Opening stock*** (numbered with the other adjustments, `ADJ-…`), with a
+quantity and a cost for each product. There is no separate opening stock document.
 
 - **A new product.** The new-product form has an *Opening stock* field, 0 by default. Put 1 or more
-  and saving records an opening stock document for it. The field is not on the product's page
+  and saving records an opening stock adjustment for it. The field is not on the product's page
   afterwards: from then on, stock changes through documents.
-- **By hand.** **Stock → Opening Stock → New opening stock**: scan or search products, type the
+- **By hand.** **Stock → Stock Adjustment → Opening stock**: scan or search products, type the
   quantity and cost (the product's cost is filled in), save.
-- **Importing.** Opening quantities in an imported file all go into **one** document for the file.
+- **Importing.** Opening quantities in an imported file all go into **one** adjustment for the file.
 
-Opening stock blends into the average cost like a purchase. Deleting a document takes its stock back
+Stock Adjustment lists them with an *Opening stock* badge, and its **Type** filter shows only opening
+stock or only ordinary adjustments. Shops that recorded the short-lived `OPN-…` documents have them
+converted to opening stock adjustments automatically on update, stock unchanged.
+
+Opening stock blends into the average cost like a purchase. Deleting one takes its stock back
 out (the average cost stays as it is).
 
 ## Importing products
@@ -226,14 +231,14 @@ out (the average cost stays as it is).
    *Skipped* (a product with that barcode already exists — it is never overwritten) or *Error*
    (missing name, a word where a number goes, a barcode repeated in the file), with the reason.
 4. Set the date and note for the opening stock, and press **Import**. The ready rows become
-   products; every opening quantity in the file goes into one opening stock document, linked from
+   products; every opening quantity in the file goes into one opening stock adjustment, linked from
    the result.
 
 ---
 
 ## Stock count (جردة)
 
-**Stock** in the menu folds open to show **Products**, **Opening Stock**, **Stock Count** and **Stock Adjustment**. Click
+**Stock** in the menu folds open to show **Products**, **Stock Count** and **Stock Adjustment**. Click
 it to fold it away; the choice is remembered, and opening one of its screens unfolds it again.
 
 Open Stock Count — nothing is loaded yet — and choose what to count: **All items**, **By category**, or **Pick items**

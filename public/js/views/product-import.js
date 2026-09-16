@@ -220,7 +220,7 @@ export async function renderImport(root, ctx) {
         btn.disabled = false;
       }
     });
-    result.querySelector('#imp-open-doc')?.addEventListener('click', () => ctx.navigate(`openings/${done.opening.id}`));
+    result.querySelector('#imp-open-doc')?.addEventListener('click', () => ctx.navigate(`adjustments/${done.opening.id}`));
     result.querySelector('#imp-to-products')?.addEventListener('click', () => ctx.navigate('products'));
   }
 

@@ -1,4 +1,4 @@
-/** Import products from the Products screen, opening stock on a new product, and the Opening Stock screens. */
+/** Import products from the Products screen, and opening stock as a type of stock adjustment. */
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -46,10 +46,10 @@ await page.click('button[type=submit]');
 await page.waitForSelector('.shell');
 
 /* ------------------------------------------------------------ the menu */
-console.log('\n[Opening Stock in the Stock menu]');
+console.log('\n[no separate opening stock screen]');
 const stockItems = await page.$$eval('.nav-fold[data-fold="stock"] [data-route]', (a) => a.map((x) => x.dataset.route));
-check('Stock holds Products, Opening Stock, Stock Count, Stock Adjustment',
-  stockItems.join() === 'products,openings,stock-count,adjustments', stockItems.join());
+check('Stock holds Products, Stock Count and Stock Adjustment — opening stock lives in adjustments',
+  stockItems.join() === 'products,stock-count,adjustments', stockItems.join());
 
 /* --------------------------------------------------- a new product's opening */
 console.log('\n[opening stock on a new product]');
@@ -65,8 +65,8 @@ await page.click('#page-form button[type=submit]');
 await page.waitForSelector('.product-hero');
 check('after saving, the product page has no opening stock field', (await page.$$('input[name=opening_stock]')).length === 0);
 check('and the product holds 1', (await page.textContent('.product-hero')).includes('1 pcs'), await page.textContent('.product-hero'));
-const opened = await api('/api/openings?page=1&per=10');
-check('an opening stock document was written', opened.total === 1 && opened.rows[0].line_count === 1, JSON.stringify(opened.total));
+const opened = await api('/api/adjustments?page=1&per=10&type=opening');
+check('an opening stock adjustment was written', opened.total === 1 && opened.rows[0].line_count === 1, JSON.stringify(opened.total));
 
 /* ------------------------------------------------------------ importing */
 console.log('\n[importing products]');
@@ -99,7 +99,7 @@ check('semicolons, quotes and Arabic are read', (await page.textContent('.imp-ta
   (await page.textContent('.imp-table')).includes('زيت زيتون مستورد'));
 check('the wrong row says why', (await page.textContent('.imp-table tr.imp-error')).includes('The name is missing'));
 check('the existing barcode is skipped, and says so', (await page.textContent('.imp-table tr.imp-skip')).includes('already exists'));
-check('it explains the opening stock will be one document', (await page.textContent('.imp-options')).includes('one opening stock document'));
+check('it explains the opening stock will be one adjustment', (await page.textContent('.imp-options')).includes('one opening stock adjustment'));
 check('nothing is saved yet', (await api('/api/products?search=UI Import')).length === 0);
 await shot('161-import-preview');
 
@@ -107,23 +107,30 @@ await page.click('#imp-go');
 await page.waitForSelector('.imp-done', { timeout: 8000 });
 check('importing creates the products', (await api('/api/products?search=UI Import')).length === 2 &&
   (await api('/api/products?search=زيت زيتون مستورد')).length === 1);
-const afterImport = await api('/api/openings?page=1&per=10');
-check('and ONE opening stock document for the file', afterImport.total === 2, String(afterImport.total));
-const importDoc = await api(`/api/openings/${afterImport.rows[0].id}`);
-check('holding the two products that had a quantity', importDoc.items.length === 2 && Math.abs(importDoc.total_qty - 35) < 0.001, JSON.stringify(importDoc.items.map((i) => i.qty)));
+const afterImport = await api('/api/adjustments?page=1&per=10&type=opening');
+check('and ONE opening stock adjustment for the file', afterImport.total === 2, String(afterImport.total));
+const importDoc = await api(`/api/adjustments/${afterImport.rows[0].id}`);
+check('holding the two products that had a quantity', importDoc.type === 'opening' && importDoc.items.length === 2 && Math.abs(importDoc.qty_in - 35) < 0.001,
+  JSON.stringify(importDoc.items.map((i) => i.qty)));
 check('noted with the file name', importDoc.note.includes('shop-items.csv'), importDoc.note);
 await shot('162-import-done');
 
-console.log('\n[the opening stock document]');
+console.log('\n[the opening stock adjustment]');
 await page.click('#imp-open-doc');
 await page.waitForSelector('.doc-head');
-check('the result opens the document', /#\/openings\/\d+$/.test(page.url()) && (await page.textContent('.doc-body')).includes('UI Import Flour'));
-await page.goto(`${BASE}#/openings`);
-await page.waitForSelector('.table-scroll tbody tr');
-check('Opening Stock lists both documents', (await page.$$('.table-scroll tbody tr')).length === 2);
+check('the result opens the adjustment', /#\/adjustments\/\d+$/.test(page.url()) && (await page.textContent('.doc-body')).includes('UI Import Flour'));
+check('marked as opening stock, with the unit cost', (await page.textContent('.doc-head')).includes('Opening stock') &&
+  (await page.textContent('.doc-body thead')).includes('Unit cost'));
+await page.goto(`${BASE}#/adjustments`);
+await page.waitForSelector('.toolbar .filter-select');
+await page.selectOption('.toolbar .filter-select:has(option[value="opening"]) select', 'opening');
+await page.waitForTimeout(800);
+check('Stock Adjustment filters to opening stock', (await page.$$('.table-scroll tbody tr')).length === 2 &&
+  (await page.$$('.table-scroll tbody .badge.accent')).length === 2);
+await shot('163-adjustments-opening-filter');
 
-console.log('\n[an opening stock document by hand]');
-await page.click('#new');
+console.log('\n[opening stock by hand]');
+await page.click('#new-opening');
 await page.waitForSelector('#opn-find');
 const [product] = await api('/api/products?search=Unopened&limit=1').then(() => api('/api/products?limit=1'));
 await page.fill('#opn-find', product.barcode);

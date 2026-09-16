@@ -29,27 +29,31 @@ const reasonChoices = () => REASONS.map((r) => t(`adj.reason.${r}`));
 
 const signed = (n) => `${Number(n) > 0 ? '+' : ''}${qtyText(n)}`;
 
-/** #/adjustments, #/adjustments/new, #/adjustments/<id> */
+/** #/adjustments, #/adjustments/new, #/adjustments/opening, #/adjustments/<id> */
 export async function render(root, ctx) {
   if (ctx.params[0] === 'new') return renderForm(root, ctx);
+  if (ctx.params[0] === 'opening') return renderOpeningForm(root, ctx);
   if (/^\d+$/.test(ctx.params[0] || '')) return renderDoc(root, ctx, Number(ctx.params[0]));
   return renderList(root, ctx);
 }
 
 async function renderList(root, ctx) {
-  const state = { from: monthStart(), to: todayISO(), search: '', reason: '', page: 1, per: 50 };
+  const state = { from: monthStart(), to: todayISO(), search: '', reason: '', type: '', page: 1, per: 50 };
   let rows = [];
 
   ctx.actions.innerHTML = `
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
+    <button class="btn" id="new-opening">${icon('package')} ${esc(t('opn.new'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('adj.new'))}</button>`;
   ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('adjustments/new'));
+  ctx.actions.querySelector('#new-opening').addEventListener('click', () => ctx.navigate('adjustments/opening'));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       `absoft-adjustments-${state.from}-to-${state.to}.csv`,
       rows.map((a) => ({
         doc_no: a.doc_no,
         date: a.date,
+        type: a.type,
         reason: a.reason,
         lines: a.line_count,
         qty_in: a.qty_in,
@@ -83,6 +87,22 @@ async function renderList(root, ctx) {
   );
   bar.appendChild(searchWrap);
 
+  bar.appendChild(
+    filterSelect({
+      label: t('filter.type'),
+      value: state.type,
+      options: [
+        { value: '', label: t('filter.all') },
+        { value: 'adjustment', label: t('adj.type.adjustment') },
+        { value: 'opening', label: t('adj.type.opening') },
+      ],
+      onChange: (v) => {
+        state.type = v;
+        refilter();
+      },
+    }),
+  );
+
   // Only the reasons actually used are worth offering.
   const reasons = await api.adjustmentReasons().catch(() => []);
   if (reasons.length) {
@@ -112,6 +132,7 @@ async function renderList(root, ctx) {
       to: state.to,
       search: state.search,
       reason: state.reason,
+      type: state.type,
       page: state.page,
       per: state.per,
     });
@@ -139,7 +160,9 @@ async function renderList(root, ctx) {
                   <tbody>${rows
                     .map(
                       (a) => `<tr class="row-click" data-open="${a.id}">
-                        <td class="mono nowrap">${esc(a.doc_no)}</td>
+                        <td class="nowrap"><span class="mono">${esc(a.doc_no)}</span>${
+                          a.type === 'opening' ? ` <span class="badge accent">${esc(t('adj.type.opening'))}</span>` : ''
+                        }</td>
                         <td class="nowrap">${dateText(a.date)}</td>
                         <td>${esc(a.reason || t('common.none'))}</td>
                         <td class="right">${a.line_count}</td>
@@ -215,7 +238,7 @@ async function renderDoc(root, ctx, id) {
   const body = docPage(root, {
     title: t('adj.view_title', { doc: a.doc_no }),
     subtitle: [dateText(a.date), a.full_name || a.username].filter(Boolean).join(' · '),
-    badges: `${a.reason ? `<span class="badge">${esc(a.reason)}</span>` : ''}
+    badges: `${a.type === 'opening' ? `<span class="badge accent">${esc(t('adj.type.opening'))}</span>` : a.reason ? `<span class="badge">${esc(a.reason)}</span>` : ''}
              <span class="badge ${signClass(a.value) === 'money-neg' ? 'danger' : 'success'}">${esc(t('adj.value_badge', { v: money(a.value) }))}</span>`,
     actions: `<button class="btn" data-print>${icon('print')} ${esc(t('common.print'))}</button>
               <button class="btn btn-ghost" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>`,
@@ -229,6 +252,7 @@ async function renderDoc(root, ctx, id) {
         <div class="table-wrap table-scroll"><table class="data">
           <thead><tr><th>${esc(t('nav.products'))}</th><th class="right">${esc(t('adj.before'))}</th>
             <th class="right">${esc(t('adj.change'))}</th><th class="right">${esc(t('adj.after'))}</th>
+            ${a.type === 'opening' ? `<th class="right">${esc(t('buy.unit_cost'))}</th>` : ''}
             <th class="right">${esc(t('adj.value'))}</th></tr></thead>
           <tbody>${a.items
             .map(
@@ -238,13 +262,14 @@ async function renderDoc(root, ctx, id) {
                 <td class="right">${qtyText(i.stock_before)} ${esc(i.unit)}</td>
                 <td class="right ${signClass(i.qty)}"><b>${signed(i.qty)}</b></td>
                 <td class="right">${qtyText(i.stock_before + i.qty)} ${esc(i.unit)}</td>
+                ${a.type === 'opening' ? `<td class="right">${money(i.unit_cost)}</td>` : ''}
                 <td class="right ${signClass(i.value)}">${money(i.value)}</td>
               </tr>`,
             )
             .join('')}</tbody>
           <tfoot><tr><td colspan="2">${esc(t('common.total'))}</td>
             <td class="right"><span class="money-pos">+${qtyText(a.qty_in)}</span> / <span class="money-neg">−${qtyText(a.qty_out)}</span></td>
-            <td></td>
+            <td></td>${a.type === 'opening' ? '<td></td>' : ''}
             <td class="right ${signClass(a.value)}">${money(a.value)}</td></tr></tfoot>
         </table></div>
       </div>
@@ -519,4 +544,183 @@ async function renderForm(root, ctx) {
   draw();
   find.focus();
   return () => pickers.forEach((p) => p.destroy());
+}
+
+/* ------------------------------------------------- opening stock builder -- */
+
+/** Opening stock: a stock adjustment of type "opening", with a quantity and a cost per product. */
+async function renderOpeningForm(root, ctx) {
+  const back = () => ctx.navigate('adjustments');
+  const lines = [];
+
+  root.innerHTML = `
+    <div class="card form-page" id="opn-form">
+      <div class="card-head">
+        <button type="button" class="btn btn-ghost btn-icon" data-cancel aria-label="${esc(t('common.back'))}">${icon('back')}</button>
+        <div><h3>${esc(t('opn.title'))}</h3><div class="sub">${esc(t('opn.sub'))}</div></div>
+      </div>
+      <div class="card-body">
+        <div class="form-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+          <div class="field"><label>${esc(t('common.date'))}</label>
+            <input class="input" type="date" id="opn-date" value="${todayISO()}"/></div>
+          <div class="field"><label>${esc(t('common.note'))}</label>
+            <input class="input" id="opn-note" placeholder="${esc(t('opn.note_placeholder'))}" autocomplete="off"/></div>
+        </div>
+      </div>
+      <div class="card-head" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="combo" style="flex:1">
+          <div class="input-icon">${icon('barcode')}
+            <input class="input" id="opn-find" placeholder="${esc(t('opn.find'))}" autocomplete="off"/>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap" id="opn-lines"></div>
+      <div class="card-head form-actions">
+        <div class="muted" id="opn-summary" style="font-size:13px"></div>
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-cancel>${esc(t('common.cancel'))}</button>
+        <button type="button" class="btn btn-primary" id="opn-save">${icon('check')} ${esc(t('opn.save'))}</button>
+      </div>
+    </div>`;
+
+  const linesEl = root.querySelector('#opn-lines');
+  const find = root.querySelector('#opn-find');
+
+  const summary = () => {
+    const filled = lines.filter((l) => Number(l.qty) > 0);
+    const value = filled.reduce((s, l) => s + Number(l.qty) * Number(l.unit_cost), 0);
+    root.querySelector('#opn-summary').textContent = lines.length
+      ? t('opn.summary', { n: filled.length, v: money(value) })
+      : '';
+    const foot = linesEl.querySelector('[data-foot]');
+    if (foot) foot.textContent = money(value);
+  };
+
+  function draw() {
+    linesEl.innerHTML = lines.length
+      ? `<table class="data">
+          <thead><tr><th>${esc(t('nav.products'))}</th><th class="right">${esc(t('adj.in_stock'))}</th>
+            <th class="right" style="width:140px">${esc(t('common.quantity'))}</th>
+            <th class="right" style="width:140px">${esc(t('buy.unit_cost'))}</th>
+            <th class="right">${esc(t('adj.value'))}</th><th style="width:40px"></th></tr></thead>
+          <tbody>${lines
+            .map(
+              (l, i) => `<tr data-line="${i}">
+                <td><div class="cell-title">${esc(l.name)}</div><div class="cell-sub mono">${esc(l.barcode || '')}</div></td>
+                <td class="right nowrap muted">${qtyText(l.stock)} ${esc(l.unit)}</td>
+                <td><input class="input" type="number" step="any" min="0" data-qty="${i}" value="${esc(l.qty)}" style="text-align:end"/></td>
+                <td><input class="input" type="number" step="0.01" min="0" data-cost="${i}" value="${esc(l.unit_cost)}" style="text-align:end"/></td>
+                <td class="right" data-value="${i}">${money(Number(l.qty) * Number(l.unit_cost))}</td>
+                <td class="right"><button type="button" class="cl-remove" data-remove="${i}">${icon('trash')}</button></td>
+              </tr>`,
+            )
+            .join('')}</tbody>
+          <tfoot><tr><td colspan="4">${esc(t('adj.value'))}</td><td class="right" data-foot></td><td></td></tr></tfoot>
+        </table>`
+      : emptyState(t('opn.no_lines'), t('opn.no_lines_sub'), 'package');
+
+    const repaint = (i) => {
+      const l = lines[i];
+      linesEl.querySelector(`[data-value="${i}"]`).textContent = money(Number(l.qty) * Number(l.unit_cost));
+      summary();
+    };
+    linesEl.querySelectorAll('[data-qty]').forEach((input) =>
+      input.addEventListener('input', () => {
+        lines[+input.dataset.qty].qty = input.value;
+        repaint(+input.dataset.qty);
+      }),
+    );
+    linesEl.querySelectorAll('[data-cost]').forEach((input) =>
+      input.addEventListener('input', () => {
+        lines[+input.dataset.cost].unit_cost = input.value;
+        repaint(+input.dataset.cost);
+      }),
+    );
+    linesEl.querySelectorAll('input').forEach((input) =>
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          find.focus();
+        }
+      }),
+    );
+    linesEl.querySelectorAll('[data-remove]').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        lines.splice(+btn.dataset.remove, 1);
+        draw();
+      }),
+    );
+    summary();
+  }
+
+  function addProduct(p) {
+    let i = lines.findIndex((l) => l.product_id === p.id);
+    if (i < 0) {
+      lines.unshift({
+        product_id: p.id,
+        name: p.name,
+        barcode: p.barcode || '',
+        unit: p.unit,
+        stock: Number(p.stock) || 0,
+        qty: '',
+        unit_cost: Number(p.cost) || 0,
+      });
+      i = 0;
+      draw();
+    }
+    const input = linesEl.querySelector(`[data-qty="${i}"]`);
+    input?.focus();
+    input?.select();
+  }
+
+  const picker = attachPicker(find, {
+    search: (q) => (q ? api.products({ search: q, limit: 25 }) : []),
+    render: productOption,
+    emptyText: t('buy.no_product_match'),
+    openOnFocus: false,
+    onPick: (p) => {
+      find.value = '';
+      picker.reset();
+      addProduct(p);
+    },
+  });
+  // A scanner types the code and presses Enter before any search answers.
+  find.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter' || e.defaultPrevented) return;
+    e.preventDefault();
+    const code = find.value.trim();
+    if (!code) return;
+    picker.reset();
+    try {
+      const p = await api.lookup(code);
+      find.value = '';
+      addProduct(p);
+    } catch {
+      picker.refresh();
+    }
+  });
+
+  root.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', back));
+  root.querySelector('#opn-save').addEventListener('click', async () => {
+    const items = lines
+      .filter((l) => Number(l.qty) > 0)
+      .map((l) => ({ product_id: l.product_id, qty: Number(l.qty), unit_cost: Number(l.unit_cost) || 0 }));
+    if (!items.length) return toast(t('opn.need_line'), 'warn');
+    try {
+      const saved = await api.createAdjustment({
+        type: 'opening',
+        date: root.querySelector('#opn-date').value,
+        note: root.querySelector('#opn-note').value.trim(),
+        items,
+      });
+      toast(t('opn.saved', { doc: saved.doc_no, n: saved.items.length }), 'success');
+      ctx.navigate(`adjustments/${saved.id}`);
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  });
+
+  draw();
+  find.focus();
+  return () => picker.destroy();
 }

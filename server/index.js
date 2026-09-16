@@ -25,7 +25,6 @@ import { register as registerUsers } from './routes/users.js';
 import { register as registerSystem } from './routes/system.js';
 import { register as registerEntities } from './routes/entities.js';
 import { register as registerAdjustments } from './routes/adjustments.js';
-import { register as registerOpenings } from './routes/openings.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -68,7 +67,6 @@ registerUsers(router);
 registerSystem(router);
 registerEntities(router);
 registerAdjustments(router);
-registerOpenings(router);
 
 /* -------------------------------------------------------------- server ---- */
 

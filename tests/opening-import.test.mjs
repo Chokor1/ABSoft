@@ -1,4 +1,4 @@
-/** Opening stock documents, a new product's opening quantity, and importing products from a file. */
+/** Opening stock as a type of stock adjustment: a new product's opening quantity, by hand, and importing products. */
 import { spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -41,45 +41,48 @@ async function call(method, path, body) {
   return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 const get = async (path) => (await call('GET', path)).data;
+const openings = () => get('/api/adjustments?page=1&per=50&type=opening');
 
 await call('POST', '/api/auth/login', { username: 'admin', password: 'admin' });
+check('there is no separate opening stock document any more', (await call('GET', '/api/openings')).status === 404);
 
 /* ------------------------------------------------------------------------ */
 console.log('\n[a new product with an opening quantity]');
 const withStock = (await call('POST', '/api/products', { name: 'Opened Oil', barcode: 'OP-1', cost: 4, price: 6, opening_stock: 12 })).data;
 check('the product starts with that stock', near(withStock.stock, 12));
-const docs1 = await get('/api/openings?page=1&per=10');
-check('an opening stock document was written for it', docs1.total === 1 && docs1.rows[0].line_count === 1, JSON.stringify(docs1.rows));
-const doc1 = await get(`/api/openings/${docs1.rows[0].id}`);
-check('numbered OPN-, with the quantity and the product\'s cost', /^OPN-\d{6}$/.test(doc1.doc_no) && near(doc1.items[0].qty, 12) && near(doc1.items[0].unit_cost, 4),
-  JSON.stringify(doc1.items));
+const first = await openings();
+check('a stock adjustment of type opening was written', first.total === 1 && first.rows[0].type === 'opening', JSON.stringify(first.rows));
+const doc1 = await get(`/api/adjustments/${first.rows[0].id}`);
+check('numbered like any adjustment, reason Opening stock', /^ADJ-\d{6}$/.test(doc1.doc_no) && doc1.reason === 'Opening stock', `${doc1.doc_no} ${doc1.reason}`);
+check('with the quantity and the product\'s cost', near(doc1.items[0].qty, 12) && near(doc1.items[0].unit_cost, 4), JSON.stringify(doc1.items));
 const move = (await get(`/api/products/${withStock.id}`)).history[0];
-check('the movement points at the document', move.kind === 'opening' && move.ref_table === 'openings' && move.note.includes(doc1.doc_no), JSON.stringify(move));
+check('the movement is an opening, pointing at the adjustment', move.kind === 'opening' && move.ref_table === 'adjustments' && move.ref_id === doc1.id, JSON.stringify(move));
 const noStock = (await call('POST', '/api/products', { name: 'Unopened Salt', barcode: 'OP-2', cost: 1, price: 2, opening_stock: 0 })).data;
-check('with 0, no document and no stock', near(noStock.stock, 0) && (await get('/api/openings?page=1&per=10')).total === 1);
+check('with 0, no adjustment and no stock', near(noStock.stock, 0) && (await openings()).total === 1);
+check('corrections and openings are told apart', (await get('/api/adjustments?page=1&per=50&type=adjustment')).total === 0);
 
 /* ------------------------------------------------------------------------ */
-console.log('\n[an opening stock document for several products]');
-const made = await call('POST', '/api/openings', {
-  date: '2026-01-01', note: 'Start of year',
+console.log('\n[opening stock for several products at once]');
+const made = await call('POST', '/api/adjustments', {
+  type: 'opening', date: '2026-01-01', note: 'Start of year',
   items: [
     { product_id: noStock.id, qty: 40, unit_cost: 1.5 },
     { product_id: withStock.id, qty: 8, unit_cost: 5 },
   ],
 });
-check('it is saved', made.status === 200 && made.data.items.length === 2, JSON.stringify(made.data));
+check('it is saved', made.status === 200 && made.data.items.length === 2 && made.data.type === 'opening', JSON.stringify(made.data));
 check('stock goes in', near((await get(`/api/products/${noStock.id}`)).stock, 40) && near((await get(`/api/products/${withStock.id}`)).stock, 20));
 check('a product with nothing on hand takes the opening cost', near((await get(`/api/products/${noStock.id}`)).cost, 1.5));
 check('a product with stock blends it (12 @ 4 + 8 @ 5 = 4.40)', near((await get(`/api/products/${withStock.id}`)).cost, 4.4),
   String((await get(`/api/products/${withStock.id}`)).cost));
-check('the value adds up', near(made.data.value, 40 * 1.5 + 8 * 5));
-check('the same product twice is refused',
-  (await call('POST', '/api/openings', { items: [{ product_id: noStock.id, qty: 1 }, { product_id: noStock.id, qty: 2 }] })).data.code === 'OPENING_DUPLICATE');
-check('no quantities is refused', (await call('POST', '/api/openings', { items: [{ product_id: noStock.id, qty: 0 }] })).data.code === 'OPENING_EMPTY');
-await call('DELETE', `/api/openings/${made.data.id}`);
-check('deleting takes the stock back out', near((await get(`/api/products/${noStock.id}`)).stock, 0) && near((await get(`/api/products/${withStock.id}`)).stock, 12));
-check('a product with an opening stock document is archived, not deleted',
-  (await call('DELETE', `/api/products/${withStock.id}`)).data.archived === true);
+check('a correction still leaves the cost alone',
+  (await call('POST', '/api/adjustments', { items: [{ product_id: noStock.id, qty: -1 }] })).status === 200 &&
+    near((await get(`/api/products/${noStock.id}`)).cost, 1.5));
+check('a negative opening quantity is refused',
+  (await call('POST', '/api/adjustments', { type: 'opening', items: [{ product_id: noStock.id, qty: -2 }] })).data.code === 'QTY_POSITIVE');
+check('no quantities is refused', (await call('POST', '/api/adjustments', { type: 'opening', items: [{ product_id: noStock.id, qty: 0 }] })).data.code === 'OPENING_EMPTY');
+await call('DELETE', `/api/adjustments/${made.data.id}`);
+check('deleting takes the stock back out', near((await get(`/api/products/${noStock.id}`)).stock, -1) && near((await get(`/api/products/${withStock.id}`)).stock, 12));
 
 /* ------------------------------------------------------------------------ */
 console.log('\n[importing a file]');
@@ -103,20 +106,19 @@ check('a barcode repeated in the file points at the first one', byLine[7].code =
 check('a barcode already in ABSoft is skipped, not overwritten', byLine[8].status === 'skip' && byLine[8].code === 'IMPORT_EXISTS');
 check('the check writes nothing', (await get('/api/products?search=Imported')).length === 0);
 
-const before = (await get('/api/openings?page=1&per=50')).total;
+const before = (await openings()).total;
 const done = (await call('POST', '/api/products/import', { rows, date: '2026-02-01', note: 'Import test.csv' })).data;
 check('importing creates the ready products', done.summary.ok === 3 && (await get('/api/products?search=Imported')).length === 3);
 check('comma decimals are read as decimals', near((await get('/api/products?search=Imported Sugar'))[0].cost, 0.9));
-check('categories come in', (await get('/api/products?search=Imported Rice'))[0].category === 'Grocery');
-const after = await get('/api/openings?page=1&per=50');
-check('ONE opening stock document for the whole file', after.total === before + 1, `${before} → ${after.total}`);
-const importDoc = await get(`/api/openings/${done.opening.id}`);
-check('holding every product that had a quantity', importDoc.items.length === 2 && near(importDoc.total_qty, 80), JSON.stringify(importDoc.items));
+const after = await openings();
+check('ONE opening stock adjustment for the whole file', after.total === before + 1, `${before} → ${after.total}`);
+const importDoc = await get(`/api/adjustments/${done.opening.id}`);
+check('holding every product that had a quantity', importDoc.type === 'opening' && importDoc.items.length === 2 && near(importDoc.qty_in, 80),
+  JSON.stringify(importDoc.items));
 check('with the date and note given', importDoc.date === '2026-02-01' && importDoc.note === 'Import test.csv');
 check('stock follows', near((await get('/api/products?search=Imported Rice'))[0].stock, 50));
-check('the product that was already there is untouched', near((await get(`/api/products/${noStock.id}`)).stock, 0));
 const noOpening = (await call('POST', '/api/products/import', { rows: [{ name: 'Plain Import', barcode: 'IM-9' }] })).data;
-check('a file with no opening quantities writes no document', noOpening.opening === null && (await get('/api/openings?page=1&per=50')).total === after.total);
+check('a file with no opening quantities writes no adjustment', noOpening.opening === null && (await openings()).total === after.total);
 
 /* ------------------------------------------------------------------------ */
 console.log('\n[a cashier]');
@@ -124,7 +126,6 @@ await call('POST', '/api/users', { username: 'opn-till', password: 'test1234', r
 cookie = '';
 await call('POST', '/api/auth/login', { username: 'opn-till', password: 'test1234' });
 check('cannot import', (await call('POST', '/api/products/import', { rows, dry_run: true })).status === 403);
-check('nor see opening stock', (await call('GET', '/api/openings')).status === 403);
 
 server.kill();
 console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}`);

@@ -111,7 +111,7 @@ check('with the period total and breakdown beside them',
   near(expenses.sums.total, 42) && expenses.byCategory.length === 2, JSON.stringify({ sums: expenses.sums, byCategory: expenses.byCategory }));
 check('and by category', (await get('/api/expenses?page=1&per=10&category=Rent')).total === 1);
 await call('POST', `/api/products/${item.id}/adjust`, { qty: -1, note: 'Damaged' });
-const adjustments = await get('/api/adjustments?page=1&per=10');
+const adjustments = await get('/api/adjustments?page=1&per=10&type=adjustment');
 check('adjustments', adjustments.total === 1 && adjustments.rows.length === 1);
 check('the reasons used are offered for filtering', (await get('/api/adjustment-reasons')).includes('Damaged'));
 check('and filter', (await get('/api/adjustments?page=1&per=10&reason=Damaged')).total === 1);

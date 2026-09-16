@@ -1,3 +1,4 @@
+import { applyAverageCost } from '../costing.js';
 import { db, lastId, transact } from '../db.js';
 import { badRequest, notFound } from '../http.js';
 import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
@@ -24,70 +25,93 @@ export function loadAdjustment(id) {
 }
 
 /**
- * Record an adjustment document. Each line either says what was counted
+ * Write an adjustment document inside the caller's transaction; use
+ * createAdjustment to run it on its own.
+ *
+ * type "adjustment" (the default): each line either says what was counted
  * (`counted`, the physical quantity found) or how much to change by (`qty`,
- * signed). A count is turned into a change against the balance at the moment of
- * saving, so a sale rung up while someone was counting is not lost.
- * Movements are valued at the product's current average cost, which an
- * adjustment does not change.
+ * signed). A count becomes a change against the balance at the moment of saving,
+ * so a sale rung up while someone was counting is not lost. Lines are valued at
+ * the product's average cost, which a correction does not change.
+ *
+ * type "opening": stock already on the shelf when a product (or the shop)
+ * started. Each line is { product_id, qty, unit_cost? } — the cost defaults to
+ * the product's own — and blends into the average cost like a purchase.
  */
-export function createAdjustment({ date, reason, note, items }, userId) {
+export function writeAdjustment({ date, reason, note, items, type }, userId) {
+  const opening = type === 'opening';
   const lines = Array.isArray(items) ? items : [];
-  if (!lines.length) throw badRequest('Add at least one product to the adjustment', 'ADJUST_EMPTY');
+  if (!lines.length) {
+    throw opening
+      ? badRequest('Enter a quantity for at least one product', 'OPENING_EMPTY')
+      : badRequest('Add at least one product to the adjustment', 'ADJUST_EMPTY');
+  }
 
-  return transact(() => {
-    const seen = new Set();
-    const prepared = lines.map((line) => {
-      const product = db
-        .prepare(
-          `SELECT p.id, p.name, p.cost, COALESCE(s.stock, 0) AS stock FROM products p
-           LEFT JOIN product_stock s ON s.product_id = p.id WHERE p.id = ?`,
-        )
-        .get(num(line.product_id));
-      if (!product) throw badRequest('Unknown product on one of the lines', 'UNKNOWN_PRODUCT');
-      if (seen.has(product.id)) {
-        throw badRequest(`"${product.name}" is on the adjustment twice`, 'ADJUST_DUPLICATE', { name: product.name });
-      }
-      seen.add(product.id);
-
-      const before = qty(num(product.stock));
-      const counted = line.counted !== undefined && line.counted !== null && line.counted !== '';
-      if (counted && num(line.counted) < 0) {
-        throw badRequest(`Counted quantity for "${product.name}" cannot be negative`, 'COUNT_NEGATIVE', { name: product.name });
-      }
-      const change = counted ? qty(num(line.counted) - before) : qty(num(line.qty));
-      return { product, before, change };
-    });
-
-    const moving = prepared.filter((l) => l.change !== 0);
-    if (!moving.length) throw badRequest('None of these lines changes the stock', 'ADJUST_ZERO');
-
-    const docDate = isoDate(date);
-    const docNo = nextDocNo(db, 'adjustments', 'ADJ');
-    const cleanReason = str(reason);
-    const res = db
-      .prepare(`INSERT INTO adjustments (doc_no, date, reason, note, user_id) VALUES (?, ?, ?, ?, ?)`)
-      .run(docNo, docDate, cleanReason, str(note), userId);
-    const id = lastId(res);
-
-    const insertItem = db.prepare(
-      `INSERT INTO adjustment_items (adjustment_id, product_id, stock_before, qty, unit_cost) VALUES (?, ?, ?, ?, ?)`,
-    );
-    const insertMove = db.prepare(
-      `INSERT INTO stock_moves (product_id, qty, unit_cost, kind, ref_table, ref_id, note, user_id, created_at)
-       VALUES (?, ?, ?, 'adjust', 'adjustments', ?, ?, ?, ?)`,
-    );
-    const time = new Date().toISOString().slice(11, 19);
-    const label = [docNo, cleanReason, str(note)].filter(Boolean).join(' · ');
-    // Only lines that move stock are kept; a count that matched needs no record.
-    for (const line of moving) {
-      const cost = money(num(line.product.cost));
-      insertItem.run(id, line.product.id, line.before, line.change, cost);
-      insertMove.run(line.product.id, line.change, cost, id, label, userId, `${docDate} ${time}`);
+  const seen = new Set();
+  const prepared = lines.map((line) => {
+    const product = db
+      .prepare(
+        `SELECT p.id, p.name, p.cost, COALESCE(s.stock, 0) AS stock FROM products p
+         LEFT JOIN product_stock s ON s.product_id = p.id WHERE p.id = ?`,
+      )
+      .get(num(line.product_id));
+    if (!product) throw badRequest('Unknown product on one of the lines', 'UNKNOWN_PRODUCT');
+    if (seen.has(product.id)) {
+      throw badRequest(`"${product.name}" is on the adjustment twice`, 'ADJUST_DUPLICATE', { name: product.name });
     }
-    return loadAdjustment(id);
+    seen.add(product.id);
+    const before = qty(num(product.stock));
+
+    if (opening) {
+      const change = qty(num(line.qty));
+      if (change < 0) throw badRequest(`Quantity for "${product.name}" cannot be negative`, 'QTY_POSITIVE', { name: product.name });
+      const given = line.unit_cost !== undefined && line.unit_cost !== null && line.unit_cost !== '';
+      return { product, before, change, cost: given ? money(Math.max(0, num(line.unit_cost))) : money(num(product.cost)) };
+    }
+    const counted = line.counted !== undefined && line.counted !== null && line.counted !== '';
+    if (counted && num(line.counted) < 0) {
+      throw badRequest(`Counted quantity for "${product.name}" cannot be negative`, 'COUNT_NEGATIVE', { name: product.name });
+    }
+    const change = counted ? qty(num(line.counted) - before) : qty(num(line.qty));
+    return { product, before, change, cost: money(num(product.cost)) };
   });
+
+  const moving = prepared.filter((l) => l.change !== 0);
+  if (!moving.length) {
+    throw opening
+      ? badRequest('Enter a quantity for at least one product', 'OPENING_EMPTY')
+      : badRequest('None of these lines changes the stock', 'ADJUST_ZERO');
+  }
+
+  const docDate = isoDate(date);
+  const docNo = nextDocNo(db, 'adjustments', 'ADJ');
+  const cleanReason = str(reason) || (opening ? 'Opening stock' : '');
+  const id = lastId(
+    db
+      .prepare(`INSERT INTO adjustments (doc_no, date, reason, note, user_id, type) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(docNo, docDate, cleanReason, str(note), userId, opening ? 'opening' : 'adjustment'),
+  );
+
+  const insertItem = db.prepare(
+    `INSERT INTO adjustment_items (adjustment_id, product_id, stock_before, qty, unit_cost) VALUES (?, ?, ?, ?, ?)`,
+  );
+  const insertMove = db.prepare(
+    `INSERT INTO stock_moves (product_id, qty, unit_cost, kind, ref_table, ref_id, note, user_id, created_at)
+     VALUES (?, ?, ?, ?, 'adjustments', ?, ?, ?, ?)`,
+  );
+  const time = new Date().toISOString().slice(11, 19);
+  const label = [docNo, cleanReason, str(note)].filter(Boolean).join(' · ');
+  // Only lines that move stock are kept; a count that matched needs no record.
+  for (const line of moving) {
+    insertItem.run(id, line.product.id, line.before, line.change, line.cost);
+    // Opening stock sets what the goods cost; a correction leaves the cost alone.
+    if (opening) applyAverageCost(line.product.id, line.change, line.cost);
+    insertMove.run(line.product.id, line.change, line.cost, opening ? 'opening' : 'adjust', id, label, userId, `${docDate} ${time}`);
+  }
+  return id;
 }
+
+export const createAdjustment = (body, userId) => transact(() => loadAdjustment(writeAdjustment(body, userId)));
 
 export function register(router) {
   router.get('/api/adjustments', (ctx) => {
@@ -103,6 +127,7 @@ export function register(router) {
       args.push(like, like, like, like, like);
     }
     if (str(ctx.query.reason)) (where.push('a.reason = ? COLLATE NOCASE'), args.push(str(ctx.query.reason)));
+    if (str(ctx.query.type)) (where.push('a.type = ?'), args.push(str(ctx.query.type)));
     const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const paging = pageParams(ctx.query, { per: 50 });
     if (paging) {

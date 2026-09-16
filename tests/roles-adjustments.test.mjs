@@ -74,10 +74,10 @@ check('the movement points at the document and says why',
   move.ref_table === 'adjustments' && move.note.includes(doc.data.doc_no) && move.note.includes('Stock count'), JSON.stringify(move));
 check('and carries the document date', move.created_at.startsWith('2026-09-10'));
 
-const list = (await call('GET', '/api/adjustments?from=2026-09-01&to=2026-09-30')).data;
+const list = (await call('GET', '/api/adjustments?from=2026-09-01&to=2026-09-30&type=adjustment')).data;
 check('the list shows it with its totals',
   list.length === 1 && near(list[0].qty_in, 5) && near(list[0].qty_out, 3) && near(list[0].value, 4), JSON.stringify(list[0]));
-check('it can be found by product name', (await call('GET', '/api/adjustments?from=2026-09-01&to=2026-09-30&search=Salt')).data.length === 1);
+check('it can be found by product name', (await call('GET', '/api/adjustments?from=2026-09-01&to=2026-09-30&type=adjustment&search=Salt')).data.length === 1);
 
 console.log('\n[refusals]');
 const code = async (body) => (await call('POST', '/api/adjustments', body)).data.code;

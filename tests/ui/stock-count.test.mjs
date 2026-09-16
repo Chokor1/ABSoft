@@ -62,8 +62,8 @@ const menu = await page.evaluate(() => {
     items: [...(fold?.querySelectorAll('[data-route]') || [])].map((a) => a.dataset.route),
   };
 });
-check('a Stock item in the menu holds Products, Opening Stock, Stock Count and Stock Adjustment',
-  menu.found && menu.label === 'Stock' && menu.items.join() === 'products,openings,stock-count,adjustments', JSON.stringify(menu));
+check('a Stock item in the menu holds Products, Stock Count and Stock Adjustment',
+  menu.found && menu.label === 'Stock' && menu.items.join() === 'products,stock-count,adjustments', JSON.stringify(menu));
 check('the products screen no longer carries those buttons', (await page.$$('#page-actions #stock-count')).length === 0);
 
 const childVisible = () => page.isVisible('.nav-fold[data-fold="stock"] [data-route="stock-count"]');

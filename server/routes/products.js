@@ -5,8 +5,8 @@ import { dateRange, money, num, pageParams, pageResult, qty, required, shiftDays
 
 // After the browser has shrunk it; a phone photo straight off the camera is refused.
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
-import { createAdjustment } from './adjustments.js';
-import { writeOpening } from './openings.js';
+import { createAdjustment, writeAdjustment } from './adjustments.js';
+
 
 const SELECT_PRODUCT = `
   SELECT p.*, COALESCE(s.stock, 0) AS stock,
@@ -240,9 +240,12 @@ export function register(router) {
         );
       const id = lastId(res);
 
-      // Stock already on hand becomes an opening stock document of its own.
+      // Stock already on hand is recorded as an opening stock adjustment.
       if (opening > 0) {
-        writeOpening({ note: data.name, items: [{ product_id: id, qty: opening, unit_cost: data.cost }] }, ctx.user.id);
+        writeAdjustment(
+          { type: 'opening', note: data.name, items: [{ product_id: id, qty: opening, unit_cost: data.cost }] },
+          ctx.user.id,
+        );
       }
       rememberAll([
         ['category', data.category],
@@ -256,7 +259,7 @@ export function register(router) {
    * Import products from a spreadsheet. The browser reads the file and sends the
    * rows; with dry_run it only checks them, for the preview. Rows whose barcode
    * already exists are skipped, never overwritten. Every opening quantity in the
-   * file goes into one opening stock document, not one per product.
+   * file goes into one opening stock adjustment, not one per product.
    */
   router.post('/api/products/import', (ctx) => {
     const rows = Array.isArray(ctx.body.rows) ? ctx.body.rows : [];
@@ -332,11 +335,11 @@ export function register(router) {
       // One document for the whole file.
       let opening = null;
       if (openingLines.length) {
-        const openingId = writeOpening(
-          { date: ctx.body.date, note: str(ctx.body.note) || 'Import', items: openingLines },
+        const openingId = writeAdjustment(
+          { type: 'opening', date: ctx.body.date, note: str(ctx.body.note) || 'Import', items: openingLines },
           ctx.user.id,
         );
-        opening = db.prepare(`SELECT id, doc_no FROM openings WHERE id = ?`).get(openingId);
+        opening = db.prepare(`SELECT id, doc_no FROM adjustments WHERE id = ?`).get(openingId);
       }
       return { dry_run: false, summary, rows: report, opening };
     });
@@ -378,10 +381,9 @@ export function register(router) {
       .prepare(
         `SELECT (SELECT COUNT(*) FROM sale_items WHERE product_id = ?)
               + (SELECT COUNT(*) FROM purchase_items WHERE product_id = ?)
-              + (SELECT COUNT(*) FROM adjustment_items WHERE product_id = ?)
-              + (SELECT COUNT(*) FROM opening_items WHERE product_id = ?) AS n`,
+              + (SELECT COUNT(*) FROM adjustment_items WHERE product_id = ?) AS n`,
       )
-      .get(product.id, product.id, product.id, product.id);
+      .get(product.id, product.id, product.id);
     // Products with history are archived instead of deleted so reports stay intact.
     if (n > 0) {
       db.prepare(`UPDATE products SET active = 0 WHERE id = ?`).run(product.id);
