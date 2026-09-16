@@ -310,10 +310,8 @@ await shot('95-reports-sticky');
 
 /* ---------------------------------------------------------------- icon */
 console.log('\n[the stock adjustment icon]');
-await page.goto(`${BASE}#/products`);
-await page.waitForSelector('#adjustments');
-check('the Stock Adjustment button uses the clipboard icon, not sliders',
-  (await page.$eval('#adjustments svg', (s) => s.innerHTML)).includes('rect x="8" y="2"'));
+check('the Stock Adjustment menu item uses the clipboard icon, not sliders',
+  (await page.$eval('.nav-item[data-route="adjustments"] svg', (s) => s.innerHTML)).includes('rect x="8" y="2"'));
 
 /* ------------------------------------------------------ restart notice */
 console.log('\n[a server older than the screens]');

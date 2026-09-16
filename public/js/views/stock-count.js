@@ -27,7 +27,7 @@ import {
 export async function render(root, ctx) {
   const admin = store.user?.role === 'admin';
   const state = {
-    mode: 'all',
+    mode: '', // nothing is loaded until you choose what to count
     category: '',
     search: '',
     rows: [], // the products on the sheet, in the order they appear
@@ -46,7 +46,7 @@ export async function render(root, ctx) {
   root.innerHTML = `
     <div class="toolbar sticky-bar count-bar">
       <div class="seg" id="count-mode">
-        <button data-mode="all" class="active">${esc(t('cnt.mode_all'))}</button>
+        <button data-mode="all">${esc(t('cnt.mode_all'))}</button>
         <button data-mode="category">${esc(t('cnt.mode_category'))}</button>
         <button data-mode="pick">${esc(t('cnt.mode_pick'))}</button>
       </div>
@@ -167,8 +167,8 @@ export async function render(root, ctx) {
                 <tfoot><tr><td colspan="7" data-foot></td></tr></tfoot>
               </table></div>`
             : emptyState(
-                state.rows.length ? t('cnt.none_match') : t('cnt.empty'),
-                state.rows.length ? t('cnt.none_match_sub') : t('cnt.empty_sub'),
+                state.rows.length ? t('cnt.none_match') : state.mode ? t('cnt.empty') : t('cnt.choose'),
+                state.rows.length ? t('cnt.none_match_sub') : state.mode ? t('cnt.empty_sub') : t('cnt.choose_sub'),
                 'clipboard',
               )
         }</div>
@@ -330,7 +330,8 @@ export async function render(root, ctx) {
     }
   });
 
-  await loadAll();
+  // Nothing is fetched until a choice is made: counting everything is a choice too.
+  draw();
 
   // main.js calls this when navigating away.
   return () => pickers.forEach((p) => p.destroy());

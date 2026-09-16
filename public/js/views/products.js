@@ -133,14 +133,9 @@ async function renderList(root, ctx) {
   let dropPicker = () => {};
 
   ctx.actions.innerHTML = `
-    <button class="btn" id="stock-count">${icon('clipboard')} ${esc(t('nav.stockcount'))}</button>
-    <button class="btn" id="adjustments">${icon('adjust')} ${esc(t('nav.adjustments'))}</button>
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('prod.new'))}</button>`;
   ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('products/new'));
-  // The stock screens belong with the catalogue, not in the menu.
-  ctx.actions.querySelector('#stock-count').addEventListener('click', () => ctx.navigate('stock-count'));
-  ctx.actions.querySelector('#adjustments').addEventListener('click', () => ctx.navigate('adjustments'));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       'absoft-products.csv',

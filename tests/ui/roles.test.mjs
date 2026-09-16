@@ -115,9 +115,9 @@ await admin.waitForTimeout(200);
 
 /* ---------------------------------------------------------- adjustments */
 console.log('\n[a stock adjustment covers many products at once]');
-check('the stock screens are reached from Products, not the menu', await admin.evaluate(() => {
-  const routes = [...document.querySelectorAll('.nav-item')].map((a) => a.dataset.route);
-  return !routes.includes('adjustments') && !routes.includes('stock-count') && routes.includes('products');
+check('Stock Adjustment sits in the folding Stock item, after the stock count', await admin.evaluate(() => {
+  const routes = [...document.querySelectorAll('.nav-fold[data-fold="stock"] [data-route]')].map((a) => a.dataset.route);
+  return routes.indexOf('adjustments') === routes.indexOf('stock-count') + 1 && routes.includes('products');
 }));
 const [p1, p2] = (await api(admin, 'GET', '/api/products?limit=2')).data;
 await admin.goto(`${BASE}#/adjustments`);

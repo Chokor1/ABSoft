@@ -200,10 +200,10 @@ product's initials stand in.
 
 ## Stock count (جردة)
 
-**Products** sits under **Stock** in the menu, and **Stock Count** and **Stock Adjustment** open from
-the buttons at the top of the Products screen, beside Export and New product.
+**Stock** in the menu folds open to show **Products**, **Stock Count** and **Stock Adjustment**. Click
+it to fold it away; the choice is remembered, and opening one of its screens unfolds it again.
 
-Open Stock Count and choose what to count: **All items**, **By category**, or **Pick items**
+Open Stock Count — nothing is loaded yet — and choose what to count: **All items**, **By category**, or **Pick items**
 (scan a barcode or search). Each row shows what the system holds beside a box for what you
 counted; the difference and the new balance appear as you type, the row turns amber when it
 differs and green when it matches, and the footer keeps a running tally of how many are counted,

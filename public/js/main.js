@@ -29,9 +29,8 @@ const VIEWS = {
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
-  // Reached from the products screen rather than the menu.
-  'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock', hidden: true },
-  adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock', hidden: true },
+  'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
+  adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
   lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
   sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'reports', cashier: true },
   reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports' },
@@ -164,21 +163,47 @@ function renderLogin(message = '') {
 
 /* ------------------------------------------------------------------ shell -- */
 
+/** Groups shown as one item that opens to reveal its screens, rather than a heading. */
+const FOLDING = { stock: 'box' };
+const FOLD_KEY = (group) => `absoft-nav-${group}`;
+
 function navHtml() {
+  const link = ([route, v], cls = '') => `<a class="nav-item ${cls}" href="#/${route}" data-route="${route}">
+      ${icon(v.icon)}<span>${esc(t(`nav.${v.key}`))}</span>
+      ${SHORTCUTS[route] && canSee(v) ? `<span class="kbd">${SHORTCUTS[route]}</span>` : ''}
+    </a>`;
   return GROUPS.map((group) => {
-    const items = Object.entries(VIEWS).filter(
-      ([, v]) => v.group === group && canSee(v) && !v.hidden,
-    );
+    const items = Object.entries(VIEWS).filter(([, v]) => v.group === group && canSee(v) && !v.hidden);
     if (!items.length) return '';
-    return `<div class="nav-label">${esc(t(`nav.group.${group}`))}</div>${items
-      .map(
-        ([route, v]) => `<a class="nav-item" href="#/${route}" data-route="${route}">
-            ${icon(v.icon)}<span>${esc(t(`nav.${v.key}`))}</span>
-            ${SHORTCUTS[route] && canSee(v) ? `<span class="kbd">${SHORTCUTS[route]}</span>` : ''}
-          </a>`,
-      )
-      .join('')}`;
+    if (FOLDING[group]) {
+      // Open unless it was folded away on this device.
+      let open = true;
+      try {
+        open = localStorage.getItem(FOLD_KEY(group)) !== '0';
+      } catch {
+        /* storage blocked: open */
+      }
+      return `<div class="nav-fold ${open ? 'open' : ''}" data-fold="${group}">
+        <button type="button" class="nav-item nav-parent" aria-expanded="${open}" data-fold-toggle="${group}">
+          ${icon(FOLDING[group])}<span>${esc(t(`nav.group.${group}`))}</span>
+          <span class="nav-chevron" aria-hidden="true"></span>
+        </button>
+        <div class="nav-children"><div>${items.map((item) => link(item, 'nav-child')).join('')}</div></div>
+      </div>`;
+    }
+    return `<div class="nav-label">${esc(t(`nav.group.${group}`))}</div>${items.map((item) => link(item)).join('')}`;
   }).join('');
+}
+
+/** Fold or unfold a menu group, and remember it on this device. */
+function setFold(fold, open) {
+  fold.classList.toggle('open', open);
+  fold.querySelector('[data-fold-toggle]').setAttribute('aria-expanded', String(open));
+  try {
+    localStorage.setItem(FOLD_KEY(fold.dataset.fold), open ? '1' : '0');
+  } catch {
+    /* storage blocked: it just will not be remembered */
+  }
 }
 
 function renderShell() {
@@ -244,8 +269,14 @@ function renderShell() {
   document.getElementById('nav-toggle')?.addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('open');
   });
-  document.querySelectorAll('.nav-item').forEach((a) =>
+  document.querySelectorAll('a.nav-item').forEach((a) =>
     a.addEventListener('click', () => document.getElementById('sidebar').classList.remove('open')),
+  );
+  document.querySelectorAll('[data-fold-toggle]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const fold = btn.closest('.nav-fold');
+      setFold(fold, !fold.classList.contains('open'));
+    }),
   );
 }
 
@@ -318,6 +349,12 @@ async function renderRoute() {
   document.getElementById('page-sub').textContent = t(`nav.${view.key}.sub`);
   document.getElementById('page-actions').innerHTML = '';
   document.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === route));
+  // A screen inside a folded group opens the group, so you can see where you are.
+  document.querySelectorAll('.nav-fold').forEach((fold) => {
+    const holds = !!fold.querySelector(`[data-route="${route}"]`);
+    fold.classList.toggle('has-active', holds);
+    if (holds && !fold.classList.contains('open')) setFold(fold, true);
+  });
 
   const page = document.getElementById('page');
   page.innerHTML = `<div class="empty"><p>${esc(t('common.loading'))}</p></div>`;

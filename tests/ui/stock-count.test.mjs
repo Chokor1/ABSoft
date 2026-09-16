@@ -55,23 +55,45 @@ await page.waitForSelector('.shell');
 /* ------------------------------------------------------------ the menu */
 console.log('\n[a Stock section in the menu]');
 const menu = await page.evaluate(() => {
-  const label = [...document.querySelectorAll('.nav-label')].find((l) => l.textContent.trim() === 'Stock');
-  const items = [];
-  for (let el = label?.nextElementSibling; el && el.classList.contains('nav-item'); el = el.nextElementSibling) {
-    items.push(el.dataset.route);
-  }
-  return { found: !!label, items };
+  const fold = document.querySelector('.nav-fold[data-fold="stock"]');
+  return {
+    found: !!fold,
+    label: fold?.querySelector('.nav-parent')?.textContent.trim(),
+    items: [...(fold?.querySelectorAll('[data-route]') || [])].map((a) => a.dataset.route),
+  };
 });
-check('Products sits under Stock', menu.found && menu.items.join() === 'products', JSON.stringify(menu));
-check('the count and adjustment screens are not in the menu',
-  (await page.$$('.nav-item[data-route="stock-count"], .nav-item[data-route="adjustments"]')).length === 0);
+check('a Stock item in the menu holds Products, Stock Count and Stock Adjustment',
+  menu.found && menu.label === 'Stock' && menu.items.join() === 'products,stock-count,adjustments', JSON.stringify(menu));
+check('the products screen no longer carries those buttons', (await page.$$('#page-actions #stock-count')).length === 0);
+
+const childVisible = () => page.isVisible('.nav-fold[data-fold="stock"] [data-route="stock-count"]');
+check('it starts open', (await page.getAttribute('[data-fold-toggle="stock"]', 'aria-expanded')) === 'true' && (await childVisible()));
+await page.click('[data-fold-toggle="stock"]');
+await page.waitForTimeout(350);
+const folded = await page.evaluate(() => {
+  const box = document.querySelector('.nav-fold[data-fold="stock"] .nav-children').getBoundingClientRect();
+  return Math.round(box.height);
+});
+check('clicking Stock folds it away', (await page.getAttribute('[data-fold-toggle="stock"]', 'aria-expanded')) === 'false' && folded === 0, String(folded));
+await page.reload();
+await page.waitForSelector('.shell');
+check('and it stays folded after a reload', (await page.getAttribute('[data-fold-toggle="stock"]', 'aria-expanded')) === 'false');
+await page.goto(`${BASE}#/stock-count`);
+await page.waitForTimeout(500);
+check('opening a screen inside it unfolds it, with that screen marked',
+  (await page.getAttribute('[data-fold-toggle="stock"]', 'aria-expanded')) === 'true' &&
+    (await page.getAttribute('.nav-fold [data-route="stock-count"]', 'class')).includes('active'));
+
+/* ---------------------------------------------------- nothing chosen yet */
+console.log('\n[the sheet waits for a choice]');
+await page.waitForSelector('#count-body .empty');
+check('nothing is loaded until you choose', (await page.$$('.count-table tbody tr')).length === 0);
+check('and no option is pre-selected', (await page.$$('#count-mode [data-mode].active')).length === 0);
+check('it asks what you are counting', (await page.textContent('#count-body')).includes('What are you counting?'));
 
 /* ------------------------------------------------------- the whole shelf */
-console.log('\n[the sheet opens with every item]');
-await page.goto(`${BASE}#/products`);
-await page.waitForSelector('#stock-count');
-check('Products opens it, beside Export and New product', await page.isVisible('#stock-count') && (await page.isVisible('#adjustments')));
-await page.click('#stock-count');
+console.log('\n[all items]');
+await page.click('#count-mode [data-mode="all"]');
 await page.waitForSelector('.count-table tbody tr');
 const products = await api('GET', '/api/products');
 const rows = await page.$$eval('.count-table tbody tr', (r) => r.length);
@@ -116,7 +138,7 @@ await shot('121-stock-count-doc');
 /* ------------------------------------------------- by category, and picking */
 console.log('\n[counting one category, or a few items]');
 await page.goto(`${BASE}#/stock-count`);
-await page.waitForSelector('.count-table tbody tr');
+await page.waitForSelector('#count-body .empty');
 await page.click('#count-mode [data-mode="category"]');
 await page.waitForTimeout(300);
 check('choosing By category empties the sheet first', (await page.$$('.count-table tbody tr')).length === 0);
