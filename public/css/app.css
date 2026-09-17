@@ -1529,3 +1529,6 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 /* POS lives in the top bar, on every screen but the POS itself. */
 .topbar-pos { text-decoration: none; }
 .shell:has(.pos) .topbar-pos { display: none; }
+
+/* The till's note under its cards: only the best sellers are on screen, or only the first matches. */
+.tiles-note { grid-column: 1 / -1; padding: 8px 4px 2px; text-align: center; font-size: 12.5px; color: var(--muted); }

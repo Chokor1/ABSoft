@@ -96,10 +96,21 @@ export async function render(root, ctx) {
   /* ------------------------------------------------------------ catalogue -- */
 
   /*
-   * The whole catalogue is loaded once and the cards filter in place as you
-   * type: no dropdown, no round trip per keystroke. Cards that stay glide to
-   * their new places, cards that come back fade in.
+   * The till never loads the whole catalogue, so a shop with thousands of
+   * products opens and scans as fast as one with ten:
+   *   - it opens on the best sellers (the last 30 days), QUICK cards;
+   *   - one or two letters narrow the cards already on screen, instantly;
+   *   - three or more search every product on the server (RESULTS at most),
+   *     narrowing what is on screen while the answer comes;
+   *   - Enter, or a scanner, looks the code up exactly.
+   * Cards that stay glide to their new places, cards that arrive fade in.
    */
+  const QUICK = 40;
+  const MIN_SEARCH = 3;
+  const RESULTS = 60;
+  let searchToken = 0; // an answer to an older search must not paint over a newer one
+  state.mode = 'popular';
+  state.resultsFor = '';
   let showImages = tileImagesEnabled();
   $('#toggle-images').addEventListener('click', (e) => {
     showImages = !showImages;
@@ -109,13 +120,39 @@ export async function render(root, ctx) {
     applyFilter({ animate: false });
   });
 
+  /** Load whatever should be on screen now — after a sale too, for fresh stock. */
   async function loadProducts() {
+    if (state.filter.length >= MIN_SEARCH) return searchServer(state.filter, { animate: false });
     if (!state.products.length) {
       tiles.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>${esc(t('pos.loading_products'))}</p></div>`;
     }
-    state.products = await api.products();
+    const token = ++searchToken;
+    const rows = await api.products({ sort: 'popular', limit: QUICK });
+    if (token !== searchToken) return;
+    Object.assign(state, { products: rows, mode: 'popular', resultsFor: '' });
     drawTiles();
     applyFilter({ animate: false });
+  }
+
+  /** Every product matching `text`, from the server. Resolves null when overtaken. */
+  async function searchServer(text, { animate = true } = {}) {
+    const token = ++searchToken;
+    let rows;
+    try {
+      rows = await api.products({ search: text, limit: RESULTS });
+    } catch {
+      return null;
+    }
+    if (token !== searchToken || state.filter !== text) return null;
+    const same = rows.length === state.products.length && rows.every((p, i) => p.id === state.products[i].id);
+    Object.assign(state, { products: rows, mode: 'search', resultsFor: text });
+    if (same && animate) {
+      applyFilter({ animate: false });
+    } else {
+      drawTiles();
+      applyFilter({ animate: false, fadeIn: animate });
+    }
+    return rows;
   }
 
   const haystack = (p) =>
@@ -155,14 +192,15 @@ export async function render(root, ctx) {
           </button>`;
           },
         )
-        .join('') + `<div class="tiles-empty" id="tiles-empty" hidden></div>`;
+        .join('') +
+      `<div class="tiles-empty" id="tiles-empty" hidden></div><div class="tiles-note" id="tiles-note" hidden></div>`;
   }
 
   /** Every word typed must appear somewhere in the name, barcode, category or description. */
   const matches = (el, words) => words.every((w) => el.dataset.find.includes(w));
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  function applyFilter({ animate = true } = {}) {
+  function applyFilter({ animate = true, fadeIn = false } = {}) {
     const words = state.filter.toLowerCase().split(/\s+/).filter(Boolean);
     const cards = [...tiles.querySelectorAll('.tile')];
     const motion = animate && !reduceMotion();
@@ -178,14 +216,33 @@ export async function render(root, ctx) {
       if (show) shown++;
     });
 
+    // Short of three letters, only the cards on screen were searched.
+    const short = words.length > 0 && state.filter.length < MIN_SEARCH;
     const empty = tiles.querySelector('#tiles-empty');
     empty.hidden = shown > 0;
     if (!shown) {
+      const nothingYet = state.mode === 'popular' && !words.length && !state.products.length;
       empty.innerHTML = emptyState(
-        state.products.length ? t('pos.no_match') : t('pos.no_products'),
-        state.products.length ? t('pos.no_match_sub') : t('pos.no_products_sub'),
+        nothingYet ? t('pos.no_products') : t('pos.no_match'),
+        nothingYet ? t('pos.no_products_sub') : short ? t('pos.type_more') : t('pos.no_match_sub'),
         'box',
       );
+    }
+    const note = tiles.querySelector('#tiles-note');
+    const capped = state.mode === 'search' && state.products.length >= RESULTS;
+    note.hidden = !shown || !(capped || (short && state.products.length >= QUICK));
+    note.textContent = capped ? t('pos.more_results', { n: RESULTS }) : t('pos.type_more');
+
+    if (fadeIn && !reduceMotion()) {
+      cards.forEach((c, i) => {
+        if (c.hidden) return;
+        c.animate([{ opacity: 0, transform: 'translateY(6px) scale(0.97)' }, { opacity: 1, transform: 'none' }], {
+          duration: 240,
+          delay: Math.min(i, 12) * 14,
+          easing: 'cubic-bezier(.2,.8,.2,1)',
+          fill: 'backwards',
+        });
+      });
     }
     if (!motion) return;
 
@@ -217,16 +274,27 @@ export async function render(root, ctx) {
     if (btn) addToCart(state.products.find((p) => p.id === Number(btn.dataset.add)));
   });
 
+  const searchSoon = debounce((text) => searchServer(text), 260);
   const refilter = debounce(() => {
-    state.filter = scan.value.trim();
-    applyFilter();
+    const text = scan.value.trim();
+    state.filter = text;
+    if (text.length >= MIN_SEARCH) {
+      // Narrow what is on screen straight away, then fetch everything that matches.
+      applyFilter();
+      searchSoon(text);
+    } else if (state.mode === 'search') {
+      loadProducts(); // back under three letters: the best sellers again
+    } else {
+      applyFilter();
+    }
   }, 90);
   scan.addEventListener('input', refilter);
 
   function resetSearch() {
     scan.value = '';
     state.filter = '';
-    applyFilter();
+    if (state.mode === 'search') loadProducts();
+    else applyFilter();
     scan.focus();
   }
 
@@ -240,26 +308,30 @@ export async function render(root, ctx) {
     const code = scan.value.trim();
     if (!code) return;
     // A barcode scanner types the code and presses Enter at once: match it
-    // exactly first, without waiting for the filter.
+    // exactly first, on screen, then anywhere in the catalogue.
     const exact = state.products.find((p) => (p.barcode && p.barcode === code) || p.barcodes?.includes(code));
     if (exact) {
       addToCart(exact);
       return resetSearch();
     }
-    // Typed a name and only one card is left: Enter adds it.
+    let notFound;
+    try {
+      addToCart(await api.lookup(code));
+      return resetSearch();
+    } catch (err) {
+      notFound = err;
+    }
+    // Typed part of a name and only one product matches: Enter adds it.
     state.filter = code;
+    if (code.length >= MIN_SEARCH && state.resultsFor !== code) await searchServer(code, { animate: false });
+    if (scan.value.trim() !== code) return; // the cashier has moved on
     applyFilter({ animate: false });
     const visible = [...tiles.querySelectorAll('.tile:not([hidden])')];
     if (visible.length === 1) {
       addToCart(state.products.find((p) => p.id === Number(visible[0].dataset.add)));
       return resetSearch();
     }
-    try {
-      addToCart(await api.lookup(code));
-      resetSearch();
-    } catch (err) {
-      if (!visible.length) toast(errorText(err), 'error');
-    }
+    if (!visible.length) toast(errorText(notFound), 'error');
   });
   $('#clear-search').addEventListener('click', resetSearch);
 

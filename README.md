@@ -377,10 +377,14 @@ that has none — a coloured card with a matching emoji — and `npm run demo:pr
 catalogue pictures straight away. `npm run demo:images -- --remove` takes the drawn ones out again
 and never touches real photos; `-- --refresh` redraws them (after an update changes their look).
 
-Typing in the search box filters the product cards as you type — by name, barcode, category or
-description, every word counting — with the remaining cards sliding into place. Enter adds a
-scanned barcode straight away, or the product itself when only one card is left; Escape or
-**Clear** brings every card back.
+The till never loads the whole catalogue, so a shop with thousands of products opens and scans
+as fast as a small one. It opens on the **40 best sellers** of the last 30 days. Typing one or two
+letters narrows those cards instantly; from **three letters** it searches every product (name,
+any barcode, category or description, every word counting) and shows the first 60 matches, best
+matches first, with the cards sliding and fading into place. Enter or a scanner looks the code up
+exactly — any of a product's barcodes — so an item that is not on screen still rings up at once;
+Enter also adds the product when only one card matches. Escape or **Clear** brings the best
+sellers back.
 
 The cart is only what is being sold. The newest item goes on top, scanning an item that is
 already there adds one to its line, and each line's quantity, unit price and **discount %** are

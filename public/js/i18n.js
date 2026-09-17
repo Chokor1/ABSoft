@@ -84,6 +84,8 @@ const DICT = {
     'nav.adjustments': 'Stock Adjustment',
     'app.restart_title': 'ABSoft POS was updated — restart it to finish.',
     'app.version': 'Version {v}',
+    'pos.more_results': 'Showing the first {n} matches — keep typing to narrow it down',
+    'pos.type_more': 'Type at least 3 letters to search every product',
     'sell.saved': '{doc} saved · {v}',
     'sell.save': 'Save sale',
     'sell.left_owing': 'Left owing',
@@ -501,7 +503,7 @@ const DICT = {
     'dash.restock_warning': '{n} product(s) need restocking',
 
     /* ------------------------------------------------------------- POS -- */
-    'pos.scan_placeholder': 'Scan barcode or search a product, then press Enter',
+    'pos.scan_placeholder': 'Scan a barcode, or type 3 letters to search every product',
     'pos.clear': 'Clear',
     'pos.current_sale': 'Current sale',
     'pos.item_count': '{n} items',
@@ -1053,6 +1055,8 @@ const DICT = {
     'nav.adjustments': 'تسوية المخزون',
     'app.restart_title': 'تم تحديث ABSoft POS — أعد تشغيله لإكمال التحديث.',
     'app.version': 'الإصدار {v}',
+    'pos.more_results': 'عرض أول {n} نتيجة — تابع الكتابة لتضييق البحث',
+    'pos.type_more': 'اكتب 3 أحرف على الأقل للبحث في كل المنتجات',
     'sell.saved': 'تم حفظ {doc} · {v}',
     'sell.save': 'حفظ البيع',
     'sell.left_owing': 'المتبقي',
@@ -1470,7 +1474,7 @@ const DICT = {
     'dash.restock_warning': '{n} منتج بحاجة إلى إعادة تعبئة',
 
     /* ------------------------------------------------------------- POS -- */
-    'pos.scan_placeholder': 'امسح الباركود أو ابحث عن منتج ثم اضغط Enter',
+    'pos.scan_placeholder': 'امسح الباركود، أو اكتب 3 أحرف للبحث في كل المنتجات',
     'pos.clear': 'مسح',
     'pos.current_sale': 'الفاتورة الحالية',
     'pos.item_count': '{n} صنف',

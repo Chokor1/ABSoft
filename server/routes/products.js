@@ -90,12 +90,14 @@ export function register(router) {
     const where = [];
     const args = [];
     if (onlyActive) where.push('p.active = 1');
-    if (search) {
+    // Every word typed must appear somewhere: name, a barcode, category or description.
+    // "coffee 500" finds "Ground Coffee 500g" however the words are ordered.
+    for (const word of search.split(/\s+/).filter(Boolean).slice(0, 6)) {
       where.push(
         `(p.name LIKE ? OR p.barcode LIKE ? OR p.category LIKE ? OR p.description LIKE ?
           OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = p.id AND b.barcode LIKE ?))`,
       );
-      const like = `%${search}%`;
+      const like = `%${word}%`;
       args.push(like, like, like, like, like);
     }
     if (lowStock) where.push('COALESCE(s.stock, 0) <= p.min_stock');
@@ -107,7 +109,16 @@ export function register(router) {
     if (stock === 'in') where.push('COALESCE(s.stock, 0) > 0');
 
     const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const order = 'ORDER BY p.name COLLATE NOCASE';
+    // A search puts the closest matches first: the exact barcode or name, then
+    // names that start with what was typed, then the rest by name.
+    const order = search
+      ? `ORDER BY CASE
+           WHEN p.barcode = ? OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = p.id AND b.barcode = ?) THEN 0
+           WHEN p.name = ? COLLATE NOCASE THEN 1
+           WHEN p.name LIKE ? THEN 2
+           ELSE 3 END, p.name COLLATE NOCASE`
+      : 'ORDER BY p.name COLLATE NOCASE';
+    const orderArgs = search ? [search, search, search, `${search}%`] : [];
     const paging = pageParams(ctx.query, { per: 50 });
     if (paging) {
       const total = db
@@ -115,7 +126,7 @@ export function register(router) {
         .get(...args).n;
       const rows = db
         .prepare(`${SELECT_PRODUCT} ${clause} ${order} LIMIT ? OFFSET ?`)
-        .all(...args, paging.per, paging.offset)
+        .all(...args, ...orderArgs, paging.per, paging.offset)
         .map(shape);
       // The figure above the list covers everything that matches, not this page.
       const sums = db
@@ -126,12 +137,25 @@ export function register(router) {
         .get(...args);
       return { ...pageResult(rows, total, paging), sums };
     }
-    // `limit` keeps the type-ahead pickers light on a large catalogue; the
-    // till and the reports omit it and get everything.
+    // `limit` keeps the till and the type-ahead pickers light on a large
+    // catalogue; the reports omit it and get everything.
     const limit = num(ctx.query.limit, 0);
+    const limitSql = limit > 0 ? `LIMIT ${Math.min(200, limit)}` : '';
+    // The till opens on what sells: most sold over the last 30 days first.
+    if (ctx.query.sort === 'popular') {
+      return db
+        .prepare(
+          `${SELECT_PRODUCT}
+           LEFT JOIN (SELECT i.product_id, SUM(i.qty) AS sold FROM sale_items i JOIN sales sx ON sx.id = i.sale_id
+                      WHERE sx.date >= ? GROUP BY i.product_id) pop ON pop.product_id = p.id
+           ${clause} ORDER BY COALESCE(pop.sold, 0) DESC, p.name COLLATE NOCASE ${limitSql}`,
+        )
+        .all(shiftDays(today(), -29), ...args)
+        .map(shape);
+    }
     return db
-      .prepare(`${SELECT_PRODUCT} ${clause} ${order} ${limit > 0 ? `LIMIT ${Math.min(200, limit)}` : ''}`)
-      .all(...args)
+      .prepare(`${SELECT_PRODUCT} ${clause} ${order} ${limitSql}`)
+      .all(...args, ...orderArgs)
       .map(shape);
   });
 

@@ -80,7 +80,7 @@ await page.waitForTimeout(300);
 const cards = await page.$$eval('.tile', (t) => t.length);
 check('the picture button turns every card into a picture card', (await page.$$('.tile-pic')).length === cards, String(cards));
 const pictured = await page.$$eval('.tp-media:not(.no-img)', (t) => t.length);
-check('demo products come with pictures', pictured >= 100, String(pictured));
+check('demo products come with pictures', pictured >= 20, String(pictured));
 const media = await page.evaluate(() => {
   const img = document.querySelector('.tp-img');
   const box = img.closest('.tp-media').getBoundingClientRect();
@@ -113,6 +113,50 @@ check('the choice is remembered on this device', (await page.$$('.tile-pic')).le
 await page.click('#toggle-images');
 await page.waitForTimeout(200);
 check('and the button turns them off again', (await page.$$('.tile-pic')).length === 0);
+
+/* ------------------------------------------ a big catalogue stays light */
+console.log('\n[the till never loads the whole catalogue]');
+const catalogue = await page.evaluate(async () => (await (await fetch('/api/products?page=1&per=5')).json()).total);
+const opened = await page.$$eval('.tile', (t) => t.map((x) => Number(x.dataset.add)));
+check('it opens on the 40 best sellers, not every product', catalogue > 100 && opened.length === 40, `${opened.length} of ${catalogue}`);
+// Most units sold over the last 30 days first; products that have not sold fill the rest.
+const sold = await page.evaluate(async () => {
+  const d = new Date(Date.now() - 29 * 864e5 - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+  const rows = await (await fetch(`/api/reports/products?from=${d}`)).json();
+  return rows.sort((a, b) => b.qty - a.qty).map((p) => p.id);
+});
+check('best sellers first, most sold at the top', sold.length > 0 && opened[0] === sold[0] &&
+  new Set(opened.slice(0, sold.length)).size === sold.length && sold.every((id) => opened.slice(0, sold.length).includes(id)),
+  `${sold} / ${opened.slice(0, sold.length)}`);
+
+// A product far down the alphabet with no sales is not on screen until searched.
+const hidden = await page.evaluate(async (ids) => {
+  const rows = (await (await fetch('/api/products?page=2&per=200')).json()).rows;
+  const all = rows.length ? rows : (await (await fetch('/api/products?page=1&per=200')).json()).rows;
+  return all.reverse().find((p) => !ids.includes(p.id) && p.name.split(' ')[0].length >= 5);
+}, opened);
+const requests = [];
+page.on('request', (r) => r.url().includes('/api/products?') && requests.push(r.url()));
+const word = hidden.name.split(' ')[0].toLowerCase();
+await page.fill('#scan', word.slice(0, 2));
+await page.waitForTimeout(600);
+check('two letters narrow the cards on screen without asking the server', requests.length === 0, requests.join(' '));
+check('and say how to search everything', (await page.textContent('#tiles')).includes('Type at least 3 letters'));
+await page.fill('#scan', word);
+await page.waitForFunction((id) => !!document.querySelector(`.tile[data-add="${id}"]:not([hidden])`), hidden.id, { timeout: 5000 });
+check('three letters or more search every product', requests.some((u) => u.includes('search=')), requests.join(' '));
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => document.querySelectorAll('.tile').length === 40);
+check('clearing the search brings the best sellers back', true);
+await page.fill('#scan', hidden.barcode);
+await page.keyboard.press('Enter');
+await page.waitForFunction((name) => document.querySelector('#cart-lines')?.textContent.includes(name), hidden.name, { timeout: 5000 });
+check('scanning a product that is not on screen still rings it up', true);
+await page.click('#clear-cart');
+await page.waitForTimeout(300);
+const confirmBtn = await page.$('.modal [data-confirm]');
+if (confirmBtn) await confirmBtn.click();
+await page.waitForTimeout(300);
 
 /* ----------------------------------------------------- the cart is simple */
 console.log('\n[the cart is only what is being sold]');

@@ -60,6 +60,11 @@ check('a product without extras has an empty list', Array.isArray(juice.barcodes
 check('scanning any of them finds it', (await get('/api/products/lookup?code=TEA-3')).id === tea.id);
 check('the main barcode still works', (await get('/api/products/lookup?code=TEA-1')).id === tea.id);
 check('searching finds it by another barcode', (await get('/api/products?search=TEA-2')).some((p) => p.id === tea.id));
+check('every word counts, in any order', (await get('/api/products?search=tea%20mint')).map((p) => p.id).join() === String(tea.id));
+check('words can match different fields', (await get('/api/products?search=food%20mint')).some((p) => p.id === tea.id) &&
+  (await get('/api/products?search=drinks%20mint')).length === 0);
+const juiceFirst = await get('/api/products?search=JU-1&limit=5');
+check('an exact barcode comes first', juiceFirst[0]?.id === juice.id);
 check('the list pages carry the barcodes too',
   (await get('/api/products?page=1&per=10&search=Mint')).rows[0].barcodes.length === 2);
 
