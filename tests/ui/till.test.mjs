@@ -267,8 +267,8 @@ check('column names appear once, above the lines', (await page.$$('.cl-head')).l
 /* ------------------------------------------------------ edit where it sits */
 console.log('\n[lines are edited in place]');
 check('there is no edit button to open', (await page.$$('.cart-line [data-edit]')).length === 0);
-check('each line has quantity, unit price and discount fields',
-  (await page.$$('.cl-head + .cart-line [data-field]')).length === 3);
+check('each line has quantity, unit price, discount and (once opened) its total',
+  (await page.$$('.cl-head + .cart-line [data-field]')).length === 4);
 
 const espresso = '.cart-line:has-text("Espresso")';
 await page.fill(`${espresso} [data-field="qty"]`, '3');
@@ -294,6 +294,50 @@ check('the cart total follows (2 + 2.50 + 36 = 40.50)', (await text('#totals')).
 check('and shows the discount given in money', (await text('#totals')).includes('$12.00'), await text('#totals'));
 check('typing never threw focus out of the field',
   await page.evaluate(() => document.activeElement?.dataset?.field === 'discount'));
+
+/* --------------------------------------------- selling a line at a price */
+console.log('\n[a line opens, and takes the total you want]');
+// :has-text() is Playwright's own; inside the browser the line is found by its text.
+const detailShown = () =>
+  page.evaluate(() => {
+    const line = [...document.querySelectorAll('.cart-line')].find((el) => el.textContent.includes('Espresso'));
+    return getComputedStyle(line.querySelector('.cl-detail')).display !== 'none';
+  });
+check('the extra fields are closed until the line is opened', !(await detailShown()));
+await page.click(`${espresso} [data-toggle]`);
+await page.waitForTimeout(250);
+check('the chevron opens the line, on the total',
+  (await detailShown()) && (await page.evaluate(() => document.activeElement?.dataset?.field === 'total')));
+check('it opens on what the line comes to, with the discount in money',
+  (await page.inputValue(`${espresso} [data-field="total"]`)) === '36' &&
+  (await text(`${espresso} [data-discount]`)) === '$12.00', await text(`${espresso} [data-discount]`));
+
+// 3 × 16 = 48 asked to come to 30: the discount is worked out, not typed.
+await page.fill(`${espresso} [data-field="total"]`, '30');
+await page.waitForTimeout(200);
+check('typing the total works out the discount', (await text(`${espresso} [data-discount]`)) === '$18.00' &&
+  (await page.inputValue(`${espresso} [data-field="discount"]`)) === '37.5', await page.inputValue(`${espresso} [data-field="discount"]`));
+check('and the line and cart totals follow', (await text(`${espresso} [data-total]`)).includes('$30.00') &&
+  (await text('#totals')).includes('$34.50'), await text('#totals'));
+
+// Above the full price there is nothing to discount, so the unit price moves instead.
+await page.fill(`${espresso} [data-field="total"]`, '60');
+await page.waitForTimeout(200);
+check('a total above the full price raises the unit price instead',
+  (await page.inputValue(`${espresso} [data-field="unit_price"]`)) === '20' &&
+  (await text(`${espresso} [data-discount]`)) === '$0.00', await page.inputValue(`${espresso} [data-field="unit_price"]`));
+await page.fill(`${espresso} [data-field="discount"]`, '25');
+await page.waitForTimeout(200);
+check('a discount typed as a percentage still updates the total field',
+  (await page.inputValue(`${espresso} [data-field="total"]`)) === '45', await page.inputValue(`${espresso} [data-field="total"]`));
+await shot('89-till-line-open');
+await page.click(`${espresso} [data-toggle]`);
+await page.waitForTimeout(250);
+check('the chevron closes it again', !(await detailShown()));
+// Back to where the rest of the test expects it: 3 × 16 with 25% off.
+await page.fill(`${espresso} [data-field="unit_price"]`, '16');
+await page.waitForTimeout(200);
+check('the line is 3 × 16 less 25% again', (await text(`${espresso} [data-total]`)).includes('$36.00'), await text(`${espresso} [data-total]`));
 
 const muffin = '.cart-line:has-text("Muffin")';
 await page.click(`${muffin} [data-step="1"]`);
@@ -438,7 +482,10 @@ for (const [w, h, label] of [[1024, 800, 'tablet'], [390, 844, 'phone']]) {
     const cart = box('.cart');
     const tiles = box('#tiles');
     const scanBar = box('.scan-bar');
-    const fields = [...document.querySelectorAll('.cl-head + .cart-line .cl-field')].map((f) => f.getBoundingClientRect());
+    // Only the fields on show: a closed line's extra fields have no box at all.
+    const fields = [...document.querySelectorAll('.cl-head + .cart-line .cl-field')]
+      .map((f) => f.getBoundingClientRect())
+      .filter((f) => f.width > 0);
     return {
       overflow: document.body.scrollWidth > document.documentElement.clientWidth + 1,
       cartBelowScan: cart.top >= scanBar.bottom - 1,

@@ -124,7 +124,8 @@ check('the customer was remembered',
   (await call('GET', '/api/entities/customer')).data.some((c) => c.name === 'Picker Customer'));
 
 console.log('\n[reports unchanged]');
-const today = new Date().toISOString().slice(0, 10);
+// The shop's own date, as the server records it — not UTC, which is a day off at night.
+const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const pnl = (await call('GET', `/api/reports/pnl?from=${today}&to=${today}`)).data;
 check('revenue = 100', near(pnl.revenue, 100), String(pnl.revenue));
 check('cogs = 46.70', near(pnl.cogs, 46.7), String(pnl.cogs));

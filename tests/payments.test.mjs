@@ -54,7 +54,8 @@ const product = (await call('POST', '/api/products', {
 const sell = (qty, paid, customer = 'Debtor Co') =>
   call('POST', '/api/sales', { customer, paid, items: [{ product_id: product.id, qty, unit_price: 25 }] });
 
-const today = new Date().toISOString().slice(0, 10);
+// The shop's own date, as the server records it — not UTC, which is a day off at night.
+const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 /* ------------------------------------------------------------------------ */
 console.log('\n[paying in full, as before]');

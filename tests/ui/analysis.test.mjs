@@ -103,7 +103,8 @@ await page.waitForTimeout(500);
 check('the till rings it up from another barcode', (await text('#cart-lines')).includes('Tagged Rice'));
 
 /* ------------------------------------------------------------ some customers */
-const today = new Date().toISOString().slice(0, 10);
+// The shop's own date, as the server records it — not UTC, which is a day off at night.
+const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const products = await api('/api/products?limit=5');
 for (const [customer, paid, n] of [['Karim Grocery', 0, 0], ['Karim Grocery', 10, 1], ['karim grocery', undefined, 2], ['Salma Cafe', undefined, 3]]) {
   await api('/api/sales', 'POST', {

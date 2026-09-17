@@ -1548,3 +1548,22 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .list-summary:empty { display: none; }
 .list-summary .ls-count { color: var(--muted); font-weight: 600; }
 .an-filters .list-summary { flex-basis: 100%; margin-inline-start: 0; }
+
+/* A cart line opens to sell at a price: the line total is typed, the discount follows. */
+.cl-toggle {
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer;
+}
+.cl-toggle:hover { background: var(--surface-3); color: var(--text); }
+.cl-toggle svg { width: 14px; height: 14px; transition: transform 0.18s ease; }
+.cart-line.open .cl-toggle svg { transform: rotate(90deg); }
+[dir="rtl"] .cl-toggle svg { transform: scaleX(-1); }
+[dir="rtl"] .cart-line.open .cl-toggle svg { transform: scaleX(-1) rotate(90deg); }
+.cl-detail { display: none; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 5px; }
+.cart-line.open .cl-detail { display: grid; animation: detail-in 0.18s ease; }
+@keyframes detail-in { from { opacity: 0; transform: translateY(-3px); } }
+.cl-detail .cl-field { display: flex; flex-direction: column; gap: 2px; }
+.cl-detail .cl-field > span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.cl-detail .input { height: 30px; font-size: 13px; text-align: end; }
+.cl-detail .input.readonly { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .cart-line.open .cl-detail { animation: none; } }

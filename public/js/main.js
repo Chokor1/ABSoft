@@ -391,7 +391,21 @@ function placePageHead() {
   target.prepend(pageHead);
 }
 
-async function renderRoute() {
+/**
+ * One screen at a time. Screens load their data before painting, so two quick
+ * moves (a link followed by another) could otherwise overlap and the slower one
+ * paint over the newer screen. Renders are queued, and a screen already
+ * overtaken is dropped rather than drawn.
+ */
+let renderSeq = 0;
+let renderQueue = Promise.resolve();
+function renderRoute() {
+  const seq = ++renderSeq;
+  renderQueue = renderQueue.then(() => (seq === renderSeq ? drawRoute() : undefined));
+  return renderQueue;
+}
+
+async function drawRoute() {
   const route = routeKey();
   const view = VIEWS[route];
   currentRoute = route;

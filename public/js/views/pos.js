@@ -424,14 +424,36 @@ export async function render(root, ctx) {
 
   const lineOf = (el) => state.cart.find((l) => l.product_id === Number(el.closest('[data-line]')?.dataset.line));
 
+  /** What the line comes to before its discount. */
+  const lineGross = (l) => round2(l.qty * l.unit_price);
+
+  /**
+   * Selling at a price: the cashier types what the line should come to and the
+   * discount follows. Above the full price there is nothing to discount, so the
+   * unit price itself moves instead.
+   */
+  function setLineTotal(line, wanted) {
+    const total = Math.max(0, round2(wanted));
+    const gross = lineGross(line);
+    if (total > gross && line.qty > 0) {
+      line.unit_price = round2(total / line.qty);
+      line.discountPct = 0;
+      return;
+    }
+    line.discountPct = gross > 0 ? Math.min(100, ((gross - total) / gross) * 100) : 0;
+  }
+
   /**
    * One compact line: name, total and remove on top; quantity, unit price and
    * discount underneath. The column names are shown once, above the list, rather
-   * than repeated on every line.
+   * than repeated on every line. The chevron opens the line to sell it at a
+   * price: type what it should come to, and the discount is worked out.
    */
   function lineHtml(l) {
-    return `<div class="cart-line" data-line="${l.product_id}">
+    return `<div class="cart-line ${l.open ? 'open' : ''}" data-line="${l.product_id}">
       <div class="cl-top">
+        <button class="cl-toggle" data-toggle title="${esc(t(l.open ? 'pos.line_close' : 'pos.line_open'))}"
+                aria-expanded="${l.open ? 'true' : 'false'}">${icon('chevron')}</button>
         <div class="cl-name" title="${esc(l.name)}">${esc(l.name)}</div>
         <span class="cl-short" data-stock ${l.qty > l.stock ? '' : 'hidden'}
               title="${esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }))}">${esc(t('pos.low_badge'))}</span>
@@ -453,15 +475,29 @@ export async function render(root, ctx) {
         </div>
         <div class="cl-field">
           <div class="pct-box">
-            <input class="input" type="number" step="any" min="0" max="100" value="${l.discountPct || ''}"
+            <input class="input" type="number" step="any" min="0" max="100" value="${pctValue(l)}"
                    placeholder="${esc(t('pos.discount_pct'))}" data-field="discount"
                    aria-label="${esc(t('pos.discount_pct'))}" title="${esc(t('pos.discount_pct'))}"/>
             <span aria-hidden="true">%</span>
           </div>
         </div>
       </div>
+      <div class="cl-detail">
+        <label class="cl-field">
+          <span>${esc(t('pos.line_total'))}</span>
+          <input class="input" type="number" step="0.01" min="0" value="${lineTotal(l)}" data-field="total"
+                 aria-label="${esc(t('pos.line_total'))}"/>
+        </label>
+        <label class="cl-field">
+          <span>${esc(t('pos.discount_amount'))}</span>
+          <div class="input readonly" data-discount>${money(lineDiscount(l))}</div>
+        </label>
+      </div>
     </div>`;
   }
+
+  // A percentage the cashier did not type reads better rounded: 33.33, not 33.333333.
+  const pctValue = (l) => (l.discountPct ? Math.round(l.discountPct * 100) / 100 : '');
 
   const linesHeader = () => `<div class="cl-head">
       <span>${esc(t('common.qty'))}</span>
@@ -485,9 +521,19 @@ export async function render(root, ctx) {
   }
 
   /** Only the numbers that depend on the line, so typing never loses its place. */
-  function repaintLine(line) {
+  function repaintLine(line, typedIn = null) {
     const el = linesEl.querySelector(`[data-line="${line.product_id}"]`);
     if (!el) return;
+    // Every field follows the others, except the one being typed in.
+    const set = (field, value) => {
+      const input = el.querySelector(`[data-field="${field}"]`);
+      if (input && input !== typedIn && document.activeElement !== input) input.value = value;
+    };
+    set('total', lineTotal(line));
+    set('discount', pctValue(line));
+    set('unit_price', line.unit_price);
+    set('qty', line.qty);
+    el.querySelector('[data-discount]').textContent = money(lineDiscount(line));
     el.querySelector('[data-total]').textContent = money(lineTotal(line));
     const total2 = el.querySelector('.cl-total2');
     if (total2) {
@@ -548,8 +594,9 @@ export async function render(root, ctx) {
     if (!line) return;
     const value = Math.max(0, Number(input.value) || 0);
     if (input.dataset.field === 'discount') line.discountPct = Math.min(100, value);
+    else if (input.dataset.field === 'total') setLineTotal(line, value);
     else line[input.dataset.field] = value;
-    repaintLine(line);
+    repaintLine(line, input);
   });
 
   // A quantity left at zero once the cashier moves on means "take it off".
@@ -576,6 +623,15 @@ export async function render(root, ctx) {
     if (btn.hasAttribute('data-remove')) {
       state.cart = state.cart.filter((l) => l !== line);
       drawCart();
+      return;
+    }
+    if (btn.hasAttribute('data-toggle')) {
+      line.open = !line.open;
+      const el = btn.closest('.cart-line');
+      el.classList.toggle('open', line.open);
+      btn.setAttribute('aria-expanded', String(line.open));
+      btn.title = t(line.open ? 'pos.line_close' : 'pos.line_open');
+      if (line.open) el.querySelector('[data-field="total"]').focus();
       return;
     }
     if (btn.dataset.step) {
