@@ -251,6 +251,13 @@ export async function render(root, ctx) {
   );
   root.querySelector('#an-range').replaceWith(range);
 
+  // The table's headings stick just under the filters, however tall they wrap.
+  const bar = root.querySelector('.an-bar');
+  const barHeight = new ResizeObserver(() =>
+    document.documentElement.style.setProperty('--an-bar-h', `${bar.offsetHeight}px`),
+  );
+  barHeight.observe(bar);
+
   const refilter = () => {
     state.page = 1;
     load();
@@ -474,5 +481,8 @@ export async function render(root, ctx) {
   }
 
   await load();
-  return () => pickers.forEach((p) => p.destroy());
+  return () => {
+    barHeight.disconnect();
+    pickers.forEach((p) => p.destroy());
+  };
 }

@@ -441,24 +441,29 @@ textarea.input { resize: vertical; min-height: 68px; }
    is a flex column that may shrink, but not grow: with only a few rows the card
    ends right under the totals instead of stretching an empty table to the floor. */
 @media (min-width: 900px) and (min-height: 560px) {
-  .shell:has(.table-scroll):not(:has(.product-hero)) .main { height: 100vh; }
-  .shell:has(.table-scroll):not(:has(.product-hero)) .page {
+  .shell:has(.table-scroll):not(:has(:is(.product-hero, .an-bar))) .main { height: 100vh; }
+  .shell:has(.table-scroll):not(:has(:is(.product-hero, .an-bar))) .page {
     flex: 1; min-height: 0; padding-bottom: 22px;
     display: flex; flex-direction: column;
   }
   .page > * { flex: none; }
-  .page:not(:has(.product-hero)) :has(.table-scroll):not(.grid),
-  .page:not(:has(.product-hero)) > :has(.table-scroll) {
+  .page:not(:has(:is(.product-hero, .an-bar))) :has(.table-scroll):not(.grid),
+  .page:not(:has(:is(.product-hero, .an-bar))) > :has(.table-scroll) {
     display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0;
   }
   .page .grid:has(.table-scroll) { display: grid; grid-template-rows: minmax(0, auto); align-items: start; }
   .page .grid:has(.table-scroll) > .card { display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
   .page .grid:has(.table-scroll) > .card > .card-body { flex: 0 1 auto; min-height: 0; overflow: auto; }
   .page :has(.table-scroll) > .card-head { flex: none; }
-  .page:not(:has(.product-hero)) .table-scroll { flex: 0 1 auto; min-height: 0; max-height: none; }
+  .page:not(:has(:is(.product-hero, .an-bar))) .table-scroll { flex: 0 1 auto; min-height: 0; max-height: none; }
   /* The product page has a tall header, so it scrolls as a page: the tabs stick
      under the top bar and each table fills the window below them. */
   .page:has(.product-hero) .table-scroll { max-height: calc(100vh - var(--topbar-h, 78px) - 180px); min-height: 240px; }
+  /* Sales analysis scrolls as a page, with no box of its own inside: the filters stay pinned,
+     the tiles scroll away, and the whole window is the table. Its headings stick under the
+     filters (whose height the view keeps in --an-bar-h) and its totals to the bottom. */
+  .page:has(.an-bar) .table-wrap.table-scroll { max-height: none; overflow: visible; }
+  .page:has(.an-bar) .an-table thead th { top: calc(var(--topbar-h, 78px) + var(--an-bar-h, 150px)); z-index: 5; }
 }
 table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.data th {
