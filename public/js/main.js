@@ -25,7 +25,8 @@ import * as settings from './views/settings.js';
  */
 const VIEWS = {
   dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'overview' },
-  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true },
+  // Not in the menu: the POS button in the top bar (or F2) opens it.
+  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true, hidden: true },
   sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'daily', cashier: true },
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
@@ -225,7 +226,8 @@ function renderShell() {
     <div class="shell">
       <aside class="sidebar" id="sidebar">
         <div class="brand">
-          <div class="mark"><img src="/img/logo-mark.svg" alt="ABSoft" /></div>
+          <a class="mark" href="#/${isAdmin() ? 'dashboard' : 'sales'}" title="${esc(t(isAdmin() ? 'nav.dashboard' : 'nav.sales'))}"
+             aria-label="${esc(t(isAdmin() ? 'nav.dashboard' : 'nav.sales'))}"><img src="/img/logo-mark.svg" alt="ABSoft" /></a>
           <div class="brand-text"><strong>${esc(t('app.brand'))} <span class="brand-product">${esc(t('app.product'))}</span>${
             store.version ? ` <span class="brand-version" title="${esc(t('app.version', { v: store.version }))}">v${esc(store.version)}</span>` : ''
           }</strong><small>${esc(
@@ -248,9 +250,12 @@ function renderShell() {
       <div class="main">
         <header class="topbar">
           <button class="btn btn-ghost btn-icon only-mobile" id="nav-toggle">${icon('menu')}</button>
+          <a class="mark topbar-mark" href="#/${isAdmin() ? 'dashboard' : 'sales'}" title="${esc(t(isAdmin() ? 'nav.dashboard' : 'nav.sales'))}"
+             aria-label="${esc(t(isAdmin() ? 'nav.dashboard' : 'nav.sales'))}"><img src="/img/logo-mark.svg" alt="ABSoft" /></a>
           <div class="topbar-title"><h2 id="page-title"></h2><div class="sub" id="page-sub"></div></div>
           <div class="spacer"></div>
           <div class="page-actions" id="page-actions"></div>
+          <a class="btn btn-primary topbar-pos" id="go-pos" href="#/pos" title="${esc(t('nav.pos.sub'))} (F2)">${icon('pos')} ${esc(t('nav.pos'))}</a>
           ${languagePicker(lang)}
           <button class="btn btn-ghost btn-icon theme-toggle" id="fullscreen-toggle"></button>
           <button class="btn btn-ghost btn-icon theme-toggle" id="theme-toggle" title="${esc(t('menu.toggle_theme'))}">
@@ -361,6 +366,12 @@ async function renderRoute() {
   document.getElementById('page-sub').textContent = t(`nav.${view.key}.sub`);
   document.getElementById('page-actions').innerHTML = '';
   document.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === route));
+  // The POS folds the sidebar away, so the exchange rate moves up into the top bar.
+  const rateBox = document.getElementById('rate-box');
+  if (rateBox) {
+    if (route === 'pos') document.getElementById('page-actions').after(rateBox);
+    else document.querySelector('.sidebar-foot').before(rateBox);
+  }
   // A screen inside a folded group opens the group, so you can see where you are.
   document.querySelectorAll('.nav-fold').forEach((fold) => {
     const holds = !!fold.querySelector(`[data-route="${route}"]`);

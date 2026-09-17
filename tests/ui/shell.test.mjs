@@ -60,10 +60,11 @@ const navWidth = await sidebarWidth();
 check('the sidebar is full width with its labels', navWidth > 200, String(navWidth));
 check('labels are visible', await page.isVisible('.nav-item span'));
 
-await page.click('a[data-route=pos]');
+await page.click('#go-pos');
 await page.waitForSelector('.tile');
-await page.waitForTimeout(400);
-check('opening the till leaves the sidebar alone', (await sidebarWidth()) === navWidth, String(await sidebarWidth()));
+await page.waitForTimeout(600);
+check('the till takes the whole width: the sidebar slides away',
+  await page.evaluate(() => Math.round(document.querySelector('.main').getBoundingClientRect().left) === 0));
 check('and nothing marks it collapsed',
   await page.evaluate(() => !document.querySelector('.shell').classList.contains('nav-collapsed')));
 await shot('71-pos-fixed-nav');

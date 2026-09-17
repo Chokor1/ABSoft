@@ -18,11 +18,6 @@ import {
 } from '../ui.js';
 
 export async function render(root, ctx) {
-  ctx.actions.innerHTML = `<button class="btn btn-primary" id="quick-sell">${icon('pos')} ${esc(
-    t('dash.new_sale'),
-  )}</button>`;
-  ctx.actions.querySelector('#quick-sell').addEventListener('click', () => ctx.navigate('pos'));
-
   const d = await api.dashboard();
   const { today, month, inventory } = d;
 

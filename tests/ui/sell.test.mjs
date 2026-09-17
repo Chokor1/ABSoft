@@ -50,16 +50,33 @@ await page.waitForSelector('.shell');
 
 console.log('\n[the menu]');
 const menu = await page.$$eval('.nav [data-route]', (a) => a.map((x) => x.dataset.route));
-check('POS, Sell and Buy sit together', menu.slice(menu.indexOf('pos'), menu.indexOf('pos') + 3).join() === 'pos,sales,purchases', menu.join());
+check('Sell and Buy sit together, POS is in the top bar', menu.slice(menu.indexOf('sales'), menu.indexOf('sales') + 2).join() === 'sales,purchases' &&
+  !menu.includes('pos') && (await page.isVisible('#go-pos')), menu.join());
 check('Sell is labelled Sell and Buy is labelled Buy',
   (await page.textContent('.nav [data-route="sales"]')).trim() === 'Sell' &&
   (await page.textContent('.nav [data-route="purchases"]')).replace(/F\d/, '').trim() === 'Buy');
+
+console.log('\n[the POS takes the whole screen]');
+await page.click('#go-pos');
+await page.waitForSelector('.pos .tile');
+await page.waitForTimeout(600);
+const posLayout = () => page.evaluate(() => ({
+  left: Math.round(document.querySelector('.main').getBoundingClientRect().left),
+  mark: getComputedStyle(document.querySelector('.topbar-mark')).display !== 'none',
+}));
+let layout = await posLayout();
+check('the sidebar slides away and the ABSoft mark sits in the top bar', layout.left === 0 && layout.mark && !(await page.isVisible('#go-pos')), JSON.stringify(layout));
+await page.click('.topbar-mark');
+await page.waitForFunction(() => location.hash === '#/dashboard');
+await page.waitForTimeout(600);
+layout = await posLayout();
+check('the mark leads home, and the sidebar comes back', layout.left > 200 && !layout.mark, JSON.stringify(layout));
 
 console.log('\n[the Sell list]');
 await page.click('.nav [data-route="sales"]');
 await page.waitForSelector('#new');
 check('Sell lists the invoices from the POS', (await page.$$('tbody tr[data-open]')).length > 0);
-check('with New sale and a way to the POS', await page.isVisible('#new') && await page.isVisible('#to-pos'));
+check('with New sale, and POS in the top bar', await page.isVisible('#new') && await page.isVisible('#go-pos'));
 
 console.log('\n[a sale entered by hand]');
 await page.click('#new');
@@ -79,20 +96,24 @@ await page.fill('input[name=customer]', 'Hadi Bakery');
 const products = await api('/api/products?limit=3');
 const [p1, p2] = products;
 
+// Type a product's name, wait for the list to offer it, pick it, and wait for the line to take it.
+const pickProduct = async (line, name) => {
+  await page.keyboard.type(name);
+  await page.waitForFunction(
+    (n) => [...document.querySelectorAll('.combo-menu:not([hidden]) .combo-item.active')].some((el) => el.textContent.includes(n)),
+    name,
+  );
+  await page.keyboard.press('Enter');
+  await page.waitForFunction((i) => document.querySelector(`[data-stock="${i}"]`)?.textContent.includes('in stock'), line);
+};
 await page.click('[data-product="0"]');
-await page.keyboard.type(p1.name);
-await page.waitForSelector('.combo-menu:not([hidden]) [role=option], .combo-menu:not([hidden]) .combo-item', { timeout: 5000 }).catch(() => {});
-await page.keyboard.press('Enter');
-await page.waitForFunction((name) => document.querySelector('[data-product="0"]')?.value === name, p1.name);
+await pickProduct(0, p1.name);
 check('picking a product fills its price and shows its stock',
   near(await page.inputValue('[data-price="0"]'), p1.price) && (await page.textContent('[data-stock="0"]')).includes('in stock'));
 await page.fill('[data-qty="0"]', '3');
 
 await page.click('#add-line');
-await page.keyboard.type(p2.name);
-await page.waitForTimeout(400);
-await page.keyboard.press('Enter');
-await page.waitForFunction((name) => document.querySelector('[data-product="1"]')?.value === name, p2.name);
+await pickProduct(1, p2.name);
 await page.fill('[data-qty="1"]', '2');
 await page.fill('[data-price="1"]', '10');
 await page.fill('[data-discount="1"]', '1');

@@ -50,8 +50,8 @@ await page.waitForSelector('.shell');
 
 /* ------------------------------------------------------------- the name */
 console.log('\n[the till is called POS]');
-check('the menu says POS', (await page.textContent('.nav [href="#/pos"]'))?.replace(/F\d/, '').trim() === 'POS',
-  await page.textContent('.nav [href="#/pos"]'));
+check('POS is a button in the top bar, not a menu item', (await page.textContent('#go-pos'))?.trim() === 'POS' &&
+  (await page.$$('.nav [href="#/pos"]')).length === 0, await page.textContent('#go-pos'));
 
 /* ------------------------------------------------------ scrolling tables */
 const measure = () =>

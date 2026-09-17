@@ -177,7 +177,7 @@ console.log('\n[a cashier only has the till]');
 const till = await signIn('till8', 'test1234');
 check('a cashier lands on the till', till.url().endsWith('#/pos'), till.url());
 const routes = await till.$$eval('.nav-item', (n) => n.map((a) => a.dataset.route));
-check('the menu has only POS, Sell and Settings', routes.join() === 'pos,sales,settings', routes.join());
+check('the menu has only Sell and Settings, with POS in the top bar', routes.join() === 'sales,settings', routes.join());
 await till.goto(`${BASE}#/reports`);
 await till.waitForTimeout(600);
 check('typing another address goes back to the till', till.url().endsWith('#/pos') && (await till.$$('.tile')).length > 0, till.url());

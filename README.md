@@ -52,7 +52,7 @@ invoice loses a line.
 | Screen | What it is for |
 | --- | --- |
 | **Dashboard** | Today and this month at a glance: sales, profit, stock value, low-stock warnings, 30-day trend. |
-| **POS** (`F2`) | The till. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
+| **POS** (`F2`) | The till, full screen: the sidebar slides away, and the ABSoft mark at the start of the top bar leads back home (a cashier's leads to Sell); the exchange rate moves into the top bar. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
 | **Sell** | Every invoice — those rung up at the POS and those entered here. **New sale** enters a sale as a document, like a purchase: customer, date, lines with price and discount, an invoice discount, and what was paid now (the rest stays owing). Click an invoice to open it: the receipt, its payments, print, take the rest, void. Cost and profit per sale for administrators. |
 | **Buy** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. Administrators can edit a saved purchase; every change is logged. |
 | **Stock Count** | Count the shelf — all items, one category or a few — and correct the stock in one go. |

@@ -425,10 +425,8 @@ export async function render(root, ctx) {
 
   ctx.actions.innerHTML = `
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export_csv'))}</button>
-    <button class="btn" id="to-pos">${icon('pos')} ${esc(t('nav.pos'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('sell.new'))}</button>`;
   ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('sales/new'));
-  ctx.actions.querySelector('#to-pos').addEventListener('click', () => ctx.navigate('pos'));
 
   let rows = [];
 
