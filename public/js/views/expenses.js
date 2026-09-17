@@ -10,6 +10,7 @@ import {
   emptyState,
   esc,
   filterSelect,
+  listSummary,
   pager,
   forgetSuggestions,
   formPage,
@@ -91,6 +92,7 @@ async function renderList(root, ctx) {
     }),
   );
 
+  const summary = listSummary(bar);
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(bar, body);
@@ -112,15 +114,13 @@ async function renderList(root, ctx) {
     const total = result.sums.total;
     const byCategory = result.byCategory.map((c) => ({ label: c.category, value: c.amount }));
 
+    summary.innerHTML = `
+      <span class="ls-count">${esc(count('exp', result.total))}</span>
+      <span class="badge danger">${esc(t('exp.total_badge', { v: money(total) }))}</span>`;
+
     body.innerHTML = `
       <div class="grid cols-2 split-wide">
         <div class="card">
-          <div class="card-head">
-            <div><h3>${esc(count('exp', result.total))}</h3>
-              <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
-            <div class="spacer"></div>
-            <span class="badge danger">${esc(t('exp.total_badge', { v: money(total) }))}</span>
-          </div>
           <div class="card-body flush">
             ${
               rows.length

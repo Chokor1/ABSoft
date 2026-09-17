@@ -25,6 +25,7 @@ import {
   toast,
   todayISO,
 } from '../ui.js';
+import { listSummary } from '../ui.js';
 import { openParty } from './lists.js';
 import { renderSaleForm } from './sale-form.js';
 
@@ -419,6 +420,7 @@ export async function render(root, ctx) {
     }),
   );
 
+  const summary = listSummary(bar);
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(bar, body);
@@ -477,26 +479,20 @@ export async function render(root, ctx) {
       { total: 0, profit: 0, cogs: 0, balance: 0 },
     );
 
+    summary.innerHTML = `
+      <span class="ls-count">${esc(count('sales', result.total))}</span>
+      <span class="badge accent">${esc(t('sales.revenue_badge', { v: money(sum.total) }))}</span>
+      ${
+        admin
+          ? `<span class="badge ${sum.profit >= 0 ? 'success' : 'danger'}">${esc(
+              t('sales.profit_badge', { v: money(sum.profit) }),
+            )}</span>`
+          : ''
+      }
+      ${sum.balance > 0.004 ? `<span class="badge warn">${esc(t('pay.owed_badge', { v: money(sum.balance) }))}</span>` : ''}`;
+
     body.innerHTML = `
       <div class="card">
-        <div class="card-head">
-          <div><h3>${esc(count('sales', result.total))}</h3>
-          <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
-          <div class="spacer"></div>
-          <span class="badge accent">${esc(t('sales.revenue_badge', { v: money(sum.total) }))}</span>
-          ${
-            admin
-              ? `<span class="badge ${sum.profit >= 0 ? 'success' : 'danger'}">${esc(
-                  t('sales.profit_badge', { v: money(sum.profit) }),
-                )}</span>`
-              : ''
-          }
-          ${
-            sum.balance > 0.004
-              ? `<span class="badge warn">${esc(t('pay.owed_badge', { v: money(sum.balance) }))}</span>`
-              : ''
-          }
-        </div>
         <div class="card-body flush">
           ${
             rows.length
@@ -514,7 +510,7 @@ export async function render(root, ctx) {
                   <tbody>${rows
                     .map(
                       (s) => `<tr class="row-click" data-open="${s.id}">
-                        <td class="mono">${esc(s.doc_no)}</td>
+                        <td class="mono nowrap">${esc(s.doc_no)}</td>
                         <td class="nowrap">${dateText(s.date)}</td>
                         <td>${esc(s.customer || t('common.walk_in'))}</td>
                         <td class="right">${qtyText(s.total_qty)}</td>

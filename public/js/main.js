@@ -252,9 +252,7 @@ function renderShell() {
           <button class="btn btn-ghost btn-icon only-mobile" id="nav-toggle">${icon('menu')}</button>
           <a class="mark topbar-mark" href="#/${isAdmin() ? 'dashboard' : 'sales'}" title="${esc(t(isAdmin() ? 'nav.dashboard' : 'nav.sales'))}"
              aria-label="${esc(t(isAdmin() ? 'nav.dashboard' : 'nav.sales'))}"><img src="/img/logo-mark.svg" alt="ABSoft" /></a>
-          <div class="topbar-title"><h2 id="page-title"></h2><div class="sub" id="page-sub"></div></div>
           <div class="spacer"></div>
-          <div class="page-actions" id="page-actions"></div>
           <a class="btn btn-primary topbar-pos" id="go-pos" href="#/pos" title="${esc(t('nav.pos.sub'))} (F2)">${icon('pos')} ${esc(t('nav.pos'))}</a>
           ${languagePicker(lang)}
           <button class="btn btn-ghost btn-icon theme-toggle" id="fullscreen-toggle"></button>
@@ -265,6 +263,20 @@ function renderShell() {
         <main class="page" id="page"></main>
       </div>
     </div>`;
+
+  // The screen's own header: its name, what it is for and its buttons. It is not
+  // part of the top bar (that holds what belongs to the whole app); it sits in the
+  // screen's filter bar, or at the top of the screen when there is none.
+  pageHead = document.createElement('div');
+  pageHead.className = 'page-head';
+  pageHead.id = 'page-head';
+  pageHead.innerHTML = `
+    <div class="page-head-title"><h2 id="page-title"></h2><div class="sub" id="page-sub"></div></div>
+    <div class="spacer"></div>
+    <div class="page-actions" id="page-actions"></div>`;
+  const page = app.querySelector('#page');
+  // Screens redraw themselves; whenever that takes the header with it, put it back.
+  new MutationObserver(() => placePageHead()).observe(page, { childList: true, subtree: true });
 
   wireLanguagePicker(app);
   paintRateBox();
@@ -358,18 +370,41 @@ const routeKey = () => {
   return homeRoute();
 };
 
+let pageHead = null;
+let currentRoute = '';
+
+/**
+ * Put the screen's header where it belongs: first row of the screen's filter bar
+ * (the sticky toolbar a list or report opens with), otherwise the top of the
+ * screen. The POS has none: it keeps every pixel for selling.
+ */
+function placePageHead() {
+  const page = document.getElementById('page');
+  if (!pageHead || !page) return;
+  if (currentRoute === 'pos') {
+    pageHead.remove();
+    return;
+  }
+  const bar = page.querySelector('.sticky-bar:not(.product-hero)');
+  const target = bar || page;
+  if (pageHead.parentElement === target && target.firstElementChild === pageHead) return;
+  target.prepend(pageHead);
+}
+
 async function renderRoute() {
   const route = routeKey();
   const view = VIEWS[route];
+  currentRoute = route;
 
-  document.getElementById('page-title').textContent = t(`nav.${view.key}`);
-  document.getElementById('page-sub').textContent = t(`nav.${view.key}.sub`);
-  document.getElementById('page-actions').innerHTML = '';
+  pageHead.remove();
+  pageHead.querySelector('#page-title').textContent = t(`nav.${view.key}`);
+  pageHead.querySelector('#page-sub').textContent = t(`nav.${view.key}.sub`);
+  pageHead.querySelector('#page-actions').innerHTML = '';
   document.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === route));
   // The POS folds the sidebar away, so the exchange rate moves up into the top bar.
   const rateBox = document.getElementById('rate-box');
   if (rateBox) {
-    if (route === 'pos') document.getElementById('page-actions').after(rateBox);
+    if (route === 'pos') document.getElementById('go-pos').before(rateBox);
     else document.querySelector('.sidebar-foot').before(rateBox);
   }
   // A screen inside a folded group opens the group, so you can see where you are.
@@ -381,13 +416,15 @@ async function renderRoute() {
 
   const page = document.getElementById('page');
   page.innerHTML = `<div class="empty"><p>${esc(t('common.loading'))}</p></div>`;
+  // A new screen starts at its top, not where the last one was scrolled to.
+  window.scrollTo(0, 0);
 
   try {
     cleanup?.();
     cleanup = null;
     sweepPickers();
     cleanup = await view.mod.render(page, {
-      actions: document.getElementById('page-actions'),
+      actions: pageHead.querySelector('#page-actions'),
       navigate: (to) => (location.hash = `#/${to}`),
       params: location.hash.replace(/^#\/?/, '').split('/').slice(1),
     });
@@ -402,6 +439,7 @@ async function renderRoute() {
     page.innerHTML = `<div class="card"><div class="card-body"><div class="empty">${icon('alert')}
       <strong>${esc(t('common.page_error'))}</strong><p>${esc(errorText(err))}</p></div></div></div>`;
   }
+  placePageHead();
 }
 
 /* ---------------------------------------------------------- exchange rate -- */

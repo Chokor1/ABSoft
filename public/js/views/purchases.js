@@ -11,6 +11,7 @@ import {
   dateTimeText,
   debounce,
   docPage,
+  listSummary,
   pager,
   downloadCsv,
   emptyState,
@@ -82,6 +83,7 @@ async function renderList(root, ctx) {
   );
   bar.appendChild(searchWrap);
 
+  const summary = listSummary(bar);
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(bar, body);
@@ -101,14 +103,12 @@ async function renderList(root, ctx) {
     const total = result.sums.total; // every purchase that matches, not just this page
     const pageTotal = rows.reduce((s, p) => s + p.total, 0);
 
+    summary.innerHTML = `
+      <span class="ls-count">${esc(count('buy', result.total))}</span>
+      <span class="badge accent">${esc(t('buy.spent', { v: money(total) }))}</span>`;
+
     body.innerHTML = `
       <div class="card">
-        <div class="card-head">
-          <div><h3>${esc(count('buy', result.total))}</h3>
-            <div class="sub">${dateText(state.from)} → ${dateText(state.to)}</div></div>
-          <div class="spacer"></div>
-          <span class="badge accent">${esc(t('buy.spent', { v: money(total) }))}</span>
-        </div>
         <div class="card-body flush">
           ${
             rows.length

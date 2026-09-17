@@ -10,6 +10,7 @@ import {
   esc,
   filterSelect,
   initials,
+  listSummary,
   money,
   pager,
   pct,
@@ -73,6 +74,7 @@ async function renderList(root, ctx, startKind) {
     </div>
     <div class="spacer"></div>`;
 
+  const summary = listSummary(tabs);
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(tabs, body);
@@ -128,12 +130,10 @@ async function renderList(root, ctx, startKind) {
     state.rows = result.rows;
     const showContact = meta().contact;
 
+    summary.innerHTML = `<span class="ls-count">${esc(count('lists', result.total))}</span>`;
+
     body.innerHTML = `
       <div class="card">
-        <div class="card-head">
-          <div><h3>${esc(t(`lists.tab.${state.kind}`))}</h3>
-            <div class="sub">${esc(count('lists', result.total))}</div></div>
-        </div>
         <div class="card-body flush">
           ${
             state.rows.length

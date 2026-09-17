@@ -73,6 +73,11 @@ archived; sales by payment status and method; adjustments by reason; expenses by
 any change of filter goes back to page one. The badges above a list count everything that
 matches; the row under the table adds up the page on screen.
 
+Every screen carries its own header — its name, what it is for and its buttons (Export, New
+sale…) — as the first row of its filter bar, with the figures for everything that matches at the
+end of that bar. The top bar above holds only what belongs to the whole app: **POS**, the
+language, full screen and light/dark. A table therefore starts at its column headings.
+
 Tables — lists and reports alike — scroll their rows inside their own section, with the column
 headings and the totals row always in view. With only a few rows, the table simply ends at its
 totals. The report menu stays pinned under the top bar while a long report scrolls.
@@ -378,7 +383,8 @@ catalogue pictures straight away. `npm run demo:images -- --remove` takes the dr
 and never touches real photos; `-- --refresh` redraws them (after an update changes their look).
 
 The till never loads the whole catalogue, so a shop with thousands of products opens and scans
-as fast as a small one. It opens on the **40 best sellers** of the last 30 days. Typing one or two
+as fast as a small one. It opens on the **40 best sellers** of the last 30 days, and scrolling to the end of the cards
+loads the next batch. Typing one or two
 letters narrows those cards instantly; from **three letters** it searches every product (name,
 any barcode, category or description, every word counting) and shows the first 60 matches, best
 matches first, with the cards sliding and fading into place. Enter or a scanner looks the code up

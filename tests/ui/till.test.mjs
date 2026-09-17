@@ -148,6 +148,30 @@ check('three letters or more search every product', requests.some((u) => u.inclu
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => document.querySelectorAll('.tile').length === 40);
 check('clearing the search brings the best sellers back', true);
+
+const scrollCards = () =>
+  page.evaluate(() => {
+    const grid = document.querySelector('#tiles');
+    grid.scrollTop = grid.scrollHeight;
+    window.scrollTo(0, document.body.scrollHeight);
+  });
+await scrollCards();
+await page.waitForFunction(() => document.querySelectorAll('.tile').length > 40, null, { timeout: 5000 });
+check('scrolling to the end of the cards loads the next batch', (await page.$$('.tile')).length === 80, String((await page.$$('.tile')).length));
+for (let i = 0; i < 4; i++) {
+  await scrollCards();
+  await page.waitForTimeout(700);
+}
+const everything = (await page.$$('.tile')).length;
+check('and keeps going until every product is there, once each', everything === catalogue &&
+  new Set(await page.$$eval('.tile', (t) => t.map((x) => x.dataset.add))).size === catalogue, `${everything} of ${catalogue}`);
+await page.goto(`${BASE}#/dashboard`);
+await page.goto(`${BASE}#/pos`);
+// Reopened, it starts from the best sellers again (a taller window may pull in a second batch).
+await page.waitForFunction((n) => {
+  const shown = document.querySelectorAll('.tile').length;
+  return shown >= 40 && shown < n;
+}, catalogue);
 await page.fill('#scan', hidden.barcode);
 await page.keyboard.press('Enter');
 await page.waitForFunction((name) => document.querySelector('#cart-lines')?.textContent.includes(name), hidden.name, { timeout: 5000 });

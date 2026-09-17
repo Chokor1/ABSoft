@@ -100,8 +100,9 @@ export async function render(root, ctx) {
    * products opens and scans as fast as one with ten:
    *   - it opens on the best sellers (the last 30 days), QUICK cards;
    *   - one or two letters narrow the cards already on screen, instantly;
-   *   - three or more search every product on the server (RESULTS at most),
+   *   - three or more search every product on the server (RESULTS at a time),
    *     narrowing what is on screen while the answer comes;
+   *   - scrolling to the end of the cards loads the next batch of either;
    *   - Enter, or a scanner, looks the code up exactly.
    * Cards that stay glide to their new places, cards that arrive fade in.
    */
@@ -111,6 +112,8 @@ export async function render(root, ctx) {
   let searchToken = 0; // an answer to an older search must not paint over a newer one
   state.mode = 'popular';
   state.resultsFor = '';
+  state.more = false; // the last batch was full, so there may be more
+  let loadingMore = false;
   let showImages = tileImagesEnabled();
   $('#toggle-images').addEventListener('click', (e) => {
     showImages = !showImages;
@@ -129,9 +132,10 @@ export async function render(root, ctx) {
     const token = ++searchToken;
     const rows = await api.products({ sort: 'popular', limit: QUICK });
     if (token !== searchToken) return;
-    Object.assign(state, { products: rows, mode: 'popular', resultsFor: '' });
+    Object.assign(state, { products: rows, mode: 'popular', resultsFor: '', more: rows.length === QUICK });
     drawTiles();
     applyFilter({ animate: false });
+    maybeLoadMore();
   }
 
   /** Every product matching `text`, from the server. Resolves null when overtaken. */
@@ -145,55 +149,111 @@ export async function render(root, ctx) {
     }
     if (token !== searchToken || state.filter !== text) return null;
     const same = rows.length === state.products.length && rows.every((p, i) => p.id === state.products[i].id);
-    Object.assign(state, { products: rows, mode: 'search', resultsFor: text });
+    Object.assign(state, { products: rows, mode: 'search', resultsFor: text, more: rows.length === RESULTS });
     if (same && animate) {
       applyFilter({ animate: false });
     } else {
       drawTiles();
       applyFilter({ animate: false, fadeIn: animate });
     }
+    maybeLoadMore();
     return rows;
   }
+
+  /** The next batch, when the end of the cards comes near. */
+  async function loadMore() {
+    const short = state.filter.length > 0 && state.filter.length < MIN_SEARCH;
+    if (loadingMore || !state.more || short) return;
+    loadingMore = true;
+    const token = searchToken;
+    const batch = state.mode === 'search' ? RESULTS : QUICK;
+    const query =
+      state.mode === 'search'
+        ? { search: state.resultsFor, limit: RESULTS, offset: state.products.length }
+        : { sort: 'popular', limit: QUICK, offset: state.products.length };
+    paintMore();
+    let rows = [];
+    try {
+      rows = await api.products(query);
+    } catch {
+      rows = null;
+    }
+    loadingMore = false;
+    // A new search started meanwhile: this batch belongs to the old one.
+    if (token !== searchToken || !rows) return paintMore();
+    const known = new Set(state.products.map((p) => p.id));
+    const fresh = rows.filter((p) => !known.has(p.id));
+    state.products = [...state.products, ...fresh];
+    state.more = rows.length === batch;
+    tiles.querySelector('#tiles-empty').insertAdjacentHTML('beforebegin', fresh.map(tileHtml).join(''));
+    applyFilter({ animate: false });
+    if (!reduceMotion()) {
+      fresh.forEach((p, i) =>
+        tiles.querySelector(`.tile[data-add="${p.id}"]`)?.animate(
+          [{ opacity: 0, transform: 'translateY(8px) scale(0.97)' }, { opacity: 1, transform: 'none' }],
+          { duration: 260, delay: Math.min(i, 16) * 12, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' },
+        ),
+      );
+    }
+    paintMore();
+    maybeLoadMore();
+  }
+
+  const paintMore = () => {
+    const more = tiles.querySelector('#tiles-more');
+    if (more) more.innerHTML = loadingMore ? `<span class="tiles-spinner"></span>${esc(t('pos.loading_more'))}` : '';
+  };
+
+  /** Load more once the end of the cards is within reach, in the card section or the page. */
+  function maybeLoadMore() {
+    const end = tiles.querySelector('#tiles-more');
+    if (!end || !state.more || loadingMore) return;
+    const box = tiles.getBoundingClientRect();
+    const bottom = Math.min(window.innerHeight, tiles.scrollHeight > tiles.clientHeight + 1 ? box.bottom : window.innerHeight);
+    if (end.getBoundingClientRect().top < bottom + 120) loadMore();
+  }
+  const onScroll = () => maybeLoadMore();
+  tiles.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('scroll', onScroll, { passive: true });
 
   const haystack = (p) =>
     [p.name, p.barcode, ...(p.barcodes || []), p.category, p.description].filter(Boolean).join(' ').toLowerCase();
 
   function drawTiles() {
     tiles.innerHTML =
-      state.products
-        .map(
-          (p) => {
-            const prices = `<div class="t-meta">
-              <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
-              <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
-            </div>`;
-            const title = [p.name, p.description].filter(Boolean).join(' — ');
-            if (showImages) {
-              // Picture cards: the picture fills the top, the name sits over its lower
-              // edge, the price is underneath. No picture yet: a quiet placeholder.
-              const src = p.image_at ? `/api/products/${p.id}/image?v=${encodeURIComponent(p.image_at)}` : '';
-              return `<button class="tile tile-pic ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}"
-                       data-find="${esc(haystack(p))}" title="${esc(title)}">
-                <div class="tp-media ${src ? '' : 'no-img'}">
-                  ${src ? `<img class="tp-img" src="${esc(src)}" alt="" loading="lazy" decoding="async" draggable="false"/>` : icon('image')}
-                  <div class="tp-name">${esc(p.name)}</div>
-                </div>
-                <div class="tp-body">${prices}</div>
-              </button>`;
-            }
-            return `<button class="tile ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}"
-                   data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}>
-            <div class="t-name">${esc(p.name)}</div>
-            ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
-            <div class="t-meta">
-              <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
-              <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
-            </div>
-          </button>`;
-          },
-        )
-        .join('') +
-      `<div class="tiles-empty" id="tiles-empty" hidden></div><div class="tiles-note" id="tiles-note" hidden></div>`;
+      state.products.map(tileHtml).join('') +
+      `<div class="tiles-empty" id="tiles-empty" hidden></div><div class="tiles-note" id="tiles-note" hidden></div>
+       <div class="tiles-more" id="tiles-more"></div>`;
+  }
+
+  function tileHtml(p) {
+    const prices = `<div class="t-meta">
+      <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
+      <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
+    </div>`;
+    const title = [p.name, p.description].filter(Boolean).join(' — ');
+    if (showImages) {
+      // Picture cards: the picture fills the top, the name sits over its lower
+      // edge, the price is underneath. No picture yet: a quiet placeholder.
+      const src = p.image_at ? `/api/products/${p.id}/image?v=${encodeURIComponent(p.image_at)}` : '';
+      return `<button class="tile tile-pic ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}"
+               data-find="${esc(haystack(p))}" title="${esc(title)}">
+        <div class="tp-media ${src ? '' : 'no-img'}">
+          ${src ? `<img class="tp-img" src="${esc(src)}" alt="" loading="lazy" decoding="async" draggable="false"/>` : icon('image')}
+          <div class="tp-name">${esc(p.name)}</div>
+        </div>
+        <div class="tp-body">${prices}</div>
+      </button>`;
+    }
+    return `<button class="tile ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}"
+           data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}>
+    <div class="t-name">${esc(p.name)}</div>
+    ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
+    <div class="t-meta">
+      <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
+      <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
+    </div>
+  </button>`;
   }
 
   /** Every word typed must appear somewhere in the name, barcode, category or description. */
@@ -229,9 +289,8 @@ export async function render(root, ctx) {
       );
     }
     const note = tiles.querySelector('#tiles-note');
-    const capped = state.mode === 'search' && state.products.length >= RESULTS;
-    note.hidden = !shown || !(capped || (short && state.products.length >= QUICK));
-    note.textContent = capped ? t('pos.more_results', { n: RESULTS }) : t('pos.type_more');
+    note.hidden = !shown || !(short && state.products.length >= QUICK);
+    note.textContent = t('pos.type_more');
 
     if (fadeIn && !reduceMotion()) {
       cards.forEach((c, i) => {
@@ -840,5 +899,8 @@ export async function render(root, ctx) {
   });
 
   // main.js calls this when navigating away.
-  return stopWatching;
+  return () => {
+    window.removeEventListener('scroll', onScroll);
+    stopWatching();
+  };
 }

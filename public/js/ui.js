@@ -399,6 +399,21 @@ export function filterSelect({ label, value, options, onChange }) {
   return el;
 }
 
+/**
+ * The figures for a whole list — how many rows match and what they come to —
+ * as the tail of the list's filter bar, so the table itself starts at its
+ * headings instead of repeating a header of its own.
+ *
+ *   const sum = listSummary(bar);
+ *   sum.innerHTML = `${count('sales', total)} · ${badge}`;
+ */
+export function listSummary(bar) {
+  const el = document.createElement('div');
+  el.className = 'list-summary';
+  bar.appendChild(el);
+  return el;
+}
+
 /* ------------------------------------------------------------- fragments -- */
 
 /**

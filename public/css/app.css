@@ -264,16 +264,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topbar {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 15px 26px;
+  padding: 10px 26px;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: saturate(1.6) blur(14px);
   border-bottom: 1px solid var(--border);
 }
 .topbar h2 { font-size: 19px; }
-.topbar .sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
 .topbar .spacer { flex: 1; }
-.topbar-title { min-width: 0; }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* A screen's own header: name, purpose and buttons, as the first row of its filter bar. */
+.page-head { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; min-width: 0; }
+.page-head-title { min-width: 0; }
+.page-head h2 { font-size: 19px; margin: 0; }
+.page-head .sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+.page-head .spacer { flex: 1; }
+.page > .page-head { margin-bottom: 16px; }
+.toolbar > .page-head { flex-basis: 100%; padding-bottom: 4px; }
+.sticky-bar:not(.toolbar) > .page-head { margin-bottom: 10px; }
 
 .page { padding: 22px 26px 60px; animation: fade-up 0.28s ease; }
 
@@ -981,11 +989,9 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 620px) {
   /* Page actions drop to their own full-width row instead of overflowing. */
-  .topbar .spacer { display: none; }
-  .topbar .lang-picker { order: 3; margin-inline-start: auto; }
-  .topbar .theme-toggle { order: 3; }
-  .topbar .page-actions { order: 4; width: 100%; }
-  .topbar .page-actions .btn { flex: 1; }
+  .page-head .spacer { display: none; }
+  .page-head .page-actions { width: 100%; }
+  .page-head .page-actions .btn { flex: 1; }
 }
 
 /* Phones: the top bar keeps to one row. Full screen means little on a phone, and
@@ -995,7 +1001,7 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
   .topbar { gap: 8px; }
   .topbar #fullscreen-toggle,
   .hide-mobile { display: none !important; }
-  .topbar .page-actions:not(:has(> :not(.hide-mobile))) { display: none; }
+  .page-head .page-actions:not(:has(> :not(.hide-mobile))) { display: none; }
 }
 
 @media (max-width: 760px) {
@@ -1532,3 +1538,13 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 
 /* The till's note under its cards: only the best sellers are on screen, or only the first matches. */
 .tiles-note { grid-column: 1 / -1; padding: 8px 4px 2px; text-align: center; font-size: 12.5px; color: var(--muted); }
+.tiles-more { grid-column: 1 / -1; min-height: 1px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.tiles-more:not(:empty) { padding: 10px 0 4px; }
+.tiles-spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-strong); border-top-color: var(--accent); animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* A list's own figures, at the end of its filter bar: the table then starts at its headings. */
+.list-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-inline-start: auto; font-size: 12.5px; }
+.list-summary:empty { display: none; }
+.list-summary .ls-count { color: var(--muted); font-weight: 600; }
+.an-filters .list-summary { flex-basis: 100%; margin-inline-start: 0; }

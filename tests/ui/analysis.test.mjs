@@ -124,7 +124,7 @@ await page.waitForSelector('.an-table tbody tr');
 check('the Reports tab opens it', page.url().endsWith('#/reports/analysis') &&
   (await page.$$('#report-tabs .active[data-tab="analysis"]')).length === 1);
 const month = await api(`/api/reports/sales-analysis?from=${today.slice(0, 8)}01&to=${today}`);
-check('it opens on this month\'s invoice lines', (await text('#an-table .card-head h3')) === 'Invoice lines' &&
+check('it opens on this month\'s invoice lines', (await text('.an-filters .ls-count')).startsWith('Invoice lines') &&
   (await page.$$('#groups .active[data-group="lines"]')).length === 1 &&
   (await page.inputValue('.an-range [name=from]')) === `${today.slice(0, 8)}01`);
 check('the tiles show the totals', (await text('#an-stats')).includes(
@@ -135,7 +135,7 @@ check('with sales, cost, profit and margin columns and a totals row',
 await shot('171-analysis-lines');
 
 await page.click('#groups [data-group="item"]');
-await page.waitForFunction(() => document.querySelector('.card-head h3')?.textContent.includes('By item'));
+await page.waitForFunction(() => document.querySelector('.an-filters .ls-count')?.textContent.includes('By item'));
 check('grouping by item', (await page.$$('.an-table tbody tr')).length > 1);
 await page.click('.an-table th[data-sort="profit"]');
 await page.waitForFunction(() => document.querySelector('.an-table th[data-sort="profit"]')?.textContent.includes('↓'));
@@ -145,26 +145,26 @@ check('sorting by profit, biggest first', profits.every((p, i) => i === 0 || p <
 await shot('172-analysis-items');
 const firstItem = await text('.an-table tbody tr:first-child .cell-title');
 await page.click('.an-table tbody tr:first-child');
-await page.waitForFunction(() => document.querySelector('.card-head h3')?.textContent.includes('By invoice'));
+await page.waitForFunction(() => document.querySelector('.an-filters .ls-count')?.textContent.includes('By invoice'));
 check('clicking an item shows its invoices, filtered to it', (await page.inputValue('#f-product')) === firstItem && await page.isVisible('#f-clear'));
 await page.click('#f-clear');
 await page.waitForFunction(() => document.querySelector('#f-clear')?.hidden);
 check('Clear filters lifts it', (await page.inputValue('#f-product')) === '');
 
 await page.click('#groups [data-group="customer"]');
-await page.waitForFunction(() => document.querySelector('.card-head h3')?.textContent.includes('By customer'));
+await page.waitForFunction(() => document.querySelector('.an-filters .ls-count')?.textContent.includes('By customer'));
 check('by customer: two spellings are one customer, walk-ins their own row',
   (await page.$$('.an-table tbody tr')).length === 3 && (await text('.an-table tbody')).includes('Walk-in'));
 await page.click('.an-table tbody tr:has-text("Karim Grocery")');
-await page.waitForFunction(() => document.querySelector('.card-head h3')?.textContent.includes('By item'));
+await page.waitForFunction(() => document.querySelector('.an-filters .ls-count')?.textContent.includes('By item'));
 const karim = await api(`/api/reports/sales-analysis?from=${today.slice(0, 8)}01&to=${today}&customer=Karim Grocery`);
 check('a customer opens into what they bought', (await page.inputValue('#f-customer')) === 'Karim Grocery' &&
   (await page.$$('.an-table tbody tr')).length === karim.totals.items);
 
 await page.click('#groups [data-group="month"]');
-await page.waitForFunction(() => document.querySelector('.card-head h3')?.textContent.includes('By month'));
+await page.waitForFunction(() => document.querySelector('.an-filters .ls-count')?.textContent.includes('By month'));
 await page.click('.an-table tbody tr:first-child');
-await page.waitForFunction(() => document.querySelector('.card-head h3')?.textContent.includes('By day'));
+await page.waitForFunction(() => document.querySelector('.an-filters .ls-count')?.textContent.includes('By day'));
 check('a month opens into its days', (await page.inputValue('.an-range [name=from]')).endsWith('-01'));
 await shot('173-analysis-drill');
 

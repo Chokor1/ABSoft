@@ -12,6 +12,7 @@ import {
   money,
   monthStart,
   number,
+  listSummary,
   pager,
   pct,
   qtyText,
@@ -229,6 +230,7 @@ export async function render(root, ctx) {
     <div class="stats an-stats" id="an-stats"></div>
     <div id="an-table"></div>`;
 
+  const summaryEl = listSummary(root.querySelector('.an-filters'));
   const statsEl = root.querySelector('#an-stats');
   const tableEl = root.querySelector('#an-table');
   const customerInput = root.querySelector('#f-customer');
@@ -380,12 +382,6 @@ export async function render(root, ctx) {
     const arrow = (c) => (state.sort === c.sort ? (state.dir === 'asc' ? ' ↑' : ' ↓') : '');
     tableEl.innerHTML = `
       <div class="card">
-        <div class="card-head">
-          <div><h3>${esc(t(`an.title.${state.group}`))}</h3>
-            <div class="sub">${esc(t('an.sub', { n: number(result.total), from: dateText(result.from), to: dateText(result.to) }))}${
-              result.rows.length ? ` · ${esc(t(drills ? 'an.hint_drill' : 'an.hint_open'))}` : ''
-            }</div></div>
-        </div>
         <div class="card-body flush">${
           result.rows.length
             ? `<div class="table-wrap table-scroll"><table class="data compact an-table">
@@ -414,6 +410,12 @@ export async function render(root, ctx) {
             : emptyState(t('an.none'), t('an.none_sub'), 'chart')
         }</div>
       </div>`;
+
+    summaryEl.innerHTML = `
+      <span class="ls-count">${esc(t(`an.title.${state.group}`))} · ${esc(
+        t('an.sub', { n: number(result.total), from: dateText(result.from), to: dateText(result.to) }),
+      )}</span>
+      ${result.rows.length ? `<span class="muted">${esc(t(drills ? 'an.hint_drill' : 'an.hint_open'))}</span>` : ''}`;
 
     tableEl.querySelectorAll('[data-sort]').forEach((th) =>
       th.addEventListener('click', () => {
