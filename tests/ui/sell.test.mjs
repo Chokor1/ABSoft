@@ -65,6 +65,16 @@ console.log('\n[a sale entered by hand]');
 await page.click('#new');
 await page.waitForSelector('#sale-form [data-product="0"]');
 check('New sale opens a document form with one line ready', page.url().endsWith('#/sales/new'));
+const menuOpen = () => page.evaluate(() => [...document.querySelectorAll('.combo-menu')].some((m) => !m.hidden));
+await page.waitForTimeout(600);
+check('the first line has the cursor, but its product list stays closed', !(await menuOpen()) &&
+  (await page.evaluate(() => document.activeElement?.dataset.product === '0')));
+await page.goto(`${BASE}#/purchases/new`);
+await page.waitForSelector('#purchase-form [data-product="0"]');
+await page.waitForTimeout(600);
+check('the same on a new purchase', !(await menuOpen()));
+await page.goto(`${BASE}#/sales/new`);
+await page.waitForSelector('#sale-form [data-product="0"]');
 await page.fill('input[name=customer]', 'Hadi Bakery');
 const products = await api('/api/products?limit=3');
 const [p1, p2] = products;

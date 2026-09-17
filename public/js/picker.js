@@ -46,23 +46,26 @@ export function attachPicker(
     if (!menu.isConnected) document.body.appendChild(menu);
   };
 
-  /** Sit the menu under the input, or above it when the window runs out. */
-  function position() {
+  /**
+   * Sit the menu under the input — always under it, so the list reads downwards
+   * from what is typed. When the field is too near the bottom of the window for
+   * the list to fit, the page is scrolled to bring the field up first (once, as
+   * the menu opens), rather than turning the list upside down above it.
+   */
+  function position(opening = false) {
     // If the field has been re-rendered away, take the menu with it.
     if (!input.isConnected) return destroy();
-    const r = input.getBoundingClientRect();
     const gap = 5;
+    const wanted = Math.min(menu.scrollHeight || 320, 320);
+    let r = input.getBoundingClientRect();
+    if (opening && window.innerHeight - r.bottom - gap - 8 < wanted) {
+      input.scrollIntoView({ block: 'center' });
+      r = input.getBoundingClientRect();
+    }
     menu.style.width = `${r.width}px`;
     menu.style.left = `${r.left}px`;
-    const below = window.innerHeight - r.bottom - gap;
-    const wanted = Math.min(menu.scrollHeight || 320, 320);
-    if (below < wanted && r.top > below) {
-      menu.style.top = `${Math.max(8, r.top - gap - wanted)}px`;
-      menu.style.maxHeight = `${Math.min(wanted, r.top - gap - 8)}px`;
-    } else {
-      menu.style.top = `${r.bottom + gap}px`;
-      menu.style.maxHeight = `${Math.max(120, below - 8)}px`;
-    }
+    menu.style.top = `${r.bottom + gap}px`;
+    menu.style.maxHeight = `${Math.max(120, window.innerHeight - r.bottom - gap - 8)}px`;
   }
 
   const reposition = () => {
@@ -101,8 +104,9 @@ export function attachPicker(
           .join('')
       : `<div class="combo-empty">${esc(emptyText)}</div>`;
     mount();
+    const opening = menu.hidden;
     menu.hidden = false;
-    position();
+    position(opening);
     menu.querySelector('.combo-item.active')?.scrollIntoView({ block: 'nearest' });
     input.setAttribute('aria-expanded', 'true');
   }
@@ -158,8 +162,11 @@ export function attachPicker(
     schedule(input.value.trim());
   });
 
-  input.addEventListener('focus', () => {
-    if (openOnFocus) schedule(input.value.trim());
+  // Opens when someone clicks into the field, never when a screen merely puts the
+  // cursor there (a new purchase or sale focuses its first line on opening).
+  // Typing or ↓ opens it from the keyboard.
+  input.addEventListener('click', () => {
+    if (openOnFocus && !isOpen()) schedule(input.value.trim());
   });
 
   input.addEventListener('keydown', (e) => {
