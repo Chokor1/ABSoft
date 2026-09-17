@@ -114,14 +114,15 @@ for (const [customer, paid, n] of [['Karim Grocery', 0, 0], ['Karim Grocery', 10
 
 /* ------------------------------------------------------------ sales analysis */
 console.log('\n[sales analysis]');
-check('Sales Analysis is in the menu under Reports',
-  await page.$$eval('.nav [data-route]', (a) => {
-    const routes = a.map((x) => x.dataset.route);
-    return routes.indexOf('analysis') === routes.indexOf('sales') + 1;
-  }));
+check('Sales analysis is a tab of Reports, not a menu item of its own',
+  !(await page.$$eval('.nav [data-route]', (a) => a.map((x) => x.dataset.route))).includes('analysis'));
 await page.evaluate(() => sessionStorage.removeItem('absoft-analysis'));
-await page.goto(`${BASE}#/analysis`);
+await page.goto(`${BASE}#/reports`);
+await page.waitForSelector('#report-tabs [data-tab="analysis"]');
+await page.click('#report-tabs [data-tab="analysis"]');
 await page.waitForSelector('.an-table tbody tr');
+check('the Reports tab opens it', page.url().endsWith('#/reports/analysis') &&
+  (await page.$$('#report-tabs .active[data-tab="analysis"]')).length === 1);
 const month = await api(`/api/reports/sales-analysis?from=${today.slice(0, 8)}01&to=${today}`);
 check('it opens on this month\'s invoice lines', (await text('#an-table .card-head h3')) === 'Invoice lines' &&
   (await page.$$('#groups .active[data-group="lines"]')).length === 1 &&
@@ -168,8 +169,9 @@ check('a month opens into its days', (await page.inputValue('.an-range [name=fro
 await shot('173-analysis-drill');
 
 await page.goto(`${BASE}#/sales`);
-await page.goto(`${BASE}#/analysis`);
+await page.goto(`${BASE}#/analysis`); // an old link still lands on it
 await page.waitForSelector('.an-table');
+check('an old #/analysis link lands on the Reports tab', page.url().includes('#/reports/analysis'));
 check('coming back keeps the filters and grouping', (await page.inputValue('#f-customer')) === 'Karim Grocery' &&
   (await page.$$('#groups .active[data-group="day"]')).length === 1);
 const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export')]);

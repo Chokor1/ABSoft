@@ -1,4 +1,4 @@
-/** Taking a partial payment at the till, then settling it from Sales History. */
+/** Taking a partial payment at the till, then settling it from Sell. */
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';

@@ -14,7 +14,6 @@ import { onRateChange, saveRate, second, watchRate } from './currency.js';
 import * as salesView from './views/sales.js';
 import * as expenses from './views/expenses.js';
 import * as reports from './views/reports.js';
-import * as analysis from './views/analysis.js';
 import * as lists from './views/lists.js';
 import * as users from './views/users.js';
 import * as settings from './views/settings.js';
@@ -27,14 +26,25 @@ import * as settings from './views/settings.js';
 const VIEWS = {
   dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'overview' },
   pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true },
+  sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'daily', cashier: true },
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
   'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
   adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
   lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
-  sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'reports', cashier: true },
-  analysis: { key: 'analysis', icon: 'sliders', mod: analysis, group: 'reports' },
+  // Sales Analysis lives in Reports now; old links still land there.
+  analysis: {
+    key: 'reports',
+    icon: 'chart',
+    group: 'reports',
+    hidden: true,
+    mod: {
+      render: (root, ctx) => {
+        ctx.navigate(['reports', 'analysis', ...ctx.params].join('/'));
+      },
+    },
+  },
   reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports' },
   users: { key: 'users', icon: 'users', mod: users, group: 'settings' },
   settings: { key: 'settings', icon: 'settings', mod: settings, group: 'settings', cashier: true },

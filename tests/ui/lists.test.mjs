@@ -49,8 +49,8 @@ await page.click('button[type=submit]');
 await page.waitForSelector('.shell');
 
 /* ------------------------------------------------------------- the name */
-console.log('\n[the till is called Sell — POS]');
-check('the menu says Sell — POS', (await page.textContent('.nav [href="#/pos"]'))?.includes('Sell — POS'),
+console.log('\n[the till is called POS]');
+check('the menu says POS', (await page.textContent('.nav [href="#/pos"]'))?.replace(/F\d/, '').trim() === 'POS',
   await page.textContent('.nav [href="#/pos"]'));
 
 /* ------------------------------------------------------ scrolling tables */

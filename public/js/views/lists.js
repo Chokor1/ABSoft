@@ -321,7 +321,7 @@ async function renderParty(root, ctx, kind, id, initialTab) {
     <button class="btn" id="edit">${icon('edit')} ${esc(t('common.edit'))}</button>`;
   ctx.actions.querySelector('#edit').addEventListener('click', () => ctx.navigate(`lists/${kind}/${id}/edit`));
   ctx.actions.querySelector('#to-analysis')?.addEventListener('click', () =>
-    ctx.navigate(`analysis/customer/${encodeURIComponent(entity.name)}/from/${state.from}/to/${state.to}/group/item`),
+    ctx.navigate(`reports/analysis/customer/${encodeURIComponent(entity.name)}/from/${state.from}/to/${state.to}/group/item`),
   );
 
   root.innerHTML = `

@@ -26,6 +26,7 @@ import {
   todayISO,
 } from '../ui.js';
 import { openParty } from './lists.js';
+import { renderSaleForm } from './sale-form.js';
 
 /**
  * Printable receipt / invoice for a completed sale.
@@ -358,8 +359,9 @@ async function renderSale(root, ctx, id) {
   paint();
 }
 
-/** #/sales, #/sales/<id> */
+/** #/sales, #/sales/new, #/sales/<id> */
 export async function render(root, ctx) {
+  if (ctx.params[0] === 'new') return renderSaleForm(root, ctx);
   if (/^\d+$/.test(ctx.params[0] || '')) return renderSale(root, ctx, Number(ctx.params[0]));
   const state = { from: monthStart(), to: todayISO(), search: '', status: '', page: 1, per: 50 };
   // Cost and profit are for administrators; the server leaves them out for cashiers.
@@ -421,7 +423,12 @@ export async function render(root, ctx) {
   root.innerHTML = '';
   root.append(bar, body);
 
-  ctx.actions.innerHTML = `<button class="btn" id="export">${icon('download')} ${esc(t('common.export_csv'))}</button>`;
+  ctx.actions.innerHTML = `
+    <button class="btn" id="export">${icon('download')} ${esc(t('common.export_csv'))}</button>
+    <button class="btn" id="to-pos">${icon('pos')} ${esc(t('nav.pos'))}</button>
+    <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('sell.new'))}</button>`;
+  ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('sales/new'));
+  ctx.actions.querySelector('#to-pos').addEventListener('click', () => ctx.navigate('pos'));
 
   let rows = [];
 

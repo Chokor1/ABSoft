@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import * as analysis from './analysis.js';
 import { icon } from '../icons.js';
 import { isRtl, methodText, moveText, t } from '../i18n.js';
 import {
@@ -20,11 +21,29 @@ import {
   todayISO,
 } from '../ui.js';
 
-const TAB_KEYS = ['pnl', 'products', 'stock', 'history', 'staff'];
+const TAB_KEYS = ['pnl', 'analysis', 'products', 'stock', 'history', 'staff'];
+// Kept while moving between tabs, including a trip through Sales analysis.
+const range = { from: monthStart(), to: todayISO() };
 const arrow = () => (isRtl() ? '←' : '→');
 
+/** #/reports[/<tab>], #/reports/analysis[/<filter>/<value>…] */
 export async function render(root, ctx) {
-  const state = { from: monthStart(), to: todayISO(), tab: 'pnl' };
+  const first = ctx.params[0];
+  const tabsHtml = (active) =>
+    TAB_KEYS.map((key) => `<button data-tab="${key}" class="${key === active ? 'active' : ''}">${esc(t(`rep.tab.${key}`))}</button>`).join('');
+
+  // Sales analysis has filters of its own, so it gets the page under the report menu.
+  if (first === 'analysis') {
+    root.innerHTML = `<div class="toolbar report-tabs"><div class="seg" id="report-tabs">${tabsHtml('analysis')}</div></div>
+      <div id="analysis-root"></div>`;
+    root.querySelector('#report-tabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-tab]');
+      if (btn && btn.dataset.tab !== 'analysis') ctx.navigate(`reports/${btn.dataset.tab}`);
+    });
+    return analysis.render(root.querySelector('#analysis-root'), { ...ctx, params: ctx.params.slice(1) });
+  }
+
+  const state = { ...range, tab: TAB_KEYS.includes(first) ? first : 'pnl' };
   let exportRows = () => [];
 
   ctx.actions.innerHTML = `
@@ -37,18 +56,23 @@ export async function render(root, ctx) {
 
   const bar = rangeBar(state, (r) => {
     Object.assign(state, r);
+    Object.assign(range, r);
     load();
   });
   // The report menu and dates stay in reach while a long report scrolls.
   bar.classList.add('sticky-bar');
   const tabs = document.createElement('div');
   tabs.className = 'seg';
-  tabs.innerHTML = TAB_KEYS.map((key) => `<button data-tab="${key}">${esc(t(`rep.tab.${key}`))}</button>`).join('');
+  tabs.id = 'report-tabs';
+  tabs.innerHTML = tabsHtml(state.tab);
   bar.insertBefore(tabs, bar.firstChild);
   tabs.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-tab]');
     if (!btn) return;
+    if (btn.dataset.tab === 'analysis') return ctx.navigate('reports/analysis');
     state.tab = btn.dataset.tab;
+    // The tab is in the address, so reload and Back land on it.
+    history.replaceState(null, '', `#/reports/${state.tab}`);
     load();
   });
 

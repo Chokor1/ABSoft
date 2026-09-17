@@ -1482,3 +1482,15 @@ table.data th.sortable:hover { color: var(--text); }
 .party-stats { margin-top: 2px; }
 .party-statement tr.st-opening td { background: var(--surface-2); color: var(--text-2); font-style: italic; }
 .party-note { font-size: 12.5px; border-top: 1px solid var(--border); padding-block: 10px; }
+
+/* Sell: a sale entered as a document */
+.sale-lines td { vertical-align: top; }
+.sale-lines .cell-sub { margin-top: 4px; }
+.sale-foot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 28px; align-items: start; border-top: 1px solid var(--border); }
+.sale-pay { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 260px); gap: 14px; align-items: start; }
+.sale-pay-quick { display: flex; gap: 6px; margin-top: 6px; }
+.sale-sums .sum-row { padding: 5px 0; font-size: 14px; }
+.sale-sums .sum-row.strong { font-weight: 700; color: var(--text); border-top: 1px solid var(--border); margin-top: 4px; padding-top: 9px; }
+.sale-sums .sum-row .input { width: 120px; height: 34px; }
+@media (max-width: 800px) { .sale-foot, .sale-pay { grid-template-columns: minmax(0, 1fr); } }
+.report-tabs { margin-bottom: 6px; }

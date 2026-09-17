@@ -26,8 +26,8 @@ import {
  * dates, customer, item and category, and rolled up by invoice, item, category,
  * customer, day or month. Clicking a row looks inside it.
  *
- *   #/analysis
- *   #/analysis/customer/<name>/group/item      (filters and grouping can be linked to)
+ *   #/reports/analysis
+ *   #/reports/analysis/customer/<name>/group/item      (filters and grouping can be linked to)
  */
 
 const GROUPS = ['lines', 'invoice', 'item', 'category', 'customer', 'day', 'month'];
@@ -189,7 +189,7 @@ export async function render(root, ctx) {
   const fresh = { from: monthStart(), to: todayISO(), group: 'lines', customer: '', product: null, category: '', sort: '', dir: 'desc' };
   const state = { ...fresh, ...(remembered() || {}), page: 1, per: 50 };
 
-  // A link can set filters: #/analysis/customer/<name>/group/item/…
+  // A link can set filters: #/reports/analysis/customer/<name>/group/item/…
   const params = ctx.params.map((p) => decodeURIComponent(p));
   if (params.length) {
     Object.assign(state, fresh);

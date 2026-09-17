@@ -52,17 +52,16 @@ invoice loses a line.
 | Screen | What it is for |
 | --- | --- |
 | **Dashboard** | Today and this month at a glance: sales, profit, stock value, low-stock warnings, 30-day trend. |
-| **Sell — POS** (`F2`) | The till. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
-| **Buy — Stock In** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. Administrators can edit a saved purchase; every change is logged. |
+| **POS** (`F2`) | The till. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
+| **Sell** | Every invoice — those rung up at the POS and those entered here. **New sale** enters a sale as a document, like a purchase: customer, date, lines with price and discount, an invoice discount, and what was paid now (the rest stays owing). Click an invoice to open it: the receipt, its payments, print, take the rest, void. Cost and profit per sale for administrators. |
+| **Buy** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. Administrators can edit a saved purchase; every change is logged. |
 | **Stock Count** | Count the shelf — all items, one category or a few — and correct the stock in one go. |
 | **Stock Adjustment** | Counts, damage, expiry and write-offs as numbered documents covering many products at once. Scan or search products (or add a whole category), then type what you counted or how much changed. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
 | **Products** (`F3`) | Define what you sell: name, optional description, barcode (and any other barcodes), category, cost, default price, unit, low-stock level. Click a row to open the product's own page (see below). |
 | **Lists** | Customers, suppliers, product categories, units and expense categories — the names you reuse. A customer or supplier opens on their own page, with their balance and statement. |
-| **Sales History** | Every invoice, with cost and profit per sale. Click one to open it: the receipt, its payments, print, take the rest, void. |
-| **Sales Analysis** | Every sold line with its cost and profit, filtered by dates, customer, item and category, and shown by line, invoice, item, category, customer, day or month. |
-| **Reports** | Profit & loss for any date range, plus product performance, stock valuation, the movement ledger and per-cashier totals. |
-| **Users** | Add cashiers and administrators. A cashier only gets **Sell — POS**, **Sales History** (without cost or profit) and their own settings. |
+| **Reports** | Profit & loss for any date range, **Sales analysis**, product performance, stock valuation, the movement ledger and per-cashier totals. |
+| **Users** | Add cashiers and administrators. A cashier only gets **POS**, **Sell** (without cost or profit) and their own settings. |
 | **Settings** | Store name, currency, sales tax rate, receipt footer, language, and database backups. |
 
 Press `/` anywhere to jump to the search box. Every list has an **Export CSV** button.
@@ -204,7 +203,7 @@ the lists do.
 
 ## Sales analysis
 
-**Reports → Sales Analysis** is one dynamic report over every invoice line:
+**Reports → Sales analysis** is one dynamic report over every invoice line:
 
 - **Filters:** a date range, a **customer** (or *Walk-in* for sales without one), an **item** and a
   **category** (or *No category*). They combine; **Clear filters** lifts them.
@@ -336,8 +335,8 @@ a product still works, and now makes a one-line adjustment document too.
 
 | | Administrator | Cashier |
 | --- | --- | --- |
-| Sell — POS, receipts, taking payments on invoices | ✓ | ✓ |
-| Sales History | ✓ with cost and profit | ✓ without cost and profit |
+| POS, receipts, taking payments on invoices | ✓ | ✓ |
+| Sell | ✓ with cost and profit | ✓ without cost and profit |
 | Void a sale, remove a payment | ✓ | — |
 | Products, purchases, adjustments, expenses, lists, reports, dashboard | ✓ | — |
 | Users, store settings, backups | ✓ | — |
@@ -433,9 +432,9 @@ more is simply change. Entering nothing records a sale on account.
 
 Everything owed is then visible where you would look for it:
 
-- **Sales History** shows *Paid*, *Balance* and a status of paid / part paid /
+- **Sell** shows *Paid*, *Balance* and a status of paid / part paid /
   unpaid, with an **Unpaid only** filter and the outstanding total in the header.
-- Opening an invoice from Sales History lists every instalment taken against it and offers
+- Opening an invoice from Sell lists every instalment taken against it and offers
   **Record payment** — that is for collecting the rest when the customer comes back, so it
   does not appear on the receipt shown the moment a sale is made. Each instalment keeps its own date, method and note, so
   "$50 cash on the 3rd, $30 by card on the 11th" is exactly what you see.
