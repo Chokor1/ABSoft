@@ -92,6 +92,7 @@ export const api = {
   stockReport: (range) => api.get('/api/reports/stock', range),
   productReport: (range) => api.get('/api/reports/products', range),
   staffReport: (range) => api.get('/api/reports/staff', range),
+  salesAnalysis: (query) => api.get('/api/reports/sales-analysis', query),
 
   users: () => api.get('/api/users'),
   saveUser: (u) => (u.id ? api.put(`/api/users/${u.id}`, u) : api.post('/api/users', u)),
@@ -109,6 +110,9 @@ export const api = {
   saveEntity: (kind, e) =>
     e.id ? api.put(`/api/entities/${kind}/${e.id}`, e) : api.post(`/api/entities/${kind}`, e),
   deleteEntity: (kind, id) => api.del(`/api/entities/${kind}/${id}`),
+  partySummary: (kind, id) => api.get(`/api/entities/${kind}/${id}/summary`),
+  partyStatement: (kind, id, query) => api.get(`/api/entities/${kind}/${id}/statement`, query),
+  supplierItems: (id, query) => api.get(`/api/entities/supplier/${id}/items`, query),
 
   system: () => api.get('/api/system'),
   backupLocal: () => api.post('/api/backup/local'),

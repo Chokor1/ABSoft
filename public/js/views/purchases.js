@@ -24,6 +24,7 @@ import {
   toast,
   todayISO,
 } from '../ui.js';
+import { openParty } from './lists.js';
 
 /** #/purchases, #/purchases/new, #/purchases/:id/edit */
 export async function render(root, ctx) {
@@ -214,7 +215,8 @@ async function renderDoc(root, ctx, id) {
     subtitle: [dateText(p.date), p.supplier, p.username].filter(Boolean).join(' · '),
     badges: `<span class="badge accent">${money(p.total)} ${money2Html(p.total)}</span>
              ${p.edit_count ? `<span class="badge warn">${esc(t('buy.edited'))}</span>` : ''}`,
-    actions: `<button class="btn" data-print>${icon('print')} ${esc(t('common.print'))}</button>
+    actions: `${isAdmin() && p.supplier ? `<button class="btn" data-supplier>${icon('users')} ${esc(t('party.open_supplier'))}</button>` : ''}
+              <button class="btn" data-print>${icon('print')} ${esc(t('common.print'))}</button>
               ${
                 isAdmin()
                   ? `<button class="btn btn-primary" data-edit>${icon('edit')} ${esc(t('common.edit'))}</button>
@@ -259,6 +261,7 @@ async function renderDoc(root, ctx, id) {
     tr.addEventListener('click', () => ctx.navigate(`products/${tr.dataset.product}`)),
   );
   root.querySelector('[data-print]').addEventListener('click', () => window.print());
+  root.querySelector('[data-supplier]')?.addEventListener('click', () => openParty(ctx, 'supplier', p.supplier));
   root.querySelector('[data-edit]')?.addEventListener('click', () => ctx.navigate(`purchases/${p.id}/edit`));
   root.querySelector('[data-del]')?.addEventListener('click', async () => {
     const ok = await confirmDialog({

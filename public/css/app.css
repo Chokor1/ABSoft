@@ -1425,3 +1425,55 @@ table.data.compact td { padding: 8px 14px; }
 /* Brand mark: the ABSoft logo image fills the badge (the SVG draws its own gradient). */
 .mark, .boot-mark, .about-mark { overflow: hidden; background: none !important; padding: 0; }
 .mark > img, .boot-mark > img, .about-mark > img { display: block; width: 100%; height: 100%; }
+
+/* Tag fields: a short list typed or scanned one at a time (a product's other barcodes) */
+.tags-box {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  min-height: 42px; padding: 5px 8px; cursor: text;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  transition: border-color 0.14s, box-shadow 0.14s;
+}
+.tags-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--accent) 18%, transparent); }
+.tags-entry { flex: 1; min-width: 180px; border: 0; outline: 0; background: none; padding: 5px 2px; font-size: 13.5px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px 3px 2px 9px;
+  font-size: 12.5px; border-radius: 999px; color: var(--accent-text); background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.tag-x { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; cursor: pointer; opacity: 0.7; }
+.tag-x:hover { opacity: 1; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.tag-x svg { width: 12px; height: 12px; }
+.tag.flash { animation: tag-flash 0.6s ease; }
+@keyframes tag-flash { 50% { background: var(--warn-soft); color: var(--warn); } }
+
+/* Sales analysis */
+.an-bar .toolbar { margin-bottom: 8px; }
+.an-bar .toolbar:last-child { margin-bottom: 0; }
+.an-group { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.an-group .seg { max-width: 100%; overflow-x: auto; }
+.filter-select.is-set .input { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.an-stats { margin-top: 4px; margin-bottom: 12px; }
+.an-stats .stat { padding: 10px 14px; }
+.an-stats .stat .value { margin-top: 2px; font-size: 19px; }
+.an-stats .stat .foot { margin-top: 1px; }
+.an-table .cell-sub { font-size: 11.5px; }
+table.data th.sortable { cursor: pointer; user-select: none; }
+table.data th.sortable:hover { color: var(--text); }
+.an-share { display: inline-flex; align-items: center; gap: 8px; }
+.an-share-bar { width: 56px; height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+.an-share-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+[dir="rtl"] .an-share-bar i { background: linear-gradient(270deg, var(--accent), var(--accent-2)); }
+@media print { .an-bar .an-filters .combo, #f-clear, .an-group { display: none; } }
+
+/* Customer and supplier pages */
+.party-avatar {
+  flex: none; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+  font-weight: 750; font-size: 14px; color: #fff; background: var(--brand-grad);
+  box-shadow: 0 6px 16px var(--brand-glow);
+}
+.party-avatar.supplier { background: linear-gradient(140deg, #16a37f, #0b7a86); box-shadow: 0 6px 16px rgba(11, 122, 134, 0.3); }
+.party-contact { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; margin-inline-start: 4px; font-size: 12.5px; color: var(--muted); align-items: center; }
+.party-contact span { unicode-bidi: plaintext; }
+.party-stats { margin-top: 2px; }
+.party-statement tr.st-opening td { background: var(--surface-2); color: var(--text-2); font-style: italic; }
+.party-note { font-size: 12.5px; border-top: 1px solid var(--border); padding-block: 10px; }

@@ -118,7 +118,8 @@ export async function render(root, ctx) {
     applyFilter({ animate: false });
   }
 
-  const haystack = (p) => [p.name, p.barcode, p.category, p.description].filter(Boolean).join(' ').toLowerCase();
+  const haystack = (p) =>
+    [p.name, p.barcode, ...(p.barcodes || []), p.category, p.description].filter(Boolean).join(' ').toLowerCase();
 
   function drawTiles() {
     tiles.innerHTML =
@@ -240,7 +241,7 @@ export async function render(root, ctx) {
     if (!code) return;
     // A barcode scanner types the code and presses Enter at once: match it
     // exactly first, without waiting for the filter.
-    const exact = state.products.find((p) => p.barcode && p.barcode === code);
+    const exact = state.products.find((p) => (p.barcode && p.barcode === code) || p.barcodes?.includes(code));
     if (exact) {
       addToCart(exact);
       return resetSearch();

@@ -57,9 +57,10 @@ invoice loses a line.
 | **Stock Count** | Count the shelf — all items, one category or a few — and correct the stock in one go. |
 | **Stock Adjustment** | Counts, damage, expiry and write-offs as numbered documents covering many products at once. Scan or search products (or add a whole category), then type what you counted or how much changed. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
-| **Products** (`F3`) | Define what you sell: name, optional description, barcode, category, cost, default price, unit, low-stock level. Click a row to open the product's own page (see below). |
-| **Lists** | Customers, suppliers, product categories, units and expense categories — the names you reuse. |
+| **Products** (`F3`) | Define what you sell: name, optional description, barcode (and any other barcodes), category, cost, default price, unit, low-stock level. Click a row to open the product's own page (see below). |
+| **Lists** | Customers, suppliers, product categories, units and expense categories — the names you reuse. A customer or supplier opens on their own page, with their balance and statement. |
 | **Sales History** | Every invoice, with cost and profit per sale. Click one to open it: the receipt, its payments, print, take the rest, void. |
+| **Sales Analysis** | Every sold line with its cost and profit, filtered by dates, customer, item and category, and shown by line, invoice, item, category, customer, day or month. |
 | **Reports** | Profit & loss for any date range, plus product performance, stock valuation, the movement ledger and per-cashier totals. |
 | **Users** | Add cashiers and administrators. A cashier only gets **Sell — POS**, **Sales History** (without cost or profit) and their own settings. |
 | **Settings** | Store name, currency, sales tax rate, receipt footer, language, and database backups. |
@@ -176,6 +177,53 @@ instead of deleted, so past reports never change. Voiding a sale or deleting a p
 
 ---
 
+## Customer and supplier pages
+
+In **Lists**, click a customer or a supplier (the pencil still edits). Their page has their name
+and contact details at the top, where they stand as tiles, and three tabs:
+
+- **Statement** — the balance brought forward, then every invoice and every payment in the order
+  they happened, with the balance after each, and the closing balance at the bottom. Any date
+  range; **All time** goes back to their first invoice. Click a line to open the invoice.
+- **Invoices** — their invoices with paid, balance and status, filterable to unpaid or part paid.
+- **Items** — what they bought in the period: quantity, invoices, average price, sales, profit.
+  **Sales analysis** in the top bar opens the full report filtered to them.
+
+The tiles show what a customer **still owes** (and on how many invoices), their total sales,
+what they have paid and when they last paid, the profit made on them, and their last sale.
+
+A supplier's page works the same way, with their **Purchases** and the **Items** they supplied
+(quantity, average and last cost, when last bought). Purchases do not record payments to
+suppliers, so a supplier's statement adds up what was bought rather than a balance owed.
+
+From an invoice, the **Customer** button opens that customer's page; from a purchase, the
+**Supplier** button opens the supplier's. Names are matched ignoring capitalisation, the same way
+the lists do.
+
+---
+
+## Sales analysis
+
+**Reports → Sales Analysis** is one dynamic report over every invoice line:
+
+- **Filters:** a date range, a **customer** (or *Walk-in* for sales without one), an **item** and a
+  **category** (or *No category*). They combine; **Clear filters** lifts them.
+- **Show:** *Lines* (every invoice line), *Invoices*, *Items*, *Categories*, *Customers*, *Days*
+  or *Months*.
+- **Columns:** quantity, price, discount, **sales, cost, profit and margin** — and, for items,
+  categories and customers, each row's share of the sales. Click a heading to sort by it.
+- **Totals:** the tiles and the totals row cover everything that matches, across all pages.
+- **Click a row to look inside it:** a month opens into its days, a day into its lines, a customer
+  or category into its items, an item into its invoices; a line or an invoice opens the invoice.
+
+*Sales* here are after discounts and before tax. An invoice-wide discount is shared across that
+invoice's lines by value, so the lines add up exactly to the invoice and the report agrees with
+the revenue, cost of goods and gross profit in the profit & loss. The screen remembers your
+filters while you open an invoice and come back. **Export CSV** downloads every matching row, not
+just the page. The report shows costs, so it is for administrators only.
+
+---
+
 ## A product's page
 
 Click any product. Its name, stock and price sit at the top with the menu beside them —
@@ -191,6 +239,13 @@ Click any product. Its name, stock and price sit at the top with the menu beside
 - **Sales report** — any date range: quantity sold, revenue, cost, profit and margin, and every
   invoice line (click one to open the invoice).
 - **Purchases** — each time it was bought, from whom, at what cost.
+
+**More than one barcode.** A product has its main **Barcode** and any number of **Other
+barcodes** — the same item in another pack, or from another supplier. Click the box, scan or type
+a code and press Enter (a scanner does that for you); each code becomes a chip, and × removes it.
+Any of the codes rings the product up at the till, finds it in searches and in stock counts. A code
+can only belong to one product: using one that is taken says which product has it. The product
+list shows the main barcode with **+2** for the others, and its export lists them all.
 
 **Pictures.** Click *Add picture* and choose a photo. The browser shrinks it (640 px, WebP) before
 uploading, so even a phone photo ends up a few tens of kilobytes. It is stored in the database,

@@ -25,6 +25,7 @@ import {
   toast,
   todayISO,
 } from '../ui.js';
+import { openParty } from './lists.js';
 
 /**
  * Printable receipt / invoice for a completed sale.
@@ -269,11 +270,13 @@ async function renderSale(root, ctx, id) {
       title: t('receipt.title', { doc: sale.doc_no }),
       subtitle: [dateText(sale.date), sale.customer || t('common.walk_in'), sale.username].filter(Boolean).join(' · '),
       badges: `<span class="badge accent">${money(sale.total)}</span> ${payStatus(sale)}`,
-      actions: `${owing ? `<button class="btn btn-primary" data-pay>${icon('coins')} ${esc(t('pay.record'))}</button>` : ''}
+      actions: `${admin && sale.customer ? `<button class="btn" data-customer>${icon('users')} ${esc(t('party.open_customer'))}</button>` : ''}
+                ${owing ? `<button class="btn btn-primary" data-pay>${icon('coins')} ${esc(t('pay.record'))}</button>` : ''}
                 <button class="btn ${owing ? '' : 'btn-primary'}" data-print>${icon('print')} ${esc(t('common.print'))}</button>
                 ${admin ? `<button class="btn btn-ghost" data-void title="${esc(t('sales.void_tip'))}">${icon('trash')}</button>` : ''}`,
       onBack: back,
     });
+    root.querySelector('[data-customer]')?.addEventListener('click', () => openParty(ctx, 'customer', sale.customer));
     const row = (label, value, cls = '') => `<div class="sum-row ${cls}"><span>${esc(label)}</span><span class="v">${value}</span></div>`;
     body.innerHTML = `
       <div class="grid cols-2 sale-grid">

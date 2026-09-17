@@ -265,6 +265,33 @@ const MIGRATIONS = [
       db.exec(`DROP TABLE IF EXISTS opening_items; DROP TABLE IF EXISTS openings;`);
     },
   },
+  {
+    // More than one barcode per product: the same item from two suppliers, an
+    // old and a new pack. products.barcode stays the main one; the others live
+    // here, and no code may belong to two products.
+    name: 'product-barcodes',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS product_barcodes (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          barcode    TEXT    NOT NULL UNIQUE,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_product_barcodes_product ON product_barcodes(product_id);
+      `);
+    },
+  },
+  {
+    // Customer and supplier pages read every document by name.
+    name: 'party-indexes',
+    up: (db) => {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer COLLATE NOCASE);
+        CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases(supplier COLLATE NOCASE);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

@@ -33,6 +33,7 @@ import {
   store,
   toast,
   todayISO,
+  wireTagInputs,
 } from '../ui.js';
 
 /** #/products, #/products/new, #/products/<id>[/<tab>] */
@@ -60,6 +61,16 @@ function productFields(product) {
     },
     { name: 'barcode', label: t('common.barcode'), value: product?.barcode || '', placeholder: t('prod.barcode_placeholder') },
     { name: 'category', label: t('common.category'), value: product?.category || '', names: 'category', placeholder: t('prod.category_placeholder') },
+    {
+      name: 'barcodes',
+      label: t('prod.other_barcodes'),
+      type: 'tags',
+      mono: true,
+      span: 2,
+      value: product?.barcodes || [],
+      placeholder: t('prod.other_barcodes_placeholder'),
+      help: t('prod.other_barcodes_help'),
+    },
     { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
     { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
     { name: 'unit', label: t('common.unit'), value: product?.unit || 'pcs', placeholder: t('prod.unit_placeholder'), names: 'unit' },
@@ -148,6 +159,7 @@ async function renderList(root, ctx) {
         name: p.name,
         description: p.description || '',
         barcode: p.barcode || '',
+        other_barcodes: (p.barcodes || []).join(' | '),
         category: p.category,
         unit: p.unit,
         cost: p.cost,
@@ -268,7 +280,11 @@ async function renderList(root, ctx) {
                         ${p.active ? '' : `<span class="badge">${esc(t('prod.archived'))}</span>`}
                         ${p.description ? `<span class="cell-inline-sub">${esc(p.description)}</span>` : ''}
                       </td>
-                      <td class="mono muted">${esc(p.barcode || t('common.none'))}</td>
+                      <td class="mono muted nowrap">${esc(p.barcode || t('common.none'))}${
+                        p.barcodes?.length
+                          ? ` <span class="badge" title="${esc(p.barcodes.join(' · '))}">+${p.barcodes.length}</span>`
+                          : ''
+                      }</td>
                       <td>${
                         p.category
                           ? `<span class="badge">${esc(p.category)}</span>`
@@ -474,6 +490,7 @@ async function renderDetail(root, ctx, id, initialTab) {
       </form>`;
     const form = body.querySelector('#page-form');
     dropPickers = wireNamePickers(form, fields);
+    wireTagInputs(form);
     const paintPrice2 = () => {
       const el = body.querySelector('#price2');
       if (el) el.textContent = money2(form.price.value);

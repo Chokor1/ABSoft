@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { count, errorText, t } from '../i18n.js';
+import { count, errorText, methodText, t } from '../i18n.js';
 import {
   confirmDialog,
   dateText,
@@ -8,12 +8,21 @@ import {
   downloadCsv,
   emptyState,
   esc,
+  filterSelect,
+  initials,
+  money,
   pager,
+  pct,
   forgetSuggestions,
   formPage,
   number,
+  qtyText,
+  rangeBar,
+  signClass,
+  statTile,
   store,
   toast,
+  todayISO,
 } from '../ui.js';
 
 /** Only people and companies get contact details; a unit is just a word. */
@@ -25,13 +34,22 @@ const KINDS = [
   { kind: 'expense_category', contact: false },
 ];
 
-/** #/lists, #/lists/<kind>, #/lists/<kind>/new, #/lists/<kind>/<id>/edit */
+/** #/lists, #/lists/<kind>, #/lists/<kind>/new, #/lists/<kind>/<id>[/<tab>], #/lists/<kind>/<id>/edit */
 export async function render(root, ctx) {
   const [kind, second, third] = ctx.params;
   const known = KINDS.some((k) => k.kind === kind);
   if (known && second === 'new') return renderForm(root, ctx, kind, null);
   if (known && third === 'edit') return renderForm(root, ctx, kind, Number(second));
+  if (PARTY_TABS[kind] && /^\d+$/.test(second || '')) return renderParty(root, ctx, kind, Number(second), third);
   return renderList(root, ctx, known ? kind : 'customer');
+}
+
+/** Open a customer's or supplier's page from a name on a document. */
+export async function openParty(ctx, kind, name) {
+  const rows = await api.entities(kind, { search: name, all: '1' });
+  const hit = rows.find((r) => r.name.toLowerCase() === String(name).toLowerCase());
+  if (hit) ctx.navigate(`lists/${kind}/${hit.id}`);
+  else toast(t('party.not_listed', { name }), 'warn');
 }
 
 async function renderList(root, ctx, startKind) {
@@ -187,10 +205,12 @@ async function renderList(root, ctx, startKind) {
       );
     }
 
+    // A customer or supplier opens on their own page; other names go straight to editing.
     body.querySelectorAll('[data-edit]').forEach((tr) =>
       tr.addEventListener('click', (e) => {
         if (e.target.closest('[data-del]')) return;
-        ctx.navigate(`lists/${state.kind}/${tr.dataset.edit}/edit`);
+        const page = PARTY_TABS[state.kind] && !e.target.closest('[data-open]');
+        ctx.navigate(`lists/${state.kind}/${tr.dataset.edit}${page ? '' : '/edit'}`);
       }),
     );
     body.querySelectorAll('[data-del]').forEach((b) =>
@@ -229,8 +249,9 @@ async function renderForm(root, ctx, kind, id) {
   const isNew = !entry;
   const showContact = KINDS.find((k) => k.kind === kind)?.contact;
   const one = t(`lists.one.${kind}`);
-  const back = () => ctx.navigate(`lists/${kind}`);
-  if (id && !entry) return back();
+  // Editing a customer or supplier returns to their page.
+  const back = () => ctx.navigate(entry && PARTY_TABS[kind] ? `lists/${kind}/${entry.id}` : `lists/${kind}`);
+  if (id && !entry) return ctx.navigate(`lists/${kind}`);
 
   formPage(root, {
     title: isNew ? t('lists.add', { one }) : t('lists.edit', { one }),
@@ -274,4 +295,418 @@ async function renderForm(root, ctx, kind, id) {
       }
     },
   });
+}
+
+/* ---------------------------------------------------- customer / supplier -- */
+
+const PARTY_TABS = { customer: ['statement', 'invoices', 'items'], supplier: ['statement', 'purchases', 'items'] };
+
+/** A customer's or supplier's own page: where they stand, their statement, their documents, what they bought. */
+async function renderParty(root, ctx, kind, id, initialTab) {
+  let party;
+  try {
+    party = await api.partySummary(kind, id);
+  } catch (err) {
+    toast(errorText(err), 'error');
+    return ctx.navigate(`lists/${kind}`);
+  }
+  const { entity } = party;
+  const tabs = PARTY_TABS[kind];
+  const first = () => party.summary.first_date || todayISO();
+  const state = { tab: tabs.includes(initialTab) ? initialTab : 'statement', from: first(), to: todayISO(), status: '', page: 1, per: 50 };
+  let drop = () => {};
+
+  ctx.actions.innerHTML = `
+    ${kind === 'customer' ? `<button class="btn" id="to-analysis">${icon('chart')} ${esc(t('party.open_analysis'))}</button>` : ''}
+    <button class="btn" id="edit">${icon('edit')} ${esc(t('common.edit'))}</button>`;
+  ctx.actions.querySelector('#edit').addEventListener('click', () => ctx.navigate(`lists/${kind}/${id}/edit`));
+  ctx.actions.querySelector('#to-analysis')?.addEventListener('click', () =>
+    ctx.navigate(`analysis/customer/${encodeURIComponent(entity.name)}/from/${state.from}/to/${state.to}/group/item`),
+  );
+
+  root.innerHTML = `
+    <div class="card product-hero sticky-bar party-hero" id="hero"></div>
+    <div class="stats party-stats" id="party-stats"></div>
+    <div id="tab-body"></div>`;
+  const hero = root.querySelector('#hero');
+  const body = root.querySelector('#tab-body');
+
+  const contact = [entity.phone, entity.email, entity.address, entity.tax_id ? `${t('lists.tax_id')} ${entity.tax_id}` : '']
+    .filter(Boolean)
+    .map((c) => `<span>${esc(c)}</span>`)
+    .join('');
+  hero.innerHTML = `
+    <div class="ph-row">
+      <button type="button" class="btn btn-ghost btn-icon" id="back" aria-label="${esc(t('common.back'))}">${icon('back')}</button>
+      <span class="party-avatar ${kind}">${esc(initials(entity.name))}</span>
+      <div class="ph-text">
+        <h2>${esc(entity.name)}</h2>
+        <div class="ph-badges">
+          <span class="badge accent">${esc(t(`lists.one_title.${kind}`))}</span>
+          ${entity.active ? '' : `<span class="badge">${esc(t('lists.hidden'))}</span>`}
+          ${contact ? `<span class="party-contact">${contact}</span>` : ''}
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div class="seg" id="tabs">${tabs.map((k) => `<button data-tab="${k}">${esc(t(`party.tab.${k}`))}</button>`).join('')}</div>
+    </div>`;
+  hero.querySelector('#back').addEventListener('click', () => ctx.navigate(`lists/${kind}`));
+  hero.querySelector('#tabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-tab]');
+    if (!btn) return;
+    state.tab = btn.dataset.tab;
+    state.page = 1;
+    history.replaceState(null, '', `#/lists/${kind}/${id}/${state.tab}`);
+    showTab();
+  });
+
+  const s = party.summary;
+  root.querySelector('#party-stats').innerHTML =
+    kind === 'customer'
+      ? `${statTile({
+          label: t('party.balance'),
+          value: `<span class="${s.balance > 0.004 ? 'money-neg' : ''}">${money(s.balance)}</span>`,
+          foot: s.open_invoices ? t('party.open_invoices', { n: number(s.open_invoices) }) : t('party.settled'),
+          iconName: 'wallet',
+          tint: s.balance > 0.004 ? 'danger' : 'success',
+        })}
+        ${statTile({
+          label: t('party.total_sales'),
+          value: money(s.total),
+          foot: t('party.invoices_avg', { n: number(s.invoices), v: money(s.avg_invoice) }),
+          iconName: 'receipt',
+          tint: 'info',
+        })}
+        ${statTile({
+          label: t('pay.paid'),
+          value: money(s.paid),
+          foot: s.last_payment ? t('party.last_payment', { v: money(s.last_payment.amount), d: dateText(s.last_payment.date) }) : t('pay.no_payments'),
+          iconName: 'coins',
+        })}
+        ${statTile({
+          label: t('common.profit'),
+          value: `<span class="${signClass(s.profit)}">${money(s.profit)}</span>`,
+          foot: `${t('common.margin')} ${pct(s.margin)}`,
+          iconName: 'trendUp',
+          tint: s.profit >= 0 ? 'success' : 'danger',
+        })}
+        ${statTile({
+          label: t('party.last_sale'),
+          value: s.last_date ? dateText(s.last_date) : t('common.none'),
+          foot: s.first_date ? t('party.since', { d: dateText(s.first_date) }) : t('party.no_sales'),
+          iconName: 'history',
+        })}`
+      : `${statTile({
+          label: t('party.total_purchased'),
+          value: money(s.total),
+          foot: t('party.purchases_n', { n: number(s.purchases) }),
+          iconName: 'truck',
+          tint: 'info',
+        })}
+        ${statTile({ label: t('party.avg_purchase'), value: money(s.avg_purchase), iconName: 'receipt' })}
+        ${statTile({ label: t('party.items_bought'), value: number(s.items), foot: t('party.items_bought_foot'), iconName: 'box' })}
+        ${statTile({
+          label: t('party.last_purchase'),
+          value: s.last_date ? dateText(s.last_date) : t('common.none'),
+          foot: s.first_date ? t('party.since_supplier', { d: dateText(s.first_date) }) : t('party.no_purchases'),
+          iconName: 'history',
+        })}`;
+
+  const loading = () =>
+    (body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(t('common.loading'))}</p></div></div></div>`);
+
+  /** The date bar shared by the statement and items tabs, with a way back to everything. */
+  function datesBar(reload) {
+    const bar = rangeBar(state, (r) => {
+      Object.assign(state, r);
+      reload();
+    });
+    bar.querySelector('.seg').insertAdjacentHTML('beforeend', `<button data-all>${esc(t('party.all_time'))}</button>`);
+    bar.querySelector('[data-all]').addEventListener('click', () => {
+      Object.assign(state, { from: first(), to: todayISO() });
+      reload();
+    });
+    return bar;
+  }
+
+  function showTab() {
+    drop();
+    drop = () => {};
+    hero.querySelectorAll('#tabs [data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
+    loading();
+    ({ statement: tabStatement, invoices: tabInvoices, purchases: tabPurchases, items: tabItems })[state.tab]();
+  }
+
+  /* The statement: brought forward, every document and payment, the balance after each. */
+  async function tabStatement() {
+    const st = await api.partyStatement(kind, id, { from: state.from, to: state.to });
+    if (state.tab !== 'statement') return;
+    const customer = kind === 'customer';
+    const heads = customer
+      ? [t('common.date'), t('party.type'), t('party.document'), t('party.method'), t('party.invoiced'), t('pay.paid'), t('pay.balance')]
+      : [t('common.date'), t('party.document'), t('common.lines'), t('common.note'), t('common.amount'), t('party.running_total')];
+    const nums = customer ? 3 : 2; // how many columns at the end are amounts
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-head">
+        <div><h3>${esc(t(customer ? 'party.statement' : 'party.statement_supplier'))}</h3>
+          <div class="sub">${dateText(st.from)} → ${dateText(st.to)} · ${esc(t('party.entries', { n: number(st.entries.length) }))}</div></div>
+        <div class="spacer"></div>
+        <span class="badge">${esc(t('party.opening_badge', { v: money(st.opening) }))}</span>
+        <span class="badge ${customer && st.closing > 0.004 ? 'warn' : 'accent'}">${esc(t(customer ? 'party.closing_badge' : 'party.total_badge', { v: money(st.closing) }))}</span>
+      </div>
+      <div class="card-body flush">${
+        st.entries.length || st.opening
+          ? `<div class="table-wrap table-scroll"><table class="data party-statement">
+              <thead><tr>${heads.map((h, i) => `<th class="${i >= heads.length - nums ? 'right' : ''}">${esc(h)}</th>`).join('')}</tr></thead>
+              <tbody>
+                <tr class="st-opening"><td class="nowrap">${dateText(st.from)}</td>
+                  <td colspan="${heads.length - 2}">${esc(t('party.brought_forward'))}</td>
+                  <td class="right"><b>${money(st.opening)}</b></td></tr>
+                ${st.entries
+                  .map((e) =>
+                    customer
+                      ? `<tr class="row-click" data-sale="${e.sale_id}">
+                          <td class="nowrap">${dateText(e.date)}</td>
+                          <td><span class="badge ${e.type === 'invoice' ? 'accent' : 'success'}">${esc(t(`party.entry.${e.type}`))}</span></td>
+                          <td class="mono nowrap">${esc(e.doc_no)}</td>
+                          <td class="muted">${e.type === 'payment' ? esc(methodText(e.method)) : ''}</td>
+                          <td class="right">${e.debit ? money(e.debit) : ''}</td>
+                          <td class="right money-pos">${e.credit ? money(e.credit) : ''}</td>
+                          <td class="right"><b class="${e.balance > 0.004 ? '' : 'muted'}">${money(e.balance)}</b></td>
+                        </tr>`
+                      : `<tr class="row-click" data-purchase="${e.purchase_id}">
+                          <td class="nowrap">${dateText(e.date)}</td>
+                          <td class="mono nowrap">${esc(e.doc_no)}</td>
+                          <td>${number(e.lines)}</td>
+                          <td class="muted">${esc(e.note || '')}</td>
+                          <td class="right">${money(e.debit)}</td>
+                          <td class="right"><b>${money(e.balance)}</b></td>
+                        </tr>`,
+                  )
+                  .join('')}
+              </tbody>
+              <tfoot><tr>
+                <td colspan="${heads.length - nums}">${esc(t(customer ? 'party.closing' : 'party.total_to', { d: dateText(st.to) }))}</td>
+                ${customer ? `<td class="right">${money(st.debit)}</td><td class="right">${money(st.credit)}</td>` : `<td class="right">${money(st.debit)}</td>`}
+                <td class="right">${money(st.closing)}</td>
+              </tr></tfoot>
+            </table></div>`
+          : emptyState(t('party.no_entries'), t('party.no_entries_sub'), 'history')
+      }</div>
+      ${customer ? '' : `<div class="card-body party-note muted">${esc(t('party.supplier_note'))}</div>`}`;
+    body.innerHTML = '';
+    body.append(datesBar(tabStatement), card);
+    card.querySelectorAll('[data-sale]').forEach((tr) => tr.addEventListener('click', () => ctx.navigate(`sales/${tr.dataset.sale}`)));
+    card.querySelectorAll('[data-purchase]').forEach((tr) =>
+      tr.addEventListener('click', () => ctx.navigate(`purchases/${tr.dataset.purchase}`)),
+    );
+  }
+
+  /* A customer's invoices, with what is still owed on each. */
+  async function tabInvoices() {
+    const result = await api.sales({ customer: entity.name, status: state.status, page: state.page, per: state.per });
+    if (state.tab !== 'invoices') return;
+    const sum = result.sums || {};
+    const bar = document.createElement('div');
+    bar.className = 'toolbar';
+    bar.append(
+      filterSelect({
+        label: t('filter.status'),
+        value: state.status,
+        options: [
+          { value: '', label: t('filter.all') },
+          { value: 'unpaid', label: t('pay.status_unpaid') },
+          { value: 'partial', label: t('pay.status_partial') },
+          { value: 'paid', label: t('pay.status_paid') },
+        ],
+        onChange: (v) => {
+          state.status = v;
+          state.page = 1;
+          tabInvoices();
+        },
+      }),
+    );
+    const status = (r) =>
+      r.balance <= 0.004
+        ? `<span class="badge success">${esc(t('pay.status_paid'))}</span>`
+        : r.paid > 0.004
+          ? `<span class="badge warn">${esc(t('pay.status_partial'))}</span>`
+          : `<span class="badge danger">${esc(t('pay.status_unpaid'))}</span>`;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-head">
+        <div><h3>${esc(t('party.tab.invoices'))}</h3><div class="sub">${esc(t('party.invoices_n', { n: number(result.total) }))}</div></div>
+        <div class="spacer"></div>
+        <span class="badge accent">${esc(t('sales.revenue_badge', { v: money(sum.total || 0) }))}</span>
+        ${sum.balance > 0.004 ? `<span class="badge warn">${esc(t('pay.owed_badge', { v: money(sum.balance) }))}</span>` : ''}
+      </div>
+      <div class="card-body flush">${
+        result.rows.length
+          ? `<div class="table-wrap table-scroll"><table class="data">
+              <thead><tr><th>${esc(t('sales.invoice'))}</th><th>${esc(t('common.date'))}</th>
+                <th class="right">${esc(t('common.items'))}</th><th class="right">${esc(t('common.total'))}</th>
+                <th class="right">${esc(t('pay.paid'))}</th><th class="right">${esc(t('pay.balance'))}</th>
+                <th>${esc(t('pay.status'))}</th><th class="right">${esc(t('common.profit'))}</th></tr></thead>
+              <tbody>${result.rows
+                .map(
+                  (r) => `<tr class="row-click" data-sale="${r.id}">
+                    <td class="mono nowrap">${esc(r.doc_no)}</td>
+                    <td class="nowrap">${dateText(r.date)}</td>
+                    <td class="right muted">${number(r.line_count)}</td>
+                    <td class="right"><b>${money(r.total)}</b></td>
+                    <td class="right">${money(r.paid)}</td>
+                    <td class="right ${r.balance > 0.004 ? 'money-neg' : 'muted'}">${money(r.balance)}</td>
+                    <td>${status(r)}</td>
+                    <td class="right ${signClass(r.profit)}">${money(r.profit)}</td>
+                  </tr>`,
+                )
+                .join('')}</tbody>
+              <tfoot><tr><td colspan="3">${esc(result.pages > 1 ? t('an.totals_all') : t('common.totals'))}</td>
+                <td class="right">${money(sum.total || 0)}</td><td class="right">${money((sum.total || 0) - (sum.balance || 0))}</td>
+                <td class="right">${money(sum.balance || 0)}</td><td></td>
+                <td class="right">${money(sum.profit || 0)}</td></tr></tfoot>
+            </table></div>`
+          : emptyState(t('party.no_invoices'), t('party.no_invoices_sub'), 'receipt')
+      }</div>`;
+    if (result.rows.length) {
+      card.append(
+        pager(result, ({ page, per }) => {
+          Object.assign(state, { page, per });
+          tabInvoices();
+        }),
+      );
+    }
+    body.innerHTML = '';
+    body.append(bar, card);
+    card.querySelectorAll('[data-sale]').forEach((tr) => tr.addEventListener('click', () => ctx.navigate(`sales/${tr.dataset.sale}`)));
+  }
+
+  /* A supplier's purchases. */
+  async function tabPurchases() {
+    const result = await api.purchases({ supplier: entity.name, page: state.page, per: state.per });
+    if (state.tab !== 'purchases') return;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-head">
+        <div><h3>${esc(t('party.tab.purchases'))}</h3><div class="sub">${esc(t('party.purchases_n', { n: number(result.total) }))}</div></div>
+        <div class="spacer"></div>
+        <span class="badge accent">${money(result.sums?.total || 0)}</span>
+      </div>
+      <div class="card-body flush">${
+        result.rows.length
+          ? `<div class="table-wrap table-scroll"><table class="data">
+              <thead><tr><th>${esc(t('party.document'))}</th><th>${esc(t('common.date'))}</th>
+                <th class="right">${esc(t('common.lines'))}</th><th class="right">${esc(t('common.qty'))}</th>
+                <th class="right">${esc(t('common.total'))}</th><th>${esc(t('common.note'))}</th></tr></thead>
+              <tbody>${result.rows
+                .map(
+                  (r) => `<tr class="row-click" data-purchase="${r.id}">
+                    <td class="mono nowrap">${esc(r.doc_no)}</td>
+                    <td class="nowrap">${dateText(r.date)}</td>
+                    <td class="right muted">${number(r.line_count)}</td>
+                    <td class="right">${qtyText(r.total_qty)}</td>
+                    <td class="right"><b>${money(r.total)}</b></td>
+                    <td class="muted">${esc(r.note || '')}</td>
+                  </tr>`,
+                )
+                .join('')}</tbody>
+              <tfoot><tr><td colspan="4">${esc(result.pages > 1 ? t('an.totals_all') : t('common.totals'))}</td>
+                <td class="right">${money(result.sums?.total || 0)}</td><td></td></tr></tfoot>
+            </table></div>`
+          : emptyState(t('party.no_purchases'), t('party.no_purchases_sub'), 'truck')
+      }</div>`;
+    if (result.rows.length) {
+      card.append(
+        pager(result, ({ page, per }) => {
+          Object.assign(state, { page, per });
+          tabPurchases();
+        }),
+      );
+    }
+    body.innerHTML = '';
+    body.append(card);
+    card.querySelectorAll('[data-purchase]').forEach((tr) =>
+      tr.addEventListener('click', () => ctx.navigate(`purchases/${tr.dataset.purchase}`)),
+    );
+  }
+
+  /* What they bought from us, or what we bought from them. */
+  async function tabItems() {
+    const customer = kind === 'customer';
+    const range = { from: state.from, to: state.to };
+    const result = customer
+      ? await api.salesAnalysis({ ...range, customer: entity.name, group: 'item', all: '1' })
+      : await api.supplierItems(id, range);
+    if (state.tab !== 'items') return;
+    const rows = result.rows;
+    const card = document.createElement('div');
+    card.className = 'card';
+    const tot = customer ? result.totals : result.totals;
+    card.innerHTML = `
+      <div class="card-head">
+        <div><h3>${esc(t(customer ? 'party.items_customer' : 'party.items_supplier'))}</h3>
+          <div class="sub">${dateText(result.from)} → ${dateText(result.to)} · ${esc(t('party.products_n', { n: number(rows.length) }))}</div></div>
+      </div>
+      <div class="card-body flush">${
+        rows.length
+          ? customer
+            ? `<div class="table-wrap table-scroll"><table class="data">
+                <thead><tr><th>${esc(t('an.item'))}</th><th class="right">${esc(t('common.qty'))}</th>
+                  <th class="right">${esc(t('an.invoices'))}</th><th class="right">${esc(t('an.avg_price'))}</th>
+                  <th class="right">${esc(t('an.sales'))}</th><th class="right">${esc(t('common.profit'))}</th>
+                  <th class="right">${esc(t('common.margin'))}</th></tr></thead>
+                <tbody>${rows
+                  .map(
+                    (r) => `<tr class="row-click" data-product="${r.product_id}">
+                      <td><div class="cell-title">${esc(r.name)}</div><div class="cell-sub">${esc(r.category || '')}</div></td>
+                      <td class="right nowrap">${qtyText(r.qty)} <span class="muted">${esc(r.unit)}</span></td>
+                      <td class="right muted">${number(r.invoices)}</td>
+                      <td class="right">${r.qty ? money(r.sales / r.qty) : ''}</td>
+                      <td class="right"><b>${money(r.sales)}</b></td>
+                      <td class="right ${signClass(r.profit)}">${money(r.profit)}</td>
+                      <td class="right">${pct(r.margin)}</td>
+                    </tr>`,
+                  )
+                  .join('')}</tbody>
+                <tfoot><tr><td>${esc(t('common.totals'))}</td><td class="right">${qtyText(tot.qty)}</td>
+                  <td class="right">${number(tot.invoices)}</td><td></td>
+                  <td class="right">${money(tot.sales)}</td><td class="right">${money(tot.profit)}</td>
+                  <td class="right">${pct(tot.margin)}</td></tr></tfoot>
+              </table></div>`
+            : `<div class="table-wrap table-scroll"><table class="data">
+                <thead><tr><th>${esc(t('an.item'))}</th><th class="right">${esc(t('common.qty'))}</th>
+                  <th class="right">${esc(t('party.tab.purchases'))}</th><th class="right">${esc(t('party.avg_cost'))}</th>
+                  <th class="right">${esc(t('party.last_cost'))}</th><th class="right">${esc(t('common.total'))}</th>
+                  <th>${esc(t('party.last_bought'))}</th></tr></thead>
+                <tbody>${rows
+                  .map(
+                    (r) => `<tr class="row-click" data-product="${r.product_id}">
+                      <td><div class="cell-title">${esc(r.name)}</div><div class="cell-sub">${esc(r.category || '')}</div></td>
+                      <td class="right nowrap">${qtyText(r.qty)} <span class="muted">${esc(r.unit)}</span></td>
+                      <td class="right muted">${number(r.purchases)}</td>
+                      <td class="right">${money(r.avg_cost)}</td>
+                      <td class="right muted">${money(r.last_cost)}</td>
+                      <td class="right"><b>${money(r.total)}</b></td>
+                      <td class="nowrap">${dateText(r.last_date)}</td>
+                    </tr>`,
+                  )
+                  .join('')}</tbody>
+                <tfoot><tr><td>${esc(t('common.totals'))}</td><td class="right">${qtyText(tot.qty)}</td>
+                  <td colspan="3"></td><td class="right">${money(tot.total)}</td><td></td></tr></tfoot>
+              </table></div>`
+          : emptyState(t('party.no_items'), t('party.no_items_sub'), 'box')
+      }</div>`;
+    body.innerHTML = '';
+    body.append(datesBar(tabItems), card);
+    card.querySelectorAll('[data-product]').forEach((tr) =>
+      tr.addEventListener('click', () => ctx.navigate(`products/${tr.dataset.product}/${customer ? 'sales' : 'purchases'}`)),
+    );
+  }
+
+  showTab();
+  return () => drop();
 }

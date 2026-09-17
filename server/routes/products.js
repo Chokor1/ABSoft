@@ -10,13 +10,51 @@ import { createAdjustment, writeAdjustment } from './adjustments.js';
 
 const SELECT_PRODUCT = `
   SELECT p.*, COALESCE(s.stock, 0) AS stock,
+         (SELECT json_group_array(b.barcode) FROM
+            (SELECT barcode FROM product_barcodes WHERE product_id = p.id ORDER BY id) b) AS barcodes_json,
          (SELECT updated_at FROM product_images i WHERE i.product_id = p.id) AS image_at,
          ROUND(COALESCE(s.stock, 0) * p.cost, 2) AS stock_value,
          CASE WHEN p.price > 0 THEN ROUND((p.price - p.cost) / p.price * 100, 1) ELSE 0 END AS margin
   FROM products p
   LEFT JOIN product_stock s ON s.product_id = p.id`;
 
-export const getProduct = (id) => db.prepare(`${SELECT_PRODUCT} WHERE p.id = ?`).get(id);
+/** A product row as the client sees it: the extra barcodes as a list. */
+const shape = (row) => {
+  if (!row) return row;
+  const { barcodes_json, ...rest } = row;
+  return { ...rest, barcodes: JSON.parse(barcodes_json || '[]') };
+};
+
+export const getProduct = (id) => shape(db.prepare(`${SELECT_PRODUCT} WHERE p.id = ?`).get(id));
+
+/** The extra barcodes sent with a product: trimmed, without blanks, repeats or the main one. */
+function readBarcodes(value, main) {
+  const list = Array.isArray(value) ? value : str(value).split(/[\n,|]+/);
+  const out = [];
+  for (const code of list.map((c) => str(c))) {
+    if (code && code !== main && !out.includes(code)) out.push(code);
+  }
+  if (out.length > 50) throw badRequest('A product can have at most 50 barcodes', 'BARCODES_TOO_MANY');
+  return out;
+}
+
+/** Which product, other than `ignoreId`, already answers to this code. */
+export const barcodeOwner = (code, ignoreId = 0) =>
+  db
+    .prepare(
+      `SELECT id, name FROM products WHERE barcode = ? AND id <> ?
+       UNION ALL
+       SELECT p.id, p.name FROM product_barcodes b JOIN products p ON p.id = b.product_id
+       WHERE b.barcode = ? AND b.product_id <> ?
+       LIMIT 1`,
+    )
+    .get(code, ignoreId, code, ignoreId);
+
+function setBarcodes(productId, codes) {
+  db.prepare(`DELETE FROM product_barcodes WHERE product_id = ?`).run(productId);
+  const insert = db.prepare(`INSERT INTO product_barcodes (product_id, barcode) VALUES (?, ?)`);
+  for (const code of codes) insert.run(productId, code);
+}
 
 function readPayload(body, { partial = false } = {}) {
   const out = {};
@@ -35,9 +73,12 @@ function readPayload(body, { partial = false } = {}) {
 
 function assertBarcodeFree(barcode, ignoreId = 0) {
   if (!barcode) return;
-  const clash = db.prepare(`SELECT id FROM products WHERE barcode = ? AND id <> ?`).get(barcode, ignoreId);
+  const clash = barcodeOwner(barcode, ignoreId);
   if (clash) {
-    throw badRequest(`Barcode "${barcode}" is already used by another product`, 'BARCODE_TAKEN', { barcode });
+    throw badRequest(`Barcode "${barcode}" is already used by "${clash.name}"`, 'BARCODE_TAKEN', {
+      barcode,
+      name: clash.name,
+    });
   }
 }
 
@@ -50,9 +91,12 @@ export function register(router) {
     const args = [];
     if (onlyActive) where.push('p.active = 1');
     if (search) {
-      where.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.category LIKE ? OR p.description LIKE ?)');
+      where.push(
+        `(p.name LIKE ? OR p.barcode LIKE ? OR p.category LIKE ? OR p.description LIKE ?
+          OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = p.id AND b.barcode LIKE ?))`,
+      );
       const like = `%${search}%`;
-      args.push(like, like, like, like);
+      args.push(like, like, like, like, like);
     }
     if (lowStock) where.push('COALESCE(s.stock, 0) <= p.min_stock');
     if (str(ctx.query.category)) (where.push('p.category = ? COLLATE NOCASE'), args.push(str(ctx.query.category)));
@@ -71,7 +115,8 @@ export function register(router) {
         .get(...args).n;
       const rows = db
         .prepare(`${SELECT_PRODUCT} ${clause} ${order} LIMIT ? OFFSET ?`)
-        .all(...args, paging.per, paging.offset);
+        .all(...args, paging.per, paging.offset)
+        .map(shape);
       // The figure above the list covers everything that matches, not this page.
       const sums = db
         .prepare(
@@ -86,7 +131,8 @@ export function register(router) {
     const limit = num(ctx.query.limit, 0);
     return db
       .prepare(`${SELECT_PRODUCT} ${clause} ${order} ${limit > 0 ? `LIMIT ${Math.min(200, limit)}` : ''}`)
-      .all(...args);
+      .all(...args)
+      .map(shape);
   });
 
   // Barcode scanner endpoint.
@@ -96,9 +142,15 @@ export function register(router) {
     // Exact matches only. This is the scanner path: a partial match here would
     // silently ring up the wrong item. Typed searches go through /api/products,
     // which shows the candidates and lets the cashier choose.
-    const found =
-      db.prepare(`${SELECT_PRODUCT} WHERE p.barcode = ? AND p.active = 1`).get(code) ||
-      db.prepare(`${SELECT_PRODUCT} WHERE p.name = ? COLLATE NOCASE AND p.active = 1`).get(code);
+    // Any of a product's barcodes will do.
+    const found = shape(
+      db
+        .prepare(
+          `${SELECT_PRODUCT} WHERE p.active = 1 AND (p.barcode = ?
+             OR p.id IN (SELECT product_id FROM product_barcodes WHERE barcode = ?))`,
+        )
+        .get(code, code) || db.prepare(`${SELECT_PRODUCT} WHERE p.name = ? COLLATE NOCASE AND p.active = 1`).get(code),
+    );
     if (!found) throw notFound(`No product matches "${code}"`, 'NO_PRODUCT_MATCH', { code });
     return found;
   });
@@ -218,7 +270,8 @@ export function register(router) {
 
   router.post('/api/products', (ctx) => {
     const data = readPayload(ctx.body);
-    assertBarcodeFree(data.barcode);
+    const extra = readBarcodes(ctx.body.barcodes, data.barcode);
+    for (const code of [data.barcode, ...extra]) assertBarcodeFree(code);
     const opening = qty(num(ctx.body.opening_stock));
 
     return transact(() => {
@@ -239,6 +292,7 @@ export function register(router) {
           data.active,
         );
       const id = lastId(res);
+      setBarcodes(id, extra);
 
       // Stock already on hand is recorded as an opening stock adjustment.
       if (opening > 0) {
@@ -285,7 +339,7 @@ export function register(router) {
       if (row.barcode) {
         if (inFile.has(row.barcode)) return { ...fail('IMPORT_DUP_FILE', 'barcode'), other: inFile.get(row.barcode) };
         inFile.set(row.barcode, row.line);
-        if (db.prepare(`SELECT 1 FROM products WHERE barcode = ?`).get(row.barcode)) {
+        if (barcodeOwner(row.barcode)) {
           return { ...row, status: 'skip', code: 'IMPORT_EXISTS', field: 'barcode' };
         }
       }
@@ -351,22 +405,28 @@ export function register(router) {
     const data = readPayload(ctx.body, { partial: true });
     if (data.barcode !== undefined) assertBarcodeFree(data.barcode, existing.id);
     const merged = { ...existing, ...data };
-    db.prepare(
-      `UPDATE products SET name = ?, description = ?, barcode = ?, category = ?, unit = ?,
-                          cost = ?, price = ?, min_stock = ?, active = ?
-       WHERE id = ?`,
-    ).run(
-      merged.name,
-      merged.description ?? '',
-      merged.barcode,
-      merged.category,
-      merged.unit,
-      merged.cost,
-      merged.price,
-      merged.min_stock,
-      merged.active ? 1 : 0,
-      existing.id,
-    );
+    // Sent: replace the extra barcodes. Left out: keep them, minus a new main one.
+    const extra = readBarcodes(ctx.body.barcodes !== undefined ? ctx.body.barcodes : existing.barcodes, merged.barcode);
+    for (const code of extra) assertBarcodeFree(code, existing.id);
+    transact(() => {
+      db.prepare(
+        `UPDATE products SET name = ?, description = ?, barcode = ?, category = ?, unit = ?,
+                            cost = ?, price = ?, min_stock = ?, active = ?
+         WHERE id = ?`,
+      ).run(
+        merged.name,
+        merged.description ?? '',
+        merged.barcode,
+        merged.category,
+        merged.unit,
+        merged.cost,
+        merged.price,
+        merged.min_stock,
+        merged.active ? 1 : 0,
+        existing.id,
+      );
+      setBarcodes(existing.id, extra);
+    });
     rememberAll([
       ['category', merged.category],
       ['unit', merged.unit],

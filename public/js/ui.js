@@ -169,6 +169,7 @@ export function formModal({ title, subtitle, fields, submitLabel = t('common.sav
       <button class="btn btn-primary" form="modal-form" type="submit">${esc(submitLabel)}</button>`,
     setup: (root, close) => {
       wireNamePickers(root, fields);
+      wireTagInputs(root);
       root.querySelector('#modal-form').addEventListener('submit', (e) => {
         e.preventDefault();
         close(readFields(root, fields));
@@ -187,6 +188,10 @@ export function readFields(root, fields) {
     if (f.type === 'static') continue;
     const el = root.querySelector(`[name="${f.name}"]`);
     if (!el) continue;
+    if (f.type === 'tags') {
+      data[f.name] = tagValues(el.closest('.tags-field'));
+      continue;
+    }
     data[f.name] = f.type === 'checkbox' ? el.checked : f.type === 'number' ? Number(el.value) : el.value.trim();
   }
   return data;
@@ -227,6 +232,7 @@ export function formPage(container, { title, subtitle = '', fields, submitLabel 
   });
   container.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', () => onCancel?.()));
   wireNamePickers(container, fields);
+  wireTagInputs(container);
 
   const first = container.querySelector('[autofocus], input:not([type=hidden]), select, textarea');
   first?.focus();
@@ -238,6 +244,18 @@ function fieldHtml(f) {
   const span = f.span === 2 ? 'span-2' : '';
   const common = `name="${f.name}" ${f.required ? 'required' : ''} ${f.autofocus ? 'autofocus' : ''}`;
   if (f.type === 'static') return `<div class="field ${span}">${f.html}</div>`;
+  if (f.type === 'tags') {
+    const values = Array.isArray(f.value) ? f.value : [];
+    return `<div class="field ${span} tags-field">
+      <label for="tags-${f.name}">${esc(f.label)}</label>
+      <div class="tags-box">
+        ${values.map(tagHtml).join('')}
+        <input class="tags-entry ${f.mono ? 'mono' : ''}" id="tags-${f.name}" placeholder="${esc(f.placeholder || '')}" autocomplete="off"/>
+      </div>
+      <input type="hidden" name="${f.name}" value="${esc(JSON.stringify(values))}"/>
+      ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
+    </div>`;
+  }
   if (f.type === 'checkbox') {
     return `<div class="field ${span}"><label class="check"><input type="checkbox" ${common} ${
       f.value ? 'checked' : ''
@@ -263,6 +281,70 @@ function fieldHtml(f) {
     <label>${esc(f.label)}</label>${f.names || f.choices ? `<div class="combo">${control}</div>` : control}
     ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
   </div>`;
+}
+
+/* ------------------------------------------------------------ tag fields -- */
+
+const tagHtml = (value) =>
+  `<span class="tag" data-tag="${esc(value)}"><span class="mono">${esc(value)}</span><button type="button" class="tag-x"
+     data-untag title="${esc(t('common.remove'))}" aria-label="${esc(t('common.remove'))}">${icon('close')}</button></span>`;
+
+/** The values of a tag field, including one still being typed. */
+function tagValues(field) {
+  const values = JSON.parse(field.querySelector('input[type=hidden]').value || '[]');
+  const pending = field.querySelector('.tags-entry').value.trim();
+  return pending && !values.includes(pending) ? [...values, pending] : values;
+}
+
+/**
+ * A field holding a short list, like a product's other barcodes: type or scan
+ * one and press Enter, and it becomes a chip; the × takes it off. Enter never
+ * submits the form from here, since a scanner presses it after every code.
+ */
+export function wireTagInputs(root) {
+  root.querySelectorAll('.tags-field').forEach((field) => {
+    if (field.dataset.wired) return;
+    field.dataset.wired = '1';
+    const hidden = field.querySelector('input[type=hidden]');
+    const entry = field.querySelector('.tags-entry');
+    const box = field.querySelector('.tags-box');
+    const read = () => JSON.parse(hidden.value || '[]');
+    const write = (values) => {
+      hidden.value = JSON.stringify(values);
+      box.querySelectorAll('.tag').forEach((el) => el.remove());
+      entry.insertAdjacentHTML('beforebegin', values.map(tagHtml).join(''));
+    };
+    const commit = () => {
+      const value = entry.value.trim();
+      entry.value = '';
+      if (!value) return;
+      const values = read();
+      if (values.includes(value)) {
+        box.querySelector(`.tag[data-tag="${CSS.escape(value)}"]`)?.classList.add('flash');
+        return;
+      }
+      write([...values, value]);
+    };
+    entry.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+        if (e.key === 'Tab' && !entry.value.trim()) return;
+        e.preventDefault();
+        commit();
+      } else if (e.key === 'Backspace' && !entry.value) {
+        const values = read();
+        if (values.length) write(values.slice(0, -1));
+      }
+    });
+    entry.addEventListener('blur', commit);
+    box.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-untag]');
+      if (x) {
+        const value = x.closest('.tag').dataset.tag;
+        write(read().filter((v) => v !== value));
+      }
+      entry.focus();
+    });
+  });
 }
 
 /* ---------------------------------------------------------------- paging -- */

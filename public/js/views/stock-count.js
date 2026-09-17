@@ -117,7 +117,9 @@ export async function render(root, ctx) {
     const words = state.search.toLowerCase().split(/\s+/).filter(Boolean);
     const shown = state.rows.filter((r) =>
       words.every((w) =>
-        `${r.name} ${r.barcode || ''} ${r.category || ''} ${r.description || ''}`.toLowerCase().includes(w),
+        `${r.name} ${r.barcode || ''} ${(r.barcodes || []).join(' ')} ${r.category || ''} ${r.description || ''}`
+          .toLowerCase()
+          .includes(w),
       ),
     );
 

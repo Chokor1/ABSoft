@@ -14,6 +14,7 @@ import { onRateChange, saveRate, second, watchRate } from './currency.js';
 import * as salesView from './views/sales.js';
 import * as expenses from './views/expenses.js';
 import * as reports from './views/reports.js';
+import * as analysis from './views/analysis.js';
 import * as lists from './views/lists.js';
 import * as users from './views/users.js';
 import * as settings from './views/settings.js';
@@ -33,6 +34,7 @@ const VIEWS = {
   adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
   lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
   sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'reports', cashier: true },
+  analysis: { key: 'analysis', icon: 'sliders', mod: analysis, group: 'reports' },
   reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports' },
   users: { key: 'users', icon: 'users', mod: users, group: 'settings' },
   settings: { key: 'settings', icon: 'settings', mod: settings, group: 'settings', cashier: true },

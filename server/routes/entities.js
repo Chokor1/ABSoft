@@ -1,5 +1,6 @@
 import { ENTITY_KINDS, createEntity, deleteEntity, listEntities, updateEntity } from '../entities.js';
 import { forbidden } from '../http.js';
+import { partyStatement, partySummary, supplierItems } from '../parties.js';
 import { pageParams, str } from '../util.js';
 
 const adminOnly = (ctx) => {
@@ -21,6 +22,11 @@ export function register(router) {
   );
 
   router.post('/api/entities/:kind', (ctx) => createEntity(ctx.params.kind, ctx.body));
+
+  // A customer's or supplier's page: where they stand, their statement, what they bought or sold us.
+  router.get('/api/entities/:kind/:id/summary', (ctx) => partySummary(ctx.params.kind, ctx.params.id));
+  router.get('/api/entities/:kind/:id/statement', (ctx) => partyStatement(ctx.params.kind, ctx.params.id, ctx.query));
+  router.get('/api/entities/supplier/:id/items', (ctx) => supplierItems(ctx.params.id, ctx.query));
 
   // Editing and removing reshape shared lists, so they are administrator work.
   router.put('/api/entities/:kind/:id', (ctx) => {

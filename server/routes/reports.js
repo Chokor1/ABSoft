@@ -1,7 +1,135 @@
 import { db } from '../db.js';
-import { dateRange, money, num, shiftDays, str, today } from '../util.js';
+import { dateRange, money, num, pageParams, pageResult, shiftDays, str, today } from '../util.js';
 
 const round = (n) => money(num(n));
+
+/* --------------------------------------------------------- sales analysis -- */
+
+/**
+ * Every sold line in the window, with what it really brought in. An invoice
+ * discount is shared across its lines by value, so the lines add up to the
+ * invoice (before tax) and to the revenue in the profit & loss.
+ */
+function analysisLines(query) {
+  const { from, to } = dateRange(query);
+  const where = ['s.date BETWEEN ? AND ?'];
+  const args = [from, to];
+  // "-" asks for the sales with no customer (or products with no category).
+  const customer = str(query.customer);
+  if (customer === '-') where.push(`s.customer = ''`);
+  else if (customer) (where.push('s.customer = ? COLLATE NOCASE'), args.push(customer));
+  if (num(query.product_id) > 0) (where.push('i.product_id = ?'), args.push(num(query.product_id)));
+  const category = str(query.category);
+  if (category === '-') where.push(`p.category = ''`);
+  else if (category) (where.push('p.category = ? COLLATE NOCASE'), args.push(category));
+  const sql = `
+    WITH L AS (
+      SELECT i.id AS line_id, s.id AS sale_id, s.doc_no, s.date, s.customer,
+             p.id AS product_id, p.name, p.barcode, p.category, p.unit,
+             i.qty, i.unit_price,
+             i.qty * i.unit_price AS gross,
+             i.total * (CASE WHEN s.subtotal > 0 THEN (s.subtotal - s.discount) / s.subtotal ELSE 1 END) AS net,
+             i.qty * i.unit_cost AS cost
+      FROM sale_items i
+      JOIN sales s ON s.id = i.sale_id
+      JOIN products p ON p.id = i.product_id
+      WHERE ${where.join(' AND ')}
+    )`;
+  return { from, to, sql, args };
+}
+
+const MEASURES = `
+  ROUND(SUM(qty), 3) AS qty,
+  ROUND(SUM(gross), 2) AS gross,
+  ROUND(SUM(gross - net), 2) AS discount,
+  ROUND(SUM(net), 2) AS sales,
+  ROUND(SUM(cost), 2) AS cost,
+  ROUND(SUM(net - cost), 2) AS profit,
+  CASE WHEN SUM(net) > 0 THEN ROUND(SUM(net - cost) / SUM(net) * 100, 1) ELSE 0 END AS margin,
+  COUNT(DISTINCT sale_id) AS invoices,
+  COUNT(*) AS lines`;
+
+/** How the lines can be rolled up: what each grouping shows, what it sorts by, and its default order. */
+const GROUPS = {
+  lines: {
+    select: `line_id AS key, sale_id, doc_no, date, customer, product_id, name, barcode, category, unit, qty, unit_price,
+             ROUND(gross, 2) AS gross, ROUND(gross - net, 2) AS discount, ROUND(net, 2) AS sales,
+             ROUND(cost, 2) AS cost, ROUND(net - cost, 2) AS profit,
+             CASE WHEN net > 0 THEN ROUND((net - cost) / net * 100, 1) ELSE 0 END AS margin`,
+    group: '',
+    sorts: ['date', 'doc_no', 'customer', 'name', 'qty', 'unit_price', 'discount', 'sales', 'cost', 'profit', 'margin'],
+    order: 'date DESC, sale_id DESC, key',
+  },
+  invoice: {
+    select: `sale_id AS key, sale_id, doc_no AS label, doc_no, date, customer, ${MEASURES}`,
+    group: 'GROUP BY sale_id',
+    sorts: ['date', 'doc_no', 'customer', 'lines', 'qty', 'discount', 'sales', 'cost', 'profit', 'margin'],
+    order: 'date DESC, sale_id DESC',
+  },
+  item: {
+    select: `product_id AS key, product_id, name AS label, name, barcode, category, unit, ${MEASURES}`,
+    group: 'GROUP BY product_id',
+    sorts: ['name', 'qty', 'invoices', 'discount', 'sales', 'cost', 'profit', 'margin'],
+    order: 'sales DESC, name COLLATE NOCASE',
+  },
+  category: {
+    select: `category AS key, category AS label, COUNT(DISTINCT product_id) AS items, ${MEASURES}`,
+    group: 'GROUP BY category COLLATE NOCASE',
+    sorts: ['label', 'items', 'qty', 'invoices', 'discount', 'sales', 'cost', 'profit', 'margin'],
+    order: 'sales DESC, label COLLATE NOCASE',
+  },
+  customer: {
+    select: `customer AS key, customer AS label, COUNT(DISTINCT product_id) AS items, ${MEASURES}`,
+    group: 'GROUP BY customer COLLATE NOCASE',
+    sorts: ['label', 'items', 'qty', 'invoices', 'discount', 'sales', 'cost', 'profit', 'margin'],
+    order: 'sales DESC, label COLLATE NOCASE',
+  },
+  day: {
+    select: `date AS key, date AS label, ${MEASURES}`,
+    group: 'GROUP BY date',
+    sorts: ['label', 'qty', 'invoices', 'discount', 'sales', 'cost', 'profit', 'margin'],
+    order: 'label DESC',
+  },
+  month: {
+    select: `substr(date, 1, 7) AS key, substr(date, 1, 7) AS label, ${MEASURES}`,
+    group: 'GROUP BY substr(date, 1, 7)',
+    sorts: ['label', 'qty', 'invoices', 'discount', 'sales', 'cost', 'profit', 'margin'],
+    order: 'label DESC',
+  },
+};
+
+export function salesAnalysis(query) {
+  const groupKey = Object.hasOwn(GROUPS, str(query.group)) ? str(query.group) : 'lines';
+  const g = GROUPS[groupKey];
+  const { from, to, sql, args } = analysisLines(query);
+
+  const sortKey = g.sorts.includes(str(query.sort)) ? str(query.sort) : '';
+  const dir = str(query.dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  const text = ['doc_no', 'customer', 'name', 'label'].includes(sortKey) ? ' COLLATE NOCASE' : '';
+  const order = sortKey ? `${sortKey}${text} ${dir}, ${g.order}` : g.order;
+
+  const totals = db
+    .prepare(
+      `${sql} SELECT ${MEASURES}, COUNT(DISTINCT product_id) AS items,
+              COUNT(DISTINCT lower(customer)) AS customers FROM L`,
+    )
+    .get(...args);
+  for (const k of ['qty', 'gross', 'discount', 'sales', 'cost', 'profit']) totals[k] = num(totals[k]);
+
+  const body = `${sql} SELECT ${g.select} FROM L ${g.group}`;
+  const count = g.group
+    ? db.prepare(`${sql} SELECT COUNT(*) AS n FROM (SELECT 1 FROM L ${g.group})`).get(...args).n
+    : num(totals.lines);
+
+  const head = { from, to, group: groupKey, sort: sortKey, dir: dir.toLowerCase(), totals };
+  // Everything, for an export; capped so a runaway range cannot stall the server.
+  if (query.all === '1') {
+    return { ...head, rows: db.prepare(`${body} ORDER BY ${order} LIMIT 50000`).all(...args), total: count };
+  }
+  const paging = pageParams({ page: str(query.page) || '1', per: query.per }, { per: 50 });
+  const rows = db.prepare(`${body} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...args, paging.per, paging.offset);
+  return { ...head, ...pageResult(rows, count, paging) };
+}
 
 /** Core numbers behind every report and the dashboard tiles. */
 function summarise(from, to) {
@@ -259,6 +387,9 @@ export function register(router) {
       by_customer: byCustomer,
     };
   });
+
+  // Sales lines with their cost and profit, filtered and rolled up however is asked.
+  router.get('/api/reports/sales-analysis', (ctx) => salesAnalysis(ctx.query));
 
   // Sales per cashier — useful for shift reconciliation.
   router.get('/api/reports/staff', (ctx) => {
