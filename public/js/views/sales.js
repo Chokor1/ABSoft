@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { formatSecond, money2, second, toSecond } from '../currency.js';
 import { icon } from '../icons.js';
-import { PAYMENT_METHODS, count, errorText, methodText, t } from '../i18n.js';
+import { count, errorText, methodText, t } from '../i18n.js';
 import {
   confirmDialog,
   dateText,
@@ -25,7 +25,7 @@ import {
   toast,
   todayISO,
 } from '../ui.js';
-import { listSummary } from '../ui.js';
+import { listSummary, paymentMethods } from '../ui.js';
 import { openParty } from './lists.js';
 import { renderSaleForm } from './sale-form.js';
 
@@ -203,7 +203,7 @@ export async function recordPayment(sale) {
       label: t('pos.payment_method'),
       type: 'select',
       value: 'cash',
-      options: PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) })),
+      options: paymentMethods().map((m) => ({ value: m.name, label: methodText(m.name) })),
     },
     { name: 'date', label: t('common.date'), type: 'date', value: todayISO() },
     { name: 'note', label: t('common.note'), span: 2 },
@@ -412,7 +412,10 @@ export async function render(root, ctx) {
     filterSelect({
       label: t('filter.method'),
       value: '',
-      options: [{ value: '', label: t('filter.all') }, ...PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) }))],
+      options: [
+        { value: '', label: t('filter.all') },
+        ...store.methods.map((m) => ({ value: m.name, label: methodText(m.name) })),
+      ],
       onChange: (v) => {
         state.method = v;
         refilter();

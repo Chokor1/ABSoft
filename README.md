@@ -59,8 +59,8 @@ invoice loses a line.
 | **Stock Adjustment** | Counts, damage, expiry and write-offs as numbered documents covering many products at once. Scan or search products (or add a whole category), then type what you counted or how much changed. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
 | **Products** (`F3`) | Define what you sell: name, optional description, barcode (and any other barcodes), category, cost, default price, unit, low-stock level. Click a row to open the product's own page (see below). |
-| **Lists** | Customers, suppliers, product categories, units and expense categories — the names you reuse. A customer or supplier opens on their own page, with their balance and statement. |
-| **Reports** | Profit & loss for any date range, **Sales analysis**, product performance, stock valuation, the movement ledger and per-cashier totals. |
+| **Lists** | Customers, suppliers, product categories, units, expense categories and **payment methods** — the names you reuse. A customer or supplier opens on their own page, with their balance and statement. |
+| **Reports** | Profit & loss for any date range, **Sales analysis**, product performance, stock valuation, the movement ledger and per-cashier totals. The report menu, the dates and the buttons share one line, so the report itself gets the screen. |
 | **Users** | Add cashiers and administrators. A cashier only gets **POS**, **Sell** (without cost or profit) and their own settings. |
 | **Settings** | Store name, currency, sales tax rate, receipt footer, language, and database backups. |
 
@@ -203,6 +203,24 @@ suppliers, so a supplier's statement adds up what was bought rather than a balan
 From an invoice, the **Customer** button opens that customer's page; from a purchase, the
 **Supplier** button opens the supplier's. Names are matched ignoring capitalisation, the same way
 the lists do.
+
+---
+
+## How people pay
+
+**Lists → Payment methods** is the shop's own list. **Cash** and **On account** are built in: they
+can be switched off, but never renamed or removed, because every past invoice and report carries
+them. Everything else is yours to add, rename, switch off or delete — **Whish** and **OMT** come
+ready to use, and a card machine or a bank cheque takes a minute to add.
+
+Each method wears an **icon**: pick one of the drawn ones (cash, card, transfer, phone app, bank…)
+or **upload the method's own logo** (PNG, JPEG or WebP). The logo is shrunk in the browser and kept
+in the database, so a backup carries it. At the till each method shows its
+mark or logo with its name beside it, so a cashier picks one out of the row at a glance.
+
+The list is used by the till's payment dialog, the Sell form, expenses and the payment filter on
+Sell. Renaming a method corrects the sales, payments and expenses that already carry it — the same
+way renaming a customer does.
 
 ---
 
@@ -396,6 +414,10 @@ The cart is only what is being sold. The newest item goes on top, scanning an it
 already there adds one to its line, and each line's quantity, unit price and **discount %** are
 edited right where they sit (the invoice records the discount as money). With a second currency
 on, each line and the total show it too.
+
+A line's chevron **opens it to sell at a price**: type what the line should come to and the
+discount is worked out for you and shown in money; above the full price the unit price moves
+instead, since there is nothing left to discount.
 
 **Make payment** opens the payment dialog. On one side, the amount due in large type, the amount
 handed over (in each currency, when a second one is on) and — as you type — the change to give

@@ -20,7 +20,21 @@ export const ENTITY_KINDS = {
   category: { table: 'products', column: 'category', contact: false },
   unit: { table: 'products', column: 'unit', contact: false },
   expense_category: { table: 'expenses', column: 'category', contact: false },
+  // How people pay is written on sales, on each payment and on expenses alike.
+  payment_method: {
+    table: 'sales',
+    column: 'method',
+    contact: false,
+    icon: true,
+    also: [
+      ['payments', 'method'],
+      ['expenses', 'method'],
+    ],
+  },
 };
+
+/** Every table and column a kind's name is written in. */
+const targetsOf = (kind) => [[ENTITY_KINDS[kind].table, ENTITY_KINDS[kind].column], ...(ENTITY_KINDS[kind].also || [])];
 
 export const isKind = (kind) => Object.hasOwn(ENTITY_KINDS, kind);
 
@@ -80,6 +94,9 @@ const SELECT = `
        + (SELECT COUNT(*) FROM products  r WHERE e.kind = 'category'         AND r.category = e.name COLLATE NOCASE)
        + (SELECT COUNT(*) FROM products  u WHERE e.kind = 'unit'             AND u.unit     = e.name COLLATE NOCASE)
        + (SELECT COUNT(*) FROM expenses  x WHERE e.kind = 'expense_category' AND x.category = e.name COLLATE NOCASE)
+       + (SELECT COUNT(*) FROM sales     m WHERE e.kind = 'payment_method'   AND m.method   = e.name COLLATE NOCASE)
+       + (SELECT COUNT(*) FROM payments  y WHERE e.kind = 'payment_method'   AND y.method   = e.name COLLATE NOCASE)
+       + (SELECT COUNT(*) FROM expenses  z WHERE e.kind = 'payment_method'   AND z.method   = e.name COLLATE NOCASE)
        AS in_use
   FROM entities e`;
 
@@ -104,9 +121,22 @@ export function listEntities(kind, { search = '', all = false, page = null } = {
 
 export const getEntity = (id) => db.prepare(`${SELECT} WHERE e.id = ?`).get(id);
 
+// An icon is either the name of one the app draws, or a small uploaded logo.
+const MAX_LOGO = 80 * 1024;
+function readIcon(value) {
+  const icon = str(value);
+  if (!icon.startsWith('data:')) return icon.slice(0, 40);
+  if (!/^data:image\/(png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(icon)) {
+    throw badRequest('Use a PNG, JPEG or WebP logo', 'LOGO_TYPE');
+  }
+  if (icon.length > MAX_LOGO) throw badRequest('That logo is too large', 'LOGO_TOO_LARGE');
+  return icon;
+}
+
 function readPayload(body) {
   return {
     name: required(body.name, 'Name', 'name'),
+    icon: readIcon(body.icon),
     phone: str(body.phone),
     email: str(body.email),
     address: str(body.address),
@@ -123,10 +153,10 @@ export function createEntity(kind, body) {
   if (clash) throw badRequest(`"${data.name}" is already in this list`, 'ENTITY_EXISTS', { name: data.name });
   const res = db
     .prepare(
-      `INSERT INTO entities (kind, name, phone, email, address, tax_id, note, active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO entities (kind, name, phone, email, address, tax_id, note, active, icon)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(kind, data.name, data.phone, data.email, data.address, data.tax_id, data.note, data.active);
+    .run(kind, data.name, data.phone, data.email, data.address, data.tax_id, data.note, data.active, data.icon);
   return getEntity(lastId(res));
 }
 
@@ -143,18 +173,22 @@ export function updateEntity(id, body) {
   const data = readPayload(body);
 
   if (data.name !== existing.name) {
+    // Cash and On account are written into every report and receipt; they can be
+    // switched off, but not renamed into something the app no longer recognises.
+    if (existing.builtin) throw badRequest('This entry cannot be renamed', 'BUILTIN_ENTRY', { name: existing.name });
     const clash = db
       .prepare(`SELECT id FROM entities WHERE kind = ? AND name = ? AND id <> ?`)
       .get(existing.kind, data.name, existing.id);
     if (clash) throw badRequest(`"${data.name}" is already in this list`, 'ENTITY_EXISTS', { name: data.name });
-    const { table, column } = ENTITY_KINDS[existing.kind];
-    db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ? COLLATE NOCASE`).run(data.name, existing.name);
+    for (const [table, column] of targetsOf(existing.kind)) {
+      db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ? COLLATE NOCASE`).run(data.name, existing.name);
+    }
   }
 
   db.prepare(
-    `UPDATE entities SET name = ?, phone = ?, email = ?, address = ?, tax_id = ?, note = ?, active = ?
+    `UPDATE entities SET name = ?, phone = ?, email = ?, address = ?, tax_id = ?, note = ?, active = ?, icon = ?
      WHERE id = ?`,
-  ).run(data.name, data.phone, data.email, data.address, data.tax_id, data.note, data.active, existing.id);
+  ).run(data.name, data.phone, data.email, data.address, data.tax_id, data.note, data.active, data.icon, existing.id);
   return getEntity(existing.id);
 }
 
@@ -162,6 +196,7 @@ export function updateEntity(id, body) {
 export function deleteEntity(id) {
   const existing = getEntity(id);
   if (!existing) throw notFound('Entry not found', 'ENTITY_NOT_FOUND');
+  if (existing.builtin) throw badRequest('This entry cannot be removed — switch it off instead', 'BUILTIN_ENTRY', { name: existing.name });
   db.prepare(`DELETE FROM entities WHERE id = ?`).run(existing.id);
   return { deleted: true, in_use: existing.in_use };
 }

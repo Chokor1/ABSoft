@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { DEFAULT_EXPENSE_CATEGORIES, EXPENSE_METHODS, count, errorText, methodText, t } from '../i18n.js';
+import { DEFAULT_EXPENSE_CATEGORIES, count, errorText, methodText, t } from '../i18n.js';
 import {
   barList,
   confirmDialog,
@@ -16,6 +16,7 @@ import {
   formPage,
   money,
   monthStart,
+  paymentMethods,
   rangeBar,
   suggestions,
   toast,
@@ -223,7 +224,10 @@ async function renderForm(root, ctx, id) {
       {
         name: 'method', label: t('exp.paid_by'), type: 'select',
         value: expense?.method || 'cash',
-        options: EXPENSE_METHODS.map((m) => ({ value: m, label: methodText(m) })),
+        options: (paymentMethods().length ? paymentMethods() : [{ name: 'cash' }]).map((m) => ({
+          value: m.name,
+          label: methodText(m.name),
+        })),
       },
       {
         name: 'note', label: t('common.note'), type: 'textarea', span: 2,

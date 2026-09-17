@@ -1,7 +1,7 @@
 import { api, setUnauthorizedHandler } from './api.js';
 import { icon } from './icons.js';
 import { LANGUAGES, applyDocumentLang, errorText, lang, roleText, setLang, t } from './i18n.js';
-import { esc, formModal, initials, modal, store, toast } from './ui.js';
+import { esc, formModal, initials, loadPaymentMethods, modal, store, toast } from './ui.js';
 
 import * as dashboard from './views/dashboard.js';
 import * as pos from './views/pos.js';
@@ -40,13 +40,16 @@ const VIEWS = {
     icon: 'chart',
     group: 'reports',
     hidden: true,
+    bare: true,
     mod: {
       render: (root, ctx) => {
         ctx.navigate(['reports', 'analysis', ...ctx.params].join('/'));
       },
     },
   },
-  reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports' },
+  // Reports put their menu, dates and buttons on one line of their own, so the
+  // screen header would only repeat what the menu already says.
+  reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports', bare: true },
   users: { key: 'users', icon: 'users', mod: users, group: 'settings' },
   settings: { key: 'settings', icon: 'settings', mod: settings, group: 'settings', cashier: true },
 };
@@ -274,6 +277,7 @@ function renderShell() {
     <div class="page-head-title"><h2 id="page-title"></h2><div class="sub" id="page-sub"></div></div>
     <div class="spacer"></div>
     <div class="page-actions" id="page-actions"></div>`;
+  pageActions = pageHead.querySelector('#page-actions');
   const page = app.querySelector('#page');
   // Screens redraw themselves; whenever that takes the header with it, put it back.
   new MutationObserver(() => placePageHead()).observe(page, { childList: true, subtree: true });
@@ -371,6 +375,7 @@ const routeKey = () => {
 };
 
 let pageHead = null;
+let pageActions = null;
 let currentRoute = '';
 
 /**
@@ -381,7 +386,8 @@ let currentRoute = '';
 function placePageHead() {
   const page = document.getElementById('page');
   if (!pageHead || !page) return;
-  if (currentRoute === 'pos') {
+  // The POS and the reports keep every pixel for what they show.
+  if (currentRoute === 'pos' || VIEWS[currentRoute]?.bare) {
     pageHead.remove();
     return;
   }
@@ -411,9 +417,12 @@ async function drawRoute() {
   currentRoute = route;
 
   pageHead.remove();
+  // A screen may take the buttons into a bar of its own (the reports do); they
+  // come back to the header before the next screen is drawn.
+  pageHead.append(pageActions);
+  pageActions.innerHTML = '';
   pageHead.querySelector('#page-title').textContent = t(`nav.${view.key}`);
   pageHead.querySelector('#page-sub').textContent = t(`nav.${view.key}.sub`);
-  pageHead.querySelector('#page-actions').innerHTML = '';
   document.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === route));
   // The POS folds the sidebar away, so the exchange rate moves up into the top bar.
   const rateBox = document.getElementById('rate-box');
@@ -438,7 +447,7 @@ async function drawRoute() {
     cleanup = null;
     sweepPickers();
     cleanup = await view.mod.render(page, {
-      actions: pageHead.querySelector('#page-actions'),
+      actions: pageActions,
       navigate: (to) => (location.hash = `#/${to}`),
       params: location.hash.replace(/^#\/?/, '').split('/').slice(1),
     });
@@ -525,6 +534,8 @@ onRateChange(() => {
 
 function startApp() {
   watchRate();
+  // The ways to pay belong to the shop; every screen reads the same list.
+  loadPaymentMethods();
   renderShell();
   renderRoute();
   window.onhashchange = renderRoute;

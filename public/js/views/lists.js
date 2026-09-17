@@ -11,8 +11,12 @@ import {
   filterSelect,
   initials,
   listSummary,
+  loadPaymentMethods,
+  methodMark,
+  METHOD_ICONS,
   money,
   pager,
+  shrinkImage,
   pct,
   forgetSuggestions,
   formPage,
@@ -24,6 +28,7 @@ import {
   store,
   toast,
   todayISO,
+  toTop,
 } from '../ui.js';
 
 /** Only people and companies get contact details; a unit is just a word. */
@@ -33,6 +38,8 @@ const KINDS = [
   { kind: 'category', contact: false },
   { kind: 'unit', contact: false },
   { kind: 'expense_category', contact: false },
+  // How people pay, each with an icon for the till.
+  { kind: 'payment_method', contact: false, icon: true },
 ];
 
 /** #/lists, #/lists/<kind>, #/lists/<kind>/new, #/lists/<kind>/<id>[/<tab>], #/lists/<kind>/<id>/edit */
@@ -141,6 +148,7 @@ async function renderList(root, ctx, startKind) {
                   <thead><tr>
                     <th>${esc(t('lists.name'))}</th>
                     ${showContact ? `<th>${esc(t('lists.contact'))}</th>` : ''}
+                    ${meta().icon ? `<th>${esc(t('lists.icon'))}</th>` : ''}
                     <th>${esc(t('common.note'))}</th>
                     <th class="right">${esc(t('lists.used'))}</th>
                     <th class="right">${esc(t('lists.in_use'))}</th>
@@ -150,9 +158,9 @@ async function renderList(root, ctx, startKind) {
                     .map(
                       (r) => `<tr class="${isAdmin ? 'row-click' : ''}" data-edit="${r.id}">
                         <td>
-                          <div class="cell-title">${esc(r.name)} ${
+                          <div class="cell-title">${esc(meta().icon ? methodText(r.name) : r.name)} ${
                             r.active ? '' : `<span class="badge">${esc(t('lists.hidden'))}</span>`
-                          }</div>
+                          }${r.builtin ? `<span class="badge accent">${esc(t('lists.builtin'))}</span>` : ''}</div>
                           ${r.address ? `<div class="cell-sub">${esc(r.address)}</div>` : ''}
                         </td>
                         ${
@@ -163,6 +171,7 @@ async function renderList(root, ctx, startKind) {
                               }</td>`
                             : ''
                         }
+                        ${meta().icon ? `<td class="method-icon">${methodMark(r.icon)}</td>` : ''}
                         <td class="cell-sub">${esc(r.note || '')}</td>
                         <td class="right muted">${number(r.used_count)}</td>
                         <td class="right">${
@@ -175,9 +184,13 @@ async function renderList(root, ctx, startKind) {
                             ? `<button class="btn btn-sm btn-ghost" data-open="${r.id}" title="${esc(
                                 t('common.edit'),
                               )}">${icon('edit')}</button>
-                               <button class="btn btn-sm btn-ghost" data-del="${r.id}" title="${esc(
-                                 t('common.remove'),
-                               )}">${icon('trash')}</button>`
+                               ${
+                                 r.builtin
+                                   ? ''
+                                   : `<button class="btn btn-sm btn-ghost" data-del="${r.id}" title="${esc(
+                                       t('common.remove'),
+                                     )}">${icon('trash')}</button>`
+                               }`
                             : ''
                         }</td>
                       </tr>`,
@@ -233,6 +246,7 @@ async function renderList(root, ctx, startKind) {
       await api.deleteEntity(state.kind, entry.id);
       toast(t('lists.deleted'), 'success');
       forgetSuggestions(state.kind);
+      if (state.kind === 'payment_method') await loadPaymentMethods();
       load();
     } catch (err) {
       toast(errorText(err), 'error');
@@ -248,17 +262,53 @@ async function renderForm(root, ctx, kind, id) {
   const entry = id ? rows.find((r) => r.id === id) : null;
   const isNew = !entry;
   const showContact = KINDS.find((k) => k.kind === kind)?.contact;
+  const showIcon = KINDS.find((k) => k.kind === kind)?.icon;
   const one = t(`lists.one.${kind}`);
   // Editing a customer or supplier returns to their page.
   const back = () => ctx.navigate(entry && PARTY_TABS[kind] ? `lists/${kind}/${entry.id}` : `lists/${kind}`);
   if (id && !entry) return ctx.navigate(`lists/${kind}`);
 
-  formPage(root, {
+  const form = formPage(root, {
     title: isNew ? t('lists.add', { one }) : t('lists.edit', { one }),
     subtitle: isNew ? '' : entry.name,
     submitLabel: isNew ? t('common.save') : t('common.save_changes'),
     fields: [
-      { name: 'name', label: t('lists.name'), required: true, span: 2, value: entry?.name, autofocus: true },
+      {
+        name: 'name',
+        label: t('lists.name'),
+        required: true,
+        span: showIcon ? 1 : 2,
+        value: entry?.name,
+        autofocus: true,
+        // Cash and On account are written on every past document; only their icon
+        // and whether they are offered can change.
+        readonly: !!entry?.builtin,
+        help: entry?.builtin ? t('lists.builtin_help') : '',
+      },
+      ...(showIcon
+        ? [
+            {
+              name: 'icon',
+              label: t('lists.icon'),
+              type: 'static',
+              html: `<label>${esc(t('lists.icon'))}</label>
+                <div class="method-pick">
+                  <span class="method-preview" id="icon-preview">${methodMark(entry?.icon)}</span>
+                  <select class="select" id="icon-choice" style="max-width:190px">${METHOD_ICONS.map(
+                    (name) => `<option value="${name}" ${entry?.icon === name ? 'selected' : ''}>${esc(t(`lists.icon.${name}`))}</option>`,
+                  ).join('')}</select>
+                  <label class="btn btn-sm">${icon('image')} <span>${esc(t('lists.logo_upload'))}</span>
+                    <input type="file" id="icon-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden/>
+                  </label>
+                  <button type="button" class="btn btn-sm btn-ghost" id="icon-clear" ${
+                    String(entry?.icon || '').startsWith('data:') ? '' : 'hidden'
+                  }>${esc(t('lists.logo_remove'))}</button>
+                  <input type="hidden" name="icon" value="${esc(entry?.icon || 'coins')}"/>
+                </div>
+                <div class="help">${esc(t('lists.logo_help'))}</div>`,
+            },
+          ]
+        : []),
       ...(showContact
         ? [
             { name: 'phone', label: t('lists.phone'), value: entry?.phone || '' },
@@ -286,15 +336,47 @@ async function renderForm(root, ctx, kind, id) {
     onCancel: back,
     onSubmit: async (data) => {
       try {
-        await api.saveEntity(kind, { ...data, id: entry?.id });
+        // The icon control is markup of its own, so its value is read here.
+        const chosen = root.querySelector('input[name=icon]');
+        await api.saveEntity(kind, { ...data, ...(chosen ? { icon: chosen.value } : {}), id: entry?.id });
         toast(isNew ? t('lists.created') : t('lists.updated'), 'success');
         forgetSuggestions(kind);
+        // Every screen reads one copy of the ways to pay; keep it in step.
+        if (kind === 'payment_method') await loadPaymentMethods();
         back();
       } catch (err) {
         toast(errorText(err), 'error');
       }
     },
   });
+  if (showIcon) wireIconPicker(form);
+}
+
+/** The icon control: a drawn icon to choose, or the method's real logo uploaded. */
+function wireIconPicker(form) {
+  const hidden = form.querySelector('input[name=icon]');
+  if (!hidden) return;
+  const preview = form.querySelector('#icon-preview');
+  const choice = form.querySelector('#icon-choice');
+  const clear = form.querySelector('#icon-clear');
+  const set = (value) => {
+    hidden.value = value;
+    preview.innerHTML = methodMark(value);
+    clear.hidden = !value.startsWith('data:');
+  };
+  choice.addEventListener('change', () => set(choice.value));
+  form.querySelector('#icon-file').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      // Shrunk to a small square here, so the logo travels with a backup.
+      set(await shrinkImage(file, 96));
+    } catch {
+      toast(t('lists.logo_unreadable'), 'error');
+    }
+    e.target.value = '';
+  });
+  clear.addEventListener('click', () => set(choice.value || 'coins'));
 }
 
 /* ---------------------------------------------------- customer / supplier -- */
@@ -357,6 +439,7 @@ async function renderParty(root, ctx, kind, id, initialTab) {
     state.tab = btn.dataset.tab;
     state.page = 1;
     history.replaceState(null, '', `#/lists/${kind}/${id}/${state.tab}`);
+    toTop();
     showTab();
   });
 

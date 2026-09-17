@@ -9,7 +9,35 @@ import { sweepPickers } from './picker.js';
 export const store = {
   user: null,
   settings: { currency: '$', store_name: 'ABSoft Store', tax_rate: '0', receipt_footer: '' },
+  // How people pay, as the shop keeps it (Cash, On account, Whish, OMT…).
+  methods: [],
 };
+
+/** The icons a payment method can wear, offered when one is added. */
+export const METHOD_ICONS = ['coins', 'card', 'transfer', 'phone', 'wallet', 'bank', 'receipt', 'globe', 'gift', 'star', 'whish', 'omt'];
+
+/** A method's icon: an uploaded logo when there is one, otherwise a drawn icon. */
+export const methodMark = (glyph) =>
+  String(glyph || '').startsWith('data:image/')
+    ? `<img class="method-logo" src="${esc(glyph)}" alt="" />`
+    : icon(glyph || 'coins');
+
+/** The ways to pay that are switched on, in the shop's own order. */
+export const paymentMethods = () => store.methods.filter((m) => m.active);
+
+/** The icon a method wears; anything unknown falls back to plain money. */
+export const methodIcon = (name) =>
+  store.methods.find((m) => m.name.toLowerCase() === String(name).toLowerCase())?.icon || 'coins';
+
+/** Reload the list after it is edited, so every screen shows the same one. */
+export async function loadPaymentMethods() {
+  try {
+    store.methods = await api.entities('payment_method', { all: '1' });
+  } catch {
+    store.methods = []; // the till falls back to Cash rather than refusing to open
+  }
+  return store.methods;
+}
 
 const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => escapeMap[c]);
@@ -276,12 +304,21 @@ function fieldHtml(f) {
         : `<input class="input" type="${f.type || 'text'}" ${common} value="${esc(f.value ?? '')}"
              placeholder="${esc(f.placeholder || '')}" ${f.step ? `step="${f.step}"` : ''} ${
                f.min !== undefined ? `min="${f.min}"` : ''
-             } ${f.names ? `data-names="${esc(f.names)}"` : ''} ${f.choices ? 'data-choices' : ''} autocomplete="off"/>`;
+             } ${f.readonly ? 'readonly' : ''} ${f.names ? `data-names="${esc(f.names)}"` : ''} ${
+               f.choices ? 'data-choices' : ''
+             } autocomplete="off"/>`;
   return `<div class="field ${span}">
     <label>${esc(f.label)}</label>${f.names || f.choices ? `<div class="combo">${control}</div>` : control}
     ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
   </div>`;
 }
+
+/**
+ * Back to the top of the screen. A menu of tabs (reports, a product, a
+ * customer) stays where it is while the content under it changes, so the new
+ * tab starts at its own beginning rather than partway down the last one.
+ */
+export const toTop = () => window.scrollTo({ top: 0, behavior: 'instant' });
 
 /* ------------------------------------------------------------ tag fields -- */
 

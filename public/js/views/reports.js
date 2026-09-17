@@ -16,6 +16,7 @@ import {
   pct,
   qtyText,
   rangeBar,
+  toTop,
   signClass,
   statTile,
   todayISO,
@@ -32,18 +33,38 @@ export async function render(root, ctx) {
   const tabsHtml = (active) =>
     TAB_KEYS.map((key) => `<button data-tab="${key}" class="${key === active ? 'active' : ''}">${esc(t(`rep.tab.${key}`))}</button>`).join('');
 
-  // Sales analysis has filters of its own, so it gets the page under the report menu.
-  if (first === 'analysis') {
-    root.innerHTML = `<div class="toolbar report-tabs"><div class="seg" id="report-tabs">${tabsHtml('analysis')}</div></div>
-      <div id="analysis-root"></div>`;
-    root.querySelector('#report-tabs').addEventListener('click', (e) => {
+  const state = { ...range, tab: TAB_KEYS.includes(first) ? first : 'pnl' };
+
+  /** The report menu, first on the one line every report shares. */
+  const reportTabs = (active) => {
+    const tabs = document.createElement('div');
+    tabs.className = 'seg';
+    tabs.id = 'report-tabs';
+    tabs.innerHTML = tabsHtml(active);
+    tabs.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-tab]');
-      if (btn && btn.dataset.tab !== 'analysis') ctx.navigate(`reports/${btn.dataset.tab}`);
+      if (!btn || btn.dataset.tab === active) return;
+      // Sales analysis is a screen of its own; the rest change in place.
+      if (btn.dataset.tab === 'analysis' || active === 'analysis') return ctx.navigate(`reports/${btn.dataset.tab}`);
+      state.tab = btn.dataset.tab;
+      // The tab is in the address, so reload and Back land on it.
+      history.replaceState(null, '', `#/reports/${state.tab}`);
+      toTop();
+      load();
     });
-    return analysis.render(root.querySelector('#analysis-root'), { ...ctx, params: ctx.params.slice(1) });
+    return tabs;
+  };
+
+  // Sales analysis has filters of its own, and takes the same line for the menu.
+  if (first === 'analysis') {
+    root.innerHTML = '<div id="analysis-root"></div>';
+    return analysis.render(
+      root.querySelector('#analysis-root'),
+      { ...ctx, params: ctx.params.slice(1) },
+      { lead: reportTabs('analysis') },
+    );
   }
 
-  const state = { ...range, tab: TAB_KEYS.includes(first) ? first : 'pnl' };
   let exportRows = () => [];
 
   ctx.actions.innerHTML = `
@@ -59,29 +80,20 @@ export async function render(root, ctx) {
     Object.assign(range, r);
     load();
   });
-  // The report menu and dates stay in reach while a long report scrolls.
-  bar.classList.add('sticky-bar');
-  const tabs = document.createElement('div');
-  tabs.className = 'seg';
-  tabs.id = 'report-tabs';
-  tabs.innerHTML = tabsHtml(state.tab);
-  bar.insertBefore(tabs, bar.firstChild);
-  tabs.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-tab]');
-    if (!btn) return;
-    if (btn.dataset.tab === 'analysis') return ctx.navigate('reports/analysis');
-    state.tab = btn.dataset.tab;
-    // The tab is in the address, so reload and Back land on it.
-    history.replaceState(null, '', `#/reports/${state.tab}`);
-    load();
-  });
+  // The report menu, the dates and the buttons share one line, which stays in
+  // reach while a long report scrolls.
+  bar.classList.add('sticky-bar', 'reports-bar');
+  bar.insertBefore(reportTabs(state.tab), bar.firstChild);
+  const spacer = document.createElement('div');
+  spacer.className = 'spacer';
+  bar.append(spacer, ctx.actions);
 
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(bar, body);
 
   async function load() {
-    tabs.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
+    bar.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;

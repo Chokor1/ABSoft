@@ -1567,3 +1567,24 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .cl-detail .input { height: 30px; font-size: 13px; text-align: end; }
 .cl-detail .input.readonly { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .cart-line.open .cl-detail { animation: none; } }
+.method-icon svg { width: 18px; height: 18px; color: var(--accent-text); }
+.input[readonly] { background: var(--surface-2); color: var(--text-2); }
+.method-logo { width: 22px; height: 22px; object-fit: contain; border-radius: 5px; vertical-align: middle; }
+.pay-methods .method-logo { width: 20px; height: 20px; }
+.method-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.method-pick .method-preview {
+  display: grid; place-items: center; width: 44px; height: 44px; flex: none;
+  border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2); color: var(--accent-text);
+}
+.method-pick .method-preview svg { width: 22px; height: 22px; }
+
+/* Reports: menu, dates and buttons on one line, so the table gets the rest. */
+.reports-bar { row-gap: 8px; }
+.reports-bar .seg { flex: none; }
+.reports-bar .page-actions { flex: none; }
+.an-bar .reports-bar { margin-bottom: 8px; }
+/* A method with its own logo: the logo a little larger, its name beside it. */
+.pay-methods button.has-logo { padding: 7px 12px; }
+.pay-methods button.has-logo .method-logo { width: 26px; height: 26px; }
+/* Reports: keep the dates compact so the line holds more. */
+.reports-bar .input[type="date"] { width: 138px; }

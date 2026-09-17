@@ -2,7 +2,24 @@
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 
+// Payment apps carry their own mark, in their own colours, so a cashier picks
+// one out of the row at a glance. A shop can replace either with the logo file
+// itself (Lists → Payment methods → Upload a logo).
+const whish =
+  '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+  '<rect width="24" height="24" rx="5.5" fill="#E81B45"/>' +
+  '<path d="M2.6 9.9h6M3.4 12h5.2M4.6 14.1h4.4" stroke="#fff" stroke-width="1.15" stroke-linecap="round"/>' +
+  '<path d="M9.4 8.7l1.7 6.6 1.9-4.5 1.9 4.5 1.7-6.6" stroke="#fff" stroke-width="2.7" ' +
+  'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const omt =
+  '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+  '<rect x="1" y="6" width="22" height="12" rx="6" fill="#FFE500"/>' +
+  '<text x="12" y="15.7" text-anchor="middle" font-family="Inter, Segoe UI, system-ui, sans-serif" ' +
+  'font-size="7.6" font-weight="800" font-style="italic" fill="#111">OMT</text></svg>';
+
 export const icons = {
+  whish,
+  omt,
   dashboard: svg('<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'),
   pos: svg('<rect x="2" y="4" width="20" height="12" rx="2"/><path d="M2 20h20M7 8h4M7 12h2"/><circle cx="17" cy="11" r="1.6"/>'),
   box: svg('<path d="m21 8-9-5-9 5v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>'),
@@ -42,6 +59,13 @@ export const icons = {
   sliders: svg('<path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/>'),
   history: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>'),
   package: svg('<path d="M16.5 9.4 7.5 4.2"/><path d="m21 16-9 5-9-5V8l9-5 9 5z"/><path d="m3 8 9 5 9-5"/>'),
+  card: svg('<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/>'),
+  transfer: svg('<path d="M4 8h13l-3-3M20 16H7l3 3"/>'),
+  phone: svg('<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18.5h2"/>'),
+  bank: svg('<path d="M3 10h18L12 4 3 10z"/><path d="M5 10v8M10 10v8M14 10v8M19 10v8M3 21h18"/>'),
+  star: svg('<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
+  gift: svg('<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8M12 8v13"/><path d="M12 8S10.5 3 8 3a2.5 2.5 0 0 0 0 5M12 8s1.5-5 4-5a2.5 2.5 0 0 1 0 5"/>'),
+  globe: svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/>'),
   chevron: svg('<path d="M9 6l6 6-6 6"/>'),
   back: svg('<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>'),
   maximize: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/>'),

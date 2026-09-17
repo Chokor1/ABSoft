@@ -140,7 +140,9 @@ export function register(router) {
     // `limit` keeps the till and the type-ahead pickers light on a large
     // catalogue; the reports omit it and get everything.
     const limit = num(ctx.query.limit, 0);
-    const limitSql = limit > 0 ? `LIMIT ${Math.min(200, limit)}` : '';
+    // `offset` fetches the next batch, for the till's cards as you scroll down.
+    const offset = Math.max(0, Math.round(num(ctx.query.offset, 0)));
+    const limitSql = limit > 0 ? `LIMIT ${Math.min(200, limit)}${offset ? ` OFFSET ${offset}` : ''}` : '';
     // The till opens on what sells: most sold over the last 30 days first.
     if (ctx.query.sort === 'popular') {
       return db

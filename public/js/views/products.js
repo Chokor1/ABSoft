@@ -33,6 +33,7 @@ import {
   store,
   toast,
   todayISO,
+  toTop,
   wireTagInputs,
 } from '../ui.js';
 
@@ -407,6 +408,7 @@ async function renderDetail(root, ctx, id, initialTab) {
 
   function go(tab) {
     state.tab = tab;
+    toTop();
     // Keep the tab in the address, so reload and Back land on the same view.
     history.replaceState(null, '', `#/products/${id}/${state.tab}`);
     showTab();

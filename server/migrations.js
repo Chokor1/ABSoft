@@ -292,6 +292,41 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // How people pay is a list of its own: Cash and On account are always there
+    // (they can be switched off, never deleted), and a shop adds its own — Whish,
+    // OMT, a card machine — each with an icon for the till.
+    name: 'payment-methods',
+    up: (db) => {
+      addColumn(db, 'entities', 'icon', `TEXT NOT NULL DEFAULT ''`);
+      addColumn(db, 'entities', 'builtin', 'INTEGER NOT NULL DEFAULT 0');
+
+      const add = db.prepare(
+        `INSERT OR IGNORE INTO entities (kind, name, icon, builtin, used_count) VALUES ('payment_method', ?, ?, ?, ?)`,
+      );
+      // The names are what documents already hold, so nothing needs rewriting. The
+      // count only decides the order they are offered in, and usage takes over.
+      for (const [name, glyph, builtin, order] of [
+        ['cash', 'coins', 1, 5],
+        ['credit', 'receipt', 1, 4],
+        ['card', 'card', 0, 3],
+        ['transfer', 'transfer', 0, 2],
+        ['Whish', 'whish', 0, 1],
+        ['OMT', 'omt', 0, 1],
+      ]) {
+        add.run(name, glyph, builtin, order);
+      }
+      // Anything else already written on a document joins the list as it stands.
+      db.exec(
+        `INSERT OR IGNORE INTO entities (kind, name, icon, used_count)
+         SELECT 'payment_method', m, '', COUNT(*) FROM (
+           SELECT TRIM(method) AS m FROM sales WHERE TRIM(COALESCE(method, '')) <> ''
+           UNION ALL SELECT TRIM(method) FROM payments WHERE TRIM(COALESCE(method, '')) <> ''
+           UNION ALL SELECT TRIM(method) FROM expenses WHERE TRIM(COALESCE(method, '')) <> ''
+         ) GROUP BY m COLLATE NOCASE`,
+      );
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

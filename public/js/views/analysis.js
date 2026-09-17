@@ -20,6 +20,7 @@ import {
   signClass,
   statTile,
   todayISO,
+  toTop,
 } from '../ui.js';
 
 /**
@@ -186,7 +187,7 @@ function columnsFor(group) {
 
 /* ------------------------------------------------------------------- view -- */
 
-export async function render(root, ctx) {
+export async function render(root, ctx, { lead = null } = {}) {
   const fresh = { from: monthStart(), to: todayISO(), group: 'lines', customer: '', product: null, category: '', sort: '', dir: 'desc' };
   const state = { ...fresh, ...(remembered() || {}), page: 1, per: 50 };
 
@@ -242,7 +243,9 @@ export async function render(root, ctx) {
     Object.assign(state, r);
     refilter();
   });
-  range.classList.add('an-range');
+  range.classList.add('an-range', 'reports-bar');
+  // The report menu comes first on the line, then the dates, then the buttons.
+  if (lead) range.insertBefore(lead, range.firstChild);
   // How the lines are rolled up sits at the end of the dates row.
   range.insertAdjacentHTML(
     'beforeend',
@@ -251,6 +254,7 @@ export async function render(root, ctx) {
        <div class="seg" id="groups">${GROUPS.map((g) => `<button data-group="${g}">${esc(t(`an.group.${g}`))}</button>`).join('')}</div>
      </div>`,
   );
+  range.append(ctx.actions);
   root.querySelector('#an-range').replaceWith(range);
 
   // The table's headings stick just under the filters, however tall they wrap.
@@ -262,6 +266,7 @@ export async function render(root, ctx) {
 
   const refilter = () => {
     state.page = 1;
+    toTop();
     load();
   };
 

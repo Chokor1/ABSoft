@@ -1,14 +1,16 @@
 import { api } from '../api.js';
 import { wireNamePickers } from '../name-picker.js';
 import { icon } from '../icons.js';
-import { PAYMENT_METHODS, errorText, methodText, t } from '../i18n.js';
+import { errorText, methodText, t } from '../i18n.js';
 import {
   debounce,
   emptyState,
   esc,
   forgetSuggestions,
   modal,
+  methodMark,
   money,
+  paymentMethods,
   qtyText,
   store,
   toast,
@@ -17,8 +19,16 @@ import { showReceipt } from './sales.js';
 import { celebrateSale, playSaleChime, primeAudio, setTileImages, tileImagesEnabled } from '../feedback.js';
 import { money2, money2Html, onRateChange, second, toBase, toSecond } from '../currency.js';
 
-const methodOptions = () => PAYMENT_METHODS.map((m) => ({ value: m, label: methodText(m) }));
-const METHOD_ICONS = { cash: 'coins', card: 'wallet', transfer: 'refresh', credit: 'receipt' };
+// The shop's own ways to pay; with none set up, Cash alone still works.
+const methodOptions = () => {
+  const list = paymentMethods();
+  return (list.length ? list : [{ name: 'cash', icon: 'coins' }]).map((m) => ({
+    value: m.name,
+    label: methodText(m.name),
+    icon: m.icon || 'coins',
+    logo: String(m.icon || '').startsWith('data:image/'),
+  }));
+};
 const freshDraft = () => ({ customer: '', method: 'cash', discount: 0, discountInput: 0, discountMode: 'amount', note: '' });
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -728,9 +738,11 @@ export async function render(root, ctx) {
               <div class="pay-methods" id="pay-method" role="radiogroup">
                 ${methodOptions()
                   .map(
+                    // The mark or the method's own logo, with its name beside it.
                     (o) => `<button type="button" role="radio" data-method="${o.value}"
-                              class="${o.value === draft.method ? 'active' : ''}" aria-checked="${o.value === draft.method}">
-                              ${icon(METHOD_ICONS[o.value] || 'coins')}<span>${esc(o.label)}</span></button>`,
+                              class="${o.value === draft.method ? 'active' : ''} ${o.logo ? 'has-logo' : ''}"
+                              aria-checked="${o.value === draft.method}" title="${esc(o.label)}">
+                              ${methodMark(o.icon)}<span>${esc(o.label)}</span></button>`,
                   )
                   .join('')}
               </div>

@@ -1,11 +1,11 @@
 import { api } from '../api.js';
 import { money2 } from '../currency.js';
 import { icon } from '../icons.js';
-import { PAYMENT_METHODS, errorText, methodText, t } from '../i18n.js';
+import { errorText, methodText, t } from '../i18n.js';
 import { wireNamePickers } from '../name-picker.js';
 import { attachPicker } from '../picker.js';
 import { productOption } from '../product-option.js';
-import { emptyState, esc, forgetSuggestions, money, qtyText, store, toast, todayISO } from '../ui.js';
+import { emptyState, esc, forgetSuggestions, money, paymentMethods, qtyText, store, toast, todayISO } from '../ui.js';
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
@@ -17,6 +17,7 @@ const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 export async function renderSaleForm(root, ctx) {
   const back = () => ctx.navigate('sales');
   const taxRate = Number(store.settings.tax_rate) || 0;
+  const methods = paymentMethods().length ? paymentMethods() : [{ name: 'cash' }];
   const lines = [];
   const state = { discount: 0, paid: 0, paidTouched: false, method: 'cash' };
 
@@ -91,9 +92,9 @@ export async function renderSaleForm(root, ctx) {
       <div class="card-body sale-foot">
         <div class="sale-pay">
           <div class="field"><label>${esc(t('sell.method'))}</label>
-            <select class="select" name="method">${PAYMENT_METHODS.map(
-              (m) => `<option value="${m}">${esc(methodText(m))}</option>`,
-            ).join('')}</select></div>
+            <select class="select" name="method">${methods
+              .map((m) => `<option value="${esc(m.name)}">${esc(methodText(m.name))}</option>`)
+              .join('')}</select></div>
           <div class="field"><label>${esc(t('sell.paid_now'))}</label>
             <input class="input" type="number" step="0.01" min="0" name="paid" style="text-align:end"/>
             <div class="sale-pay-quick">
@@ -226,7 +227,8 @@ export async function renderSaleForm(root, ctx) {
       state.paid = 0;
       form.paid.value = full ? totals().total.toFixed(2) : '0';
       // Nothing paid now is usually a sale on account.
-      if (!full && form.method.value === 'cash') form.method.value = 'credit';
+      // Nothing paid now is a sale on account, when the shop keeps that method.
+      if (!full && form.method.value === 'cash' && methods.some((m) => m.name === 'credit')) form.method.value = 'credit';
       paintSums();
     }),
   );

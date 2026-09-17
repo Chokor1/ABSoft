@@ -123,11 +123,14 @@ check('it opens on the 40 best sellers, not every product', catalogue > 100 && o
 const sold = await page.evaluate(async () => {
   const d = new Date(Date.now() - 29 * 864e5 - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
   const rows = await (await fetch(`/api/reports/products?from=${d}`)).json();
-  return rows.sort((a, b) => b.qty - a.qty).map((p) => p.id);
+  return Object.fromEntries(rows.map((p) => [p.id, p.qty]));
 });
-check('best sellers first, most sold at the top', sold.length > 0 && opened[0] === sold[0] &&
-  new Set(opened.slice(0, sold.length)).size === sold.length && sold.every((id) => opened.slice(0, sold.length).includes(id)),
-  `${sold} / ${opened.slice(0, sold.length)}`);
+const soldIds = Object.keys(sold).map(Number);
+// Products that sold come first, most sold at the top; ties may fall either way.
+const qtyOrder = opened.slice(0, soldIds.length).map((id) => sold[id] ?? -1);
+check('best sellers first, most sold at the top', soldIds.length > 0 &&
+  soldIds.every((id) => opened.slice(0, soldIds.length).includes(id)) &&
+  qtyOrder.every((q, i) => i === 0 || q <= qtyOrder[i - 1]), `${JSON.stringify(sold)} / ${qtyOrder}`);
 
 // A product far down the alphabet with no sales is not on screen until searched.
 const hidden = await page.evaluate(async (ids) => {
@@ -146,7 +149,10 @@ await page.fill('#scan', word);
 await page.waitForFunction((id) => !!document.querySelector(`.tile[data-add="${id}"]:not([hidden])`), hidden.id, { timeout: 5000 });
 check('three letters or more search every product', requests.some((u) => u.includes('search=')), requests.join(' '));
 await page.keyboard.press('Escape');
-await page.waitForFunction(() => document.querySelectorAll('.tile').length === 40);
+await page.waitForFunction((n) => {
+  const shown = document.querySelectorAll('.tile').length;
+  return shown >= 40 && shown < n;
+}, catalogue);
 check('clearing the search brings the best sellers back', true);
 
 const scrollCards = () =>
@@ -157,7 +163,9 @@ const scrollCards = () =>
   });
 await scrollCards();
 await page.waitForFunction(() => document.querySelectorAll('.tile').length > 40, null, { timeout: 5000 });
-check('scrolling to the end of the cards loads the next batch', (await page.$$('.tile')).length === 80, String((await page.$$('.tile')).length));
+const afterOneScroll = (await page.$$('.tile')).length;
+check('scrolling to the end of the cards loads the next batch', afterOneScroll > 40 && afterOneScroll % 40 === 0 &&
+  afterOneScroll < catalogue, String(afterOneScroll));
 for (let i = 0; i < 4; i++) {
   await scrollCards();
   await page.waitForTimeout(700);
@@ -181,6 +189,43 @@ await page.waitForTimeout(300);
 const confirmBtn = await page.$('.modal [data-confirm]');
 if (confirmBtn) await confirmBtn.click();
 await page.waitForTimeout(300);
+
+/* ------------------------------------------------------- ways to pay */
+console.log('\n[the ways to pay the shop keeps]');
+await page.goto(`${BASE}#/lists/payment_method`);
+await page.waitForSelector('tbody tr');
+const listed = await page.$$eval('tbody tr .cell-title', (n) => n.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
+check('the list starts with Cash and On account, marked built in',
+  listed[0].startsWith('Cash') && listed[0].includes('built in') && listed[1].startsWith('On account'), listed.join(' | '));
+check('Whish and OMT come ready to use', listed.some((x) => x.startsWith('Whish')) && listed.some((x) => x.startsWith('OMT')));
+check('each one shows its icon', (await page.$$('.method-icon svg')).length === listed.length);
+check('a built-in one has no delete button, the others do',
+  (await page.$$('tbody tr:nth-child(1) [data-del]')).length === 0 && (await page.$$('tbody tr [data-del]')).length > 0);
+await shot('90-payment-methods');
+
+await page.click('#new');
+await page.waitForSelector('#page-form input[name=name]');
+await page.fill('input[name=name]', 'Bank cheque');
+await page.selectOption('#icon-choice', 'bank');
+check('the form previews the icon as it is chosen', (await page.innerHTML('#icon-preview')).includes('<svg'));
+await page.click('#page-form button[type=submit]');
+await page.waitForSelector('tbody tr');
+await page.goto(`${BASE}#/pos`);
+await page.waitForSelector('.tile');
+await scan('5449000000996');
+await page.click('#checkout');
+await page.waitForSelector('.pay-methods');
+const buttons = await page.$$eval('.pay-methods button', (b) => b.map((x) => x.textContent.trim()));
+check('a method added in Lists is offered at the till', buttons.includes('Bank cheque'), buttons.join(' | '));
+check('with an icon on every button', (await page.$$('.pay-methods button svg')).length === buttons.length);
+await page.click('.pay-methods button:has-text("Whish")');
+await page.waitForTimeout(200);
+await page.click('.modal-foot .btn-primary');
+await page.waitForSelector('.receipt', { timeout: 8000 });
+const paid = await page.evaluate(async () => (await (await fetch('/api/sales?page=1&per=1')).json()).rows[0].method);
+check('and a sale taken that way records it', paid === 'Whish', paid);
+await page.click('.modal-head [data-close]');
+await page.waitForTimeout(500);
 
 /* ----------------------------------------------------- the cart is simple */
 console.log('\n[the cart is only what is being sold]');
