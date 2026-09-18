@@ -204,7 +204,7 @@ await till.goto(`${BASE}#/sales`);
 await till.waitForSelector('.table-scroll thead');
 const heads = await till.$$eval('.table-scroll thead th', (n) => n.map((x) => x.textContent.trim().toLowerCase()));
 check('sales history has no cost or profit columns', !heads.includes('cost') && !heads.includes('profit'), heads.join(' | '));
-check('and no profit badge', !(await till.textContent('.list-summary')).toLowerCase().includes('profit'));
+check('and no profit column', !(await till.textContent('.table-scroll thead')).toLowerCase().includes('profit'));
 await shot(till, '84-cashier-sales');
 await till.close();
 

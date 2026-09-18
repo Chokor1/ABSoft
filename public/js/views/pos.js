@@ -692,63 +692,75 @@ export async function render(root, ctx) {
       body: `
         <div class="pay-layout">
           <section class="pay-main">
+            <!-- What is owed, then what is handed over, then where that leaves the sale. -->
             <div class="pay-due">
               <span class="pay-due-label">${esc(t('pos.amount_due'))}</span>
               <span class="amount"><span id="pay-due"></span><small class="pay-due2" id="pay-due2"></small></span>
             </div>
 
-            ${
-              cur
-                ? `<div class="pay-tenders">
-                    <div class="field">
-                      <label>${esc(t('pos.received_in', { c: base }))}</label>
+            <div class="pay-take">
+              ${
+                cur
+                  ? `<div class="pay-tenders">
+                      <div class="field">
+                        <label for="pay-amount">${esc(t('pos.received_in', { c: base }))}</label>
+                        <div class="pay-input"><span class="pay-cur">${esc(base)}</span>
+                          <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/></div>
+                      </div>
+                      <div class="field">
+                        <div class="pay-label-row">
+                          <label for="pay-amount2">${esc(t('pos.received_in', { c: cur.symbol }))}</label>
+                          <button type="button" class="btn btn-sm btn-ghost pay-all2" id="pay-all2">${esc(t('pos.all_in', { c: cur.symbol }))}</button>
+                        </div>
+                        <div class="pay-input"><span class="pay-cur">${esc(cur.symbol)}</span>
+                          <input class="input pay-amount" id="pay-amount2" type="number" step="any" min="0" placeholder="0"/></div>
+                      </div>
+                    </div>
+                    <div class="pay-rate" id="pay-rate"></div>`
+                  : `<div class="field">
+                      <label for="pay-amount">${esc(t('pos.amount_received'))}</label>
                       <div class="pay-input"><span class="pay-cur">${esc(base)}</span>
                         <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/></div>
-                    </div>
-                    <div class="field">
-                      <div class="pay-label-row">
-                        <label for="pay-amount2">${esc(t('pos.received_in', { c: cur.symbol }))}</label>
-                        <button type="button" class="btn btn-sm btn-ghost pay-all2" id="pay-all2">${esc(t('pos.all_in', { c: cur.symbol }))}</button>
-                      </div>
-                      <div class="pay-input"><span class="pay-cur">${esc(cur.symbol)}</span>
-                        <input class="input pay-amount" id="pay-amount2" type="number" step="any" min="0" placeholder="0"/></div>
-                    </div>
-                  </div>
-                  <div class="pay-rate" id="pay-rate"></div>`
-                : `<div class="field">
-                    <label>${esc(t('pos.amount_received'))}</label>
-                    <div class="pay-input"><span class="pay-cur">${esc(base)}</span>
-                      <input class="input pay-amount" id="pay-amount" type="number" step="0.01" min="0" autofocus/></div>
-                  </div>`
-            }
+                    </div>`
+              }
+            </div>
 
             <div class="pay-result" id="pay-result"></div>
+
+            <div class="field pay-note-field">
+              <label for="pay-note">${esc(t('pos.note_optional'))}</label>
+              <input class="input" id="pay-note" value="${esc(draft.note)}" placeholder="${esc(t('pos.note_placeholder'))}" autocomplete="off"/>
+            </div>
           </section>
 
           <aside class="pay-side">
-            <div class="field">
-              <label>${esc(t('common.customer'))}</label>
-              <div class="combo"><input class="input" id="pay-customer" data-names="customer" value="${esc(
-                draft.customer,
-              )}" placeholder="${esc(t('common.walk_in'))}" autocomplete="off"/></div>
-            </div>
+            <div class="pay-card">
+              <div class="pay-card-head">${esc(t('pos.who_and_how'))}</div>
+              <div class="field">
+                <label for="pay-customer">${esc(t('common.customer'))}</label>
+                <div class="combo"><input class="input" id="pay-customer" data-names="customer" value="${esc(
+                  draft.customer,
+                )}" placeholder="${esc(t('common.walk_in'))}" autocomplete="off"/></div>
+              </div>
 
-            <div class="field">
-              <label>${esc(t('pos.payment_method'))}</label>
-              <div class="pay-methods" id="pay-method" role="radiogroup">
-                ${methodOptions()
-                  .map(
-                    // The mark or the method's own logo, with its name beside it.
-                    (o) => `<button type="button" role="radio" data-method="${o.value}"
-                              class="${o.value === draft.method ? 'active' : ''} ${o.logo ? 'has-logo' : ''}"
-                              aria-checked="${o.value === draft.method}" title="${esc(o.label)}">
-                              ${methodMark(o.icon)}<span>${esc(o.label)}</span></button>`,
-                  )
-                  .join('')}
+              <div class="field">
+                <label>${esc(t('pos.payment_method'))}</label>
+                <div class="pay-methods" id="pay-method" role="radiogroup">
+                  ${methodOptions()
+                    .map(
+                      // The mark or the method's own logo, with its name beside it.
+                      (o) => `<button type="button" role="radio" data-method="${o.value}"
+                                class="${o.value === draft.method ? 'active' : ''} ${o.logo ? 'has-logo' : ''}"
+                                aria-checked="${o.value === draft.method}" title="${esc(o.label)}">
+                                ${methodMark(o.icon)}<span>${esc(o.label)}</span></button>`,
+                    )
+                    .join('')}
+                </div>
               </div>
             </div>
 
             <div class="pay-summary">
+              <div class="pay-card-head">${esc(t('pos.what_it_comes_to'))}</div>
               <div class="sum-row"><span>${esc(t('common.subtotal'))}</span><span class="v">${money(cartTotals().subtotal)}</span></div>
               ${
                 lineDiscounts > 0
@@ -770,15 +782,13 @@ export async function render(root, ctx) {
               <div class="sum-row total"><span>${esc(t('common.total'))}</span><span class="v" id="pay-total"></span></div>
             </div>
 
-            <div class="field">
-              <label>${esc(t('pos.note_optional'))}</label>
-              <input class="input" id="pay-note" value="${esc(draft.note)}" placeholder="${esc(t('pos.note_placeholder'))}" autocomplete="off"/>
-            </div>
           </aside>
         </div>`,
-      footer: `<div class="spacer"></div>
+      footer: `<span class="pay-hint hide-mobile">${esc(t('pos.enter_hint'))}</span>
+               <div class="spacer"></div>
                <button class="btn" data-close>${esc(t('common.cancel'))}</button>
-               <button class="btn btn-primary btn-lg" id="pay-confirm">${icon('check')} ${esc(t('pos.confirm_sale'))}</button>`,
+               <button class="btn btn-primary btn-lg" id="pay-confirm">${icon('check')}
+                 <span>${esc(t('pos.confirm_sale'))}</span><b class="pay-confirm-total" id="pay-confirm-total"></b></button>`,
       setup: (dialog, close) => {
         const $d = (sel) => dialog.querySelector(sel);
         const amount = $d('#pay-amount');
@@ -794,6 +804,7 @@ export async function render(root, ctx) {
 
         const paint = () => {
           const tot = current();
+          $d('#pay-confirm-total').textContent = money(tot.total);
           $d('#pay-due').textContent = money(tot.total);
           $d('#pay-due2').textContent = second() ? money2(tot.total) : '';
           $d('#pay-total').textContent = money(tot.total);

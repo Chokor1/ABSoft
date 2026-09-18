@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { formatSecond, money2, second, toSecond } from '../currency.js';
 import { icon } from '../icons.js';
-import { count, errorText, methodText, t } from '../i18n.js';
+import { errorText, methodText, t } from '../i18n.js';
 import {
   confirmDialog,
   dateText,
@@ -25,7 +25,7 @@ import {
   toast,
   todayISO,
 } from '../ui.js';
-import { listSummary, paymentMethods } from '../ui.js';
+import { paymentMethods } from '../ui.js';
 import { openParty } from './lists.js';
 import { renderSaleForm } from './sale-form.js';
 
@@ -423,7 +423,6 @@ export async function render(root, ctx) {
     }),
   );
 
-  const summary = listSummary(bar);
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(bar, body);
@@ -481,18 +480,6 @@ export async function render(root, ctx) {
       }),
       { total: 0, profit: 0, cogs: 0, balance: 0 },
     );
-
-    summary.innerHTML = `
-      <span class="ls-count">${esc(count('sales', result.total))}</span>
-      <span class="badge accent">${esc(t('sales.revenue_badge', { v: money(sum.total) }))}</span>
-      ${
-        admin
-          ? `<span class="badge ${sum.profit >= 0 ? 'success' : 'danger'}">${esc(
-              t('sales.profit_badge', { v: money(sum.profit) }),
-            )}</span>`
-          : ''
-      }
-      ${sum.balance > 0.004 ? `<span class="badge warn">${esc(t('pay.owed_badge', { v: money(sum.balance) }))}</span>` : ''}`;
 
     body.innerHTML = `
       <div class="card">

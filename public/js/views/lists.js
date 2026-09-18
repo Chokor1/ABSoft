@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { count, errorText, methodText, t } from '../i18n.js';
+import { errorText, methodText, t } from '../i18n.js';
 import {
   confirmDialog,
   dateText,
@@ -10,7 +10,6 @@ import {
   esc,
   filterSelect,
   initials,
-  listSummary,
   loadPaymentMethods,
   methodMark,
   METHOD_ICONS,
@@ -81,7 +80,6 @@ async function renderList(root, ctx, startKind) {
     </div>
     <div class="spacer"></div>`;
 
-  const summary = listSummary(tabs);
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(tabs, body);
@@ -136,8 +134,6 @@ async function renderList(root, ctx, startKind) {
     const result = await api.entities(state.kind, { search: state.search, all: '1', page: state.page, per: state.per });
     state.rows = result.rows;
     const showContact = meta().contact;
-
-    summary.innerHTML = `<span class="ls-count">${esc(count('lists', result.total))}</span>`;
 
     body.innerHTML = `
       <div class="card">

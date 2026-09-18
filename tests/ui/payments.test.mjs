@@ -101,7 +101,7 @@ const row = await page.textContent('tr:has-text("Part Payer")');
 check('the row shows the paid amount', row.includes('$5.00'), row.replace(/\s+/g, ' '));
 check('the row shows the balance', row.includes('$13.00'), row.replace(/\s+/g, ' '));
 check('and is marked part paid', row.includes('part paid'), row.replace(/\s+/g, ' '));
-check('the filter bar totals what is owed', (await page.textContent('.list-summary')).includes('Owed'));
+check('the invoice is listed as part paid', (await page.textContent('.table-scroll tbody')).includes('part paid'));
 check('rows that owe offer to take payment directly',
   await page.isVisible('tr:has-text("Part Payer") [data-pay-row]'));
 check('settled rows do not', (await page.$$('tr:has-text("Walk-in") [data-pay-row]')).length === 0);

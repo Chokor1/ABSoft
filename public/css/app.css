@@ -718,32 +718,8 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
    till payment step
    ========================================================================== */
 
-.pay-due {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
-  padding: 14px 16px; border-radius: var(--radius-sm);
-  background: var(--accent-soft); color: var(--accent-text);
-  font-weight: 650;
-}
-.pay-due .amount { font-size: 26px; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-
-
-/* The running result of what has been typed: change owed back, or money still
-   owing. It is the whole point of the screen, so it is the loudest thing on it. */
-.pay-result {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
-  padding: 13px 16px; border-radius: var(--radius-sm);
-  font-weight: 650;
-  transition: background 0.18s ease, color 0.18s ease;
-}
-.pay-result .amount { font-size: 21px; font-weight: 750; font-variant-numeric: tabular-nums; }
-.pay-result.settled { background: var(--success-soft); color: var(--success); }
-.pay-result.change { background: var(--info-soft); color: var(--info); }
-.pay-result.owing { background: var(--warn-soft); color: var(--warn); }
-
-.pay-amount { font-size: 20px; font-weight: 700; height: 52px; text-align: end; font-variant-numeric: tabular-nums; }
 
 .pay-form { display: grid; gap: 14px; padding: 6px 0 12px; }
-.pay-summary { padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
 
 /* phones only: the running total and the pay button stay on screen */
 .pos-bar { display: none; }
@@ -1270,37 +1246,7 @@ table.data.compact td { padding: 8px 14px; }
 .sum-row.total2 > span:first-child { font-size: 12px; color: var(--muted); }
 .sum-row.total2 .money2 { font-size: 15px; font-weight: 700; color: var(--money2); }
 
-/* Take payment: what is due and what was handed over on one side, the details on the other */
-.modal.wide:has(.pay-layout) { width: min(920px, 100%); }
-.pay-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; padding: 4px 0 8px; align-items: start; }
-.pay-main, .pay-side { display: grid; gap: 14px; align-content: start; }
-.pay-due {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 18px 20px; border-radius: 16px;
-  background: var(--surface-3); color: var(--text);
-  border: 1px solid var(--border);
-  border-inline-start: 4px solid var(--text-2);
-}
-.pay-due-label { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.pay-due .amount { display: flex; flex-direction: column; align-items: flex-end; font-size: 32px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.pay-due2 { font-size: 14px; font-weight: 600; opacity: 0.85; letter-spacing: 0; }
-.pay-due2:empty { display: none; }
-.pay-tenders { display: grid; gap: 12px; }
-.pay-input { position: relative; }
-.pay-input .pay-cur {
-  position: absolute; inset-inline-start: 12px; top: 50%; transform: translateY(-50%);
-  font-size: 14px; font-weight: 700; color: var(--muted); pointer-events: none;
-}
-.pay-input .pay-amount { height: 54px; font-size: 24px; font-weight: 700; text-align: end; padding-inline-start: 48px; font-variant-numeric: tabular-nums; }
-.pay-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.pay-label-row label { margin: 0; }
-.pay-all2 { padding: 2px 8px; height: auto; font-size: 12px; }
-.pay-tenders .field { display: grid; }
-.pay-rate { font-size: 12px; color: var(--muted); margin-top: -6px; }
-.pay-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-radius: 14px; }
-.pay-result > span:first-child { display: inline-flex; align-items: center; gap: 7px; font-weight: 650; }
-.pay-result > span:first-child svg { width: 17px; height: 17px; }
-.pay-result .amount small.money2 { display: block; font-size: 12.5px; color: inherit; opacity: 0.8; text-align: end; }
+/* The row of ways to pay. */
 .pay-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .pay-methods button {
   display: flex; align-items: center; justify-content: center; gap: 7px;
@@ -1311,16 +1257,8 @@ table.data.compact td { padding: 8px 14px; }
 .pay-methods button svg { width: 16px; height: 16px; }
 .pay-methods button:hover { border-color: var(--accent); color: var(--text); }
 .pay-methods button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
-.pay-summary .sum-row.total { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border); }
-.pay-summary .sum-row.total .v { font-size: 18px; }
-.pay-discount-box { display: inline-flex; align-items: center; gap: 6px; }
-.pay-discount-box .sum-input { width: 96px; }
 .seg.seg-sm { padding: 2px; }
 .seg.seg-sm button { padding: 4px 9px; font-size: 12px; }
-@media (max-width: 760px) {
-  .pay-layout { grid-template-columns: minmax(0, 1fr); }
-}
-.pay-input:has(#pay-amount2) .pay-cur { color: var(--money2); }
 #pay-amount2 { border-color: color-mix(in srgb, var(--money2) 35%, var(--border)); background: color-mix(in srgb, var(--money2-soft) 55%, var(--surface)); }
 #pay-amount2:focus { border-color: var(--money2); box-shadow: 0 0 0 3px color-mix(in srgb, var(--money2) 18%, transparent); }
 .btn.pay-all2 { color: var(--money2); background: var(--money2-soft); }
@@ -1588,3 +1526,97 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .pay-methods button.has-logo .method-logo { width: 26px; height: 26px; }
 /* Reports: keep the dates compact so the line holds more. */
 .reports-bar .input[type="date"] { width: 138px; }
+
+/* ==========================================================================
+   Take payment: what is owed, what is handed over, what that leaves — beside
+   who is buying and what the sale comes to.
+   ========================================================================== */
+
+.modal.wide:has(.pay-layout) { width: min(940px, 100%); }
+.pay-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 18px; padding: 2px 0 6px; align-items: start; }
+.pay-main, .pay-side { display: grid; gap: 14px; align-content: start; }
+
+/* The amount owed leads, quietly: the figure carries it, not a colour. */
+.pay-due {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 18px; border-radius: 16px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--accent);
+}
+.pay-due-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.pay-due .amount { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1;
+  font-size: 34px; font-weight: 800; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+.pay-due2 { font-size: 13.5px; font-weight: 600; opacity: 0.9; letter-spacing: 0; }
+.pay-due2:empty { display: none; }
+
+/* What is handed over. */
+.pay-take { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-2); }
+.pay-take .field { display: grid; gap: 6px; }
+.pay-take label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.pay-tenders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pay-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pay-label-row .btn { text-transform: none; letter-spacing: 0; }
+.pay-input { position: relative; }
+.pay-input .pay-cur {
+  position: absolute; inset-inline-start: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 15px; font-weight: 700; color: var(--muted); pointer-events: none;
+}
+.pay-input .pay-amount {
+  height: 56px; font-size: 25px; font-weight: 750; text-align: end; padding-inline-start: 52px;
+  font-variant-numeric: tabular-nums; background: var(--surface);
+}
+.pay-input:has(#pay-amount2) .pay-cur { color: var(--money2); }
+.pay-rate { font-size: 12px; color: var(--muted); }
+
+/* Where the money leaves the sale: settled, change, or still owing. */
+.pay-result {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 15px 18px; border-radius: 16px; border: 1px solid transparent;
+}
+.pay-result > span:first-child { display: inline-flex; align-items: center; gap: 8px; font-weight: 650; }
+.pay-result > span:first-child svg { width: 18px; height: 18px; }
+.pay-result .amount { font-size: 23px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.pay-result .amount small.money2 { display: block; font-size: 12.5px; color: inherit; opacity: 0.85; text-align: end; font-weight: 600; }
+.pay-result.settled { background: var(--success-soft); color: var(--success); border-color: color-mix(in srgb, var(--success) 25%, transparent); }
+.pay-result.change { background: var(--info-soft); color: var(--info); border-color: color-mix(in srgb, var(--info) 25%, transparent); }
+.pay-result.owing { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+
+/* Who is buying, how they pay, and what it comes to. */
+.pay-card, .pay-summary { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-2); }
+.pay-card-head { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.pay-card .field { display: grid; gap: 6px; }
+.pay-card .field > label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.pay-summary { gap: 2px; }
+.pay-summary .sum-row { padding: 5px 0; }
+.pay-summary .sum-row.total { margin-top: 6px; padding-top: 9px; border-top: 1px dashed var(--border-strong); }
+.pay-summary .sum-row.total span:first-child { font-weight: 700; color: var(--text); }
+.pay-summary .sum-row.total .v { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.pay-discount-box { display: inline-flex; align-items: center; gap: 6px; }
+.pay-discount-box .sum-input { width: 92px; }
+.pay-note-field { display: grid; gap: 6px; }
+.pay-note-field label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+
+.pay-hint { font-size: 12px; color: var(--muted); }
+.pay-confirm-total { margin-inline-start: 8px; font-variant-numeric: tabular-nums; opacity: 0.92; }
+
+@media (max-width: 860px) {
+  .pay-layout { grid-template-columns: minmax(0, 1fr); }
+  .pay-due .amount { font-size: 28px; }
+}
+@media (max-width: 520px) {
+  .pay-tenders { grid-template-columns: minmax(0, 1fr); }
+  .pay-input .pay-amount { height: 50px; font-size: 21px; }
+}
+/* Money is typed, not nudged: the browser's little arrows only get in the way. */
+.pay-amount::-webkit-outer-spin-button, .pay-amount::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.pay-amount { -moz-appearance: textfield; }
+
+/* A product's barcodes, as a table it is easy to read down. */
+.barcodes-box { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); overflow: hidden; }
+.barcodes-table { background: var(--surface); }
+.barcodes-table td { padding: 7px 12px; font-size: 13px; }
+.barcodes-table tr:last-child td { border-bottom: 0; }
+.barcodes-table .badge { font-size: 10.5px; }
+.barcodes-add { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); }
+.barcodes-add .input-icon { flex: 1; }
+.barcodes-add .input { height: 34px; }

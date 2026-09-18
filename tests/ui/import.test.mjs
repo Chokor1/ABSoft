@@ -57,14 +57,14 @@ await page.goto(`${BASE}#/products/new`);
 await page.waitForSelector('#page-form input[name=opening_stock]');
 check('the new product form has opening stock, 0 by default', (await page.inputValue('input[name=opening_stock]')) === '0');
 await page.fill('input[name=name]', 'Form Opened Tea');
-await page.fill('input[name=barcode]', 'FORM-OPN-1');
+await page.fill('.barcodes-entry', 'FORM-OPN-1');
 await page.fill('input[name=cost]', '2');
 await page.fill('input[name=price]', '4');
 await page.fill('input[name=opening_stock]', '1');
 await page.click('#page-form button[type=submit]');
 await page.waitForSelector('.product-hero');
 check('after saving, the product page has no opening stock field', (await page.$$('input[name=opening_stock]')).length === 0);
-check('and the product holds 1', (await page.textContent('.product-hero')).includes('1 pcs'), await page.textContent('.product-hero'));
+check('and the product holds 1', (await page.textContent('#page-form')).includes('1 pcs'), await page.textContent('#page-form'));
 const opened = await api('/api/adjustments?page=1&per=10&type=opening');
 check('an opening stock adjustment was written', opened.total === 1 && opened.rows[0].line_count === 1, JSON.stringify(opened.total));
 

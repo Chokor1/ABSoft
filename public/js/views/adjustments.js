@@ -3,7 +3,7 @@ import { attachPicker } from '../picker.js';
 import { attachNamePicker } from '../name-picker.js';
 import { productOption } from '../product-option.js';
 import { icon } from '../icons.js';
-import { count, errorText, t } from '../i18n.js';
+import { errorText, t } from '../i18n.js';
 import {
   confirmDialog,
   dateText,
@@ -13,7 +13,6 @@ import {
   emptyState,
   esc,
   filterSelect,
-  listSummary,
   pager,
   money,
   monthStart,
@@ -120,7 +119,6 @@ async function renderList(root, ctx) {
     );
   }
 
-  const summary = listSummary(bar);
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(bar, body);
@@ -141,10 +139,6 @@ async function renderList(root, ctx) {
     rows = result.rows;
     const value = result.sums.value; // everything that matches, not just this page
     const pageValue = rows.reduce((s, a) => s + a.value, 0);
-
-    summary.innerHTML = `
-      <span class="ls-count">${esc(count('adj', result.total))}</span>
-      <span class="badge ${value < 0 ? 'danger' : 'success'}">${esc(t('adj.value_badge', { v: money(value) }))}</span>`;
 
     body.innerHTML = `
       <div class="card">

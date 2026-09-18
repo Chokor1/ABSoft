@@ -92,6 +92,24 @@ check('deleting a product frees its barcodes', (await call('POST', '/api/product
 const dry = (await call('POST', '/api/products/import', { dry_run: true, rows: [{ name: 'Again', barcode: 'TEA-2' }] })).data;
 check('importing skips a row whose barcode is another product\'s extra one', dry.rows[0].status === 'skip');
 
+/* ------------------------------------------------------------------- merge */
+console.log('\n[the same thing entered twice]');
+const double = (await call('POST', '/api/products', {
+  name: 'Mint Tea (dup)', barcode: 'TEA-DUP', barcodes: ['TEA-DUP2'], cost: 4, price: 10, opening_stock: 20,
+})).data;
+await call('POST', '/api/purchases', { supplier: 'Dup Supply', items: [{ product_id: double.id, qty: 5, unit_cost: 4 }] });
+const beforeStock = (await get(`/api/products/${tea.id}`)).stock;
+r = await call('POST', `/api/products/${double.id}/merge`, { into: tea.id });
+check('merging moves everything across', r.status === 200 && r.data.id === tea.id &&
+  r.data.merged.moved.stock_moves >= 2 && r.data.merged.moved.purchase_items === 1, JSON.stringify(r.data.merged));
+check('the stock lands on the product merged into', near(r.data.stock, beforeStock + 25), `${r.data.stock} vs ${beforeStock} + 25`);
+check('its barcodes keep scanning, now for the other product',
+  (await get('/api/products/lookup?code=TEA-DUP')).id === tea.id &&
+  (await get('/api/products/lookup?code=TEA-DUP2')).id === tea.id);
+check('and the duplicate is gone', (await call('GET', `/api/products/${double.id}`)).status === 404);
+check('a product cannot be merged into itself', (await call('POST', `/api/products/${tea.id}/merge`, { into: tea.id })).status === 400);
+check('nor into a product that is not there', (await call('POST', `/api/products/${tea.id}/merge`, { into: 99999 })).status === 400);
+
 /* ------------------------------------------------------------------ sales */
 console.log('\n[the sales analysis]');
 // Rana buys twice (typed two ways), a walk-in once. The first invoice has a discount of its own.

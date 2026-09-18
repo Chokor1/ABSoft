@@ -52,6 +52,7 @@ export const api = {
   saveProduct: (p) => (p.id ? api.put(`/api/products/${p.id}`, p) : api.post('/api/products', p)),
   deleteProduct: (id) => api.del(`/api/products/${id}`),
   adjustStock: (id, qty, note) => api.post(`/api/products/${id}/adjust`, { qty, note }),
+  mergeProduct: (id, into) => api.post(`/api/products/${id}/merge`, { into }),
   productSales: (id, range) => api.get(`/api/products/${id}/sales`, range),
   productPurchases: (id) => api.get(`/api/products/${id}/purchases`),
   uploadProductImage: (id, data) => api.put(`/api/products/${id}/image`, { data }),

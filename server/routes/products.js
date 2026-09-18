@@ -479,6 +479,48 @@ export function register(router) {
     return { deleted: true };
   });
 
+  /**
+   * Merge one product into another: the same thing entered twice, or a duplicate
+   * created by an import. Everything the first product holds — its sales,
+   * purchases, adjustments, stock movements and barcodes — becomes the second
+   * one's, and the first is removed. The second keeps its own name, cost and
+   * price; stock follows the movements, so the balance lands where it should.
+   */
+  router.post('/api/products/:id/merge', (ctx) => {
+    if (ctx.user.role !== 'admin') throw badRequest('Only an administrator can merge products', 'MERGE_ADMIN_ONLY');
+    const from = getProduct(ctx.params.id);
+    if (!from) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    const into = getProduct(num(ctx.body.into));
+    if (!into) throw badRequest('Choose the product to merge into', 'MERGE_TARGET', {});
+    if (into.id === from.id) throw badRequest('A product cannot be merged into itself', 'MERGE_SELF');
+
+    const count = (table) => num(db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE product_id = ?`).get(from.id).n);
+    const moved = {
+      sale_items: count('sale_items'),
+      purchase_items: count('purchase_items'),
+      adjustment_items: count('adjustment_items'),
+      stock_moves: count('stock_moves'),
+      barcodes: (from.barcode ? 1 : 0) + from.barcodes.length,
+    };
+
+    return transact(() => {
+      for (const table of ['sale_items', 'purchase_items', 'adjustment_items', 'stock_moves']) {
+        db.prepare(`UPDATE ${table} SET product_id = ? WHERE product_id = ?`).run(into.id, from.id);
+      }
+      // Its codes keep scanning, now ringing up the product they were merged into:
+      // the extra ones simply change hands, and its main code joins them.
+      db.prepare(`UPDATE OR IGNORE product_barcodes SET product_id = ? WHERE product_id = ?`).run(into.id, from.id);
+      if (from.barcode) {
+        db.prepare(`INSERT OR IGNORE INTO product_barcodes (product_id, barcode) VALUES (?, ?)`).run(into.id, from.barcode);
+      }
+      // Anything the target already answered to stays with the target.
+      db.prepare(`DELETE FROM product_barcodes WHERE product_id = ?`).run(from.id);
+      db.prepare(`DELETE FROM product_images WHERE product_id = ?`).run(from.id);
+      db.prepare(`DELETE FROM products WHERE id = ?`).run(from.id);
+      return { ...getProduct(into.id), merged: { from: { id: from.id, name: from.name }, moved } };
+    });
+  });
+
   // Manual stock correction (damage, count difference, returns).
   router.post('/api/products/:id/adjust', (ctx) => {
     const product = getProduct(ctx.params.id);

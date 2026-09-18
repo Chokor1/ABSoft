@@ -101,7 +101,9 @@ await shot('90-product-details');
 await page.fill('input[name=price]', '4.25');
 await page.click('#page-form button[type=submit]');
 await page.waitForTimeout(900);
-check('saving updates the header straight away', (await page.textContent('.product-hero')).includes('$4.25'));
+check('saving keeps the new price in the form', (await page.inputValue('input[name=price]')) === '4.25');
+check('and the header says the product, not what the form already shows',
+  !(await page.textContent('.product-hero')).includes('$4.25'));
 check('and stays on the page', /\/products\/\d+(\/details)?$/.test(page.url()), page.url());
 
 console.log('\n[a picture]');

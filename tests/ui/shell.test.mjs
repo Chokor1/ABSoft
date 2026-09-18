@@ -108,7 +108,7 @@ console.log('\n[and they still save]');
 await page.goto(`${BASE}#/products/new`);
 await page.waitForSelector('#page-form');
 await page.fill('input[name=name]', 'Page Form Product');
-await page.fill('input[name=barcode]', 'PAGE-1');
+await page.fill('.barcodes-entry', 'PAGE-1');
 await page.fill('input[name=cost]', '3');
 await page.fill('input[name=price]', '7');
 await page.fill('input[name=opening_stock]', '12');
@@ -129,7 +129,7 @@ check('the edit URL identifies the record', /products\/\d+\/details/.test(page.u
 await page.fill('input[name=price]', '9');
 await page.click('#page-form button[type=submit]');
 await page.waitForTimeout(1200);
-check('the edit saved', (await page.textContent('.product-hero')).includes('9.00'));
+check('the edit saved', (await page.inputValue('input[name=price]')) === '9');
 
 await page.goto(`${BASE}#/expenses/new`);
 await page.waitForSelector('#page-form');

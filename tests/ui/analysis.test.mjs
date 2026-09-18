@@ -57,31 +57,39 @@ await page.waitForSelector('.shell');
 /* ------------------------------------------------------------ barcodes */
 console.log('\n[a product with other barcodes]');
 await page.goto(`${BASE}#/products/new`);
-await page.waitForSelector('.tags-entry');
+await page.waitForSelector('.barcodes-entry');
 await page.fill('input[name=name]', 'Tagged Rice');
-await page.fill('input[name=barcode]', 'RICE-1');
 await page.fill('input[name=price]', '3');
-await page.click('.tags-entry');
-for (const code of ['RICE-2', 'RICE-3']) {
+const codes = () => page.$$eval('.barcodes-table tbody tr td:first-child', (r) => r.map((x) => x.textContent.trim()));
+await page.click('.barcodes-entry');
+for (const code of ['RICE-1', 'RICE-2', 'RICE-3']) {
   await page.keyboard.type(code);
   await page.keyboard.press('Enter'); // what a scanner does after every code
 }
-check('each code scanned becomes a chip', (await page.$$('.tags-box .tag')).length === 2);
+check('each code scanned becomes a row, the first one the main barcode',
+  (await codes()).join() === 'RICE-1,RICE-2,RICE-3' &&
+  (await page.textContent('.barcodes-table tbody tr:first-child')).includes('Main'), (await codes()).join());
 check('and Enter did not save the product', page.url().endsWith('#/products/new'));
 await page.keyboard.type('RICE-2');
 await page.keyboard.press('Enter');
-check('the same code twice is not added again', (await page.$$('.tags-box .tag')).length === 2);
-await page.click('.tag[data-tag="RICE-3"] [data-untag]');
-check('× takes a code off', (await page.$$('.tags-box .tag')).length === 1);
-await page.click('.tags-entry');
+check('the same code twice is not added again', (await codes()).length === 3);
+await page.click('[data-drop="RICE-3"]');
+check('a row can be taken off', (await codes()).join() === 'RICE-1,RICE-2');
+await page.click('[data-main="RICE-2"]');
+check('and any row can become the main one', (await codes()).join() === 'RICE-2,RICE-1');
+await page.click('.barcodes-entry');
 await page.keyboard.type('RICE-4'); // typed, not yet confirmed with Enter
-await shot('170-product-other-barcodes');
+await shot('170-product-barcodes');
 await page.click('#page-form button[type=submit]');
 await page.waitForSelector('.product-hero');
 const rice = (await api('/api/products?search=Tagged Rice'))[0];
-check('saved with the chips and the code still being typed', JSON.stringify(rice.barcodes) === '["RICE-2","RICE-4"]', JSON.stringify(rice.barcodes));
-check('the product page shows them', (await page.$$('.tags-box .tag')).length === 2);
-await page.click('.tags-entry');
+check('saved with the main code, the others, and the one still being typed',
+  rice.barcode === 'RICE-2' && JSON.stringify(rice.barcodes) === '["RICE-1","RICE-4"]',
+  `${rice.barcode} / ${JSON.stringify(rice.barcodes)}`);
+check('the product page lists them as a table', (await codes()).join() === 'RICE-2,RICE-1,RICE-4');
+check('and its header says the name, not what the form already shows',
+  (await text('.product-hero .ph-text')).startsWith('Tagged Rice'), await text('.product-hero .ph-text'));
+await page.click('.barcodes-entry');
 await page.keyboard.type('RICE-5');
 await page.keyboard.press('Enter');
 await page.click('#page-form button[type=submit]');

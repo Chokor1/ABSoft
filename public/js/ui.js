@@ -183,7 +183,7 @@ export function confirmDialog({ title, message, confirmLabel = t('common.confirm
 }
 
 /** Modal built from a field spec; resolves with the collected values. */
-export function formModal({ title, subtitle, fields, submitLabel = t('common.save'), wide = false, extraFooter = '' }) {
+export function formModal({ title, subtitle, fields, submitLabel = t('common.save'), wide = false, extraFooter = '', setup: extraSetup }) {
   const body = `<form id="modal-form" class="form-grid" style="padding:8px 0 12px">${fields
     .map(fieldHtml)
     .join('')}</form>`;
@@ -198,6 +198,10 @@ export function formModal({ title, subtitle, fields, submitLabel = t('common.sav
     setup: (root, close) => {
       wireNamePickers(root, fields);
       wireTagInputs(root);
+      wireBarcodeTables(root);
+      // A field may need more than the spec can say (a product search, say).
+      // Closing the modal sweeps away any picker it attached.
+      extraSetup?.(root, close);
       root.querySelector('#modal-form').addEventListener('submit', (e) => {
         e.preventDefault();
         close(readFields(root, fields));
@@ -218,6 +222,10 @@ export function readFields(root, fields) {
     if (!el) continue;
     if (f.type === 'tags') {
       data[f.name] = tagValues(el.closest('.tags-field'));
+      continue;
+    }
+    if (f.type === 'barcodes') {
+      data[f.name] = barcodeValues(el.closest('.barcodes-field'));
       continue;
     }
     data[f.name] = f.type === 'checkbox' ? el.checked : f.type === 'number' ? Number(el.value) : el.value.trim();
@@ -261,6 +269,7 @@ export function formPage(container, { title, subtitle = '', fields, submitLabel 
   container.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', () => onCancel?.()));
   wireNamePickers(container, fields);
   wireTagInputs(container);
+  wireBarcodeTables(container);
 
   const first = container.querySelector('[autofocus], input:not([type=hidden]), select, textarea');
   first?.focus();
@@ -272,6 +281,23 @@ function fieldHtml(f) {
   const span = f.span === 2 ? 'span-2' : '';
   const common = `name="${f.name}" ${f.required ? 'required' : ''} ${f.autofocus ? 'autofocus' : ''}`;
   if (f.type === 'static') return `<div class="field ${span}">${f.html}</div>`;
+  if (f.type === 'barcodes') {
+    const codes = f.value && typeof f.value === 'object' ? f.value : { main: '', list: [] };
+    return `<div class="field ${span} barcodes-field">
+      <label>${esc(f.label)}</label>
+      <div class="barcodes-box">
+        <table class="data barcodes-table"><tbody data-rows></tbody></table>
+        <div class="barcodes-add">
+          <div class="input-icon">${icon('barcode')}
+            <input class="input barcodes-entry" placeholder="${esc(f.placeholder || '')}" autocomplete="off"/>
+          </div>
+          <button type="button" class="btn btn-sm" data-add-code>${icon('plus')} ${esc(t('common.add'))}</button>
+        </div>
+      </div>
+      <input type="hidden" name="${f.name}" value="${esc(JSON.stringify(codes))}"/>
+      ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
+    </div>`;
+  }
   if (f.type === 'tags') {
     const values = Array.isArray(f.value) ? f.value : [];
     return `<div class="field ${span} tags-field">
@@ -307,8 +333,9 @@ function fieldHtml(f) {
              } ${f.readonly ? 'readonly' : ''} ${f.names ? `data-names="${esc(f.names)}"` : ''} ${
                f.choices ? 'data-choices' : ''
              } autocomplete="off"/>`;
+  // `combo` alone wraps the field for a picker the caller attaches itself.
   return `<div class="field ${span}">
-    <label>${esc(f.label)}</label>${f.names || f.choices ? `<div class="combo">${control}</div>` : control}
+    <label>${esc(f.label)}</label>${f.names || f.choices || f.combo ? `<div class="combo">${control}</div>` : control}
     ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
   </div>`;
 }
@@ -319,6 +346,104 @@ function fieldHtml(f) {
  * tab starts at its own beginning rather than partway down the last one.
  */
 export const toTop = () => window.scrollTo({ top: 0, behavior: 'instant' });
+
+/* ------------------------------------------------------- barcode tables -- */
+
+/** What the table holds, including a code typed but not yet added. */
+function barcodeValues(field) {
+  const codes = JSON.parse(field.querySelector('input[type=hidden]').value || '{"main":"","list":[]}');
+  const pending = field.querySelector('.barcodes-entry').value.trim();
+  if (pending && pending !== codes.main && !codes.list.includes(pending)) {
+    if (codes.main) codes.list = [...codes.list, pending];
+    else codes.main = pending;
+  }
+  return codes;
+}
+
+/**
+ * A product's barcodes as a small table: the main one first (the one printed on
+ * shelf labels and shown in lists), then any others the same item arrives under.
+ * Scan or type to add; any row can be made the main one or taken off.
+ */
+export function wireBarcodeTables(root) {
+  root.querySelectorAll('.barcodes-field').forEach((field) => {
+    if (field.dataset.wired) return;
+    field.dataset.wired = '1';
+    const hidden = field.querySelector('input[type=hidden]');
+    const rows = field.querySelector('[data-rows]');
+    const entry = field.querySelector('.barcodes-entry');
+    const read = () => JSON.parse(hidden.value || '{"main":"","list":[]}');
+
+    const draw = () => {
+      const codes = read();
+      const all = [...(codes.main ? [{ code: codes.main, main: true }] : []), ...codes.list.map((code) => ({ code }))];
+      rows.innerHTML = all.length
+        ? all
+            .map(
+              (r) => `<tr>
+                <td class="mono">${esc(r.code)}</td>
+                <td class="right nowrap">
+                  ${
+                    r.main
+                      ? `<span class="badge accent">${esc(t('prod.barcode_main'))}</span>`
+                      : `<button type="button" class="btn btn-sm btn-ghost" data-main="${esc(r.code)}">${esc(t('prod.barcode_make_main'))}</button>`
+                  }
+                  <button type="button" class="btn btn-sm btn-ghost" data-drop="${esc(r.code)}"
+                          title="${esc(t('common.remove'))}">${icon('trash')}</button>
+                </td>
+              </tr>`,
+            )
+            .join('')
+        : `<tr><td class="muted">${esc(t('prod.barcode_none'))}</td></tr>`;
+    };
+    const write = (codes) => {
+      hidden.value = JSON.stringify(codes);
+      draw();
+    };
+
+    const add = () => {
+      const code = entry.value.trim();
+      entry.value = '';
+      if (!code) return;
+      const codes = read();
+      if (code === codes.main || codes.list.includes(code)) return;
+      if (codes.main) codes.list.push(code);
+      else codes.main = code;
+      write(codes);
+    };
+    entry.addEventListener('keydown', (e) => {
+      // A scanner types the code and presses Enter; that adds a row, never saves.
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      add();
+    });
+    // Not on blur: a row appearing under the pointer would move whatever is being
+    // clicked. A code left in the box is saved with the form all the same.
+    field.querySelector('[data-add-code]').addEventListener('click', add);
+
+    rows.addEventListener('click', (e) => {
+      const main = e.target.closest('[data-main]');
+      const drop = e.target.closest('[data-drop]');
+      const codes = read();
+      if (main) {
+        const code = main.dataset.main;
+        codes.list = [...codes.list.filter((c) => c !== code), ...(codes.main ? [codes.main] : [])];
+        codes.main = code;
+        write(codes);
+      } else if (drop) {
+        const code = drop.dataset.drop;
+        if (codes.main === code) {
+          codes.main = codes.list[0] || '';
+          codes.list = codes.list.slice(1);
+        } else {
+          codes.list = codes.list.filter((c) => c !== code);
+        }
+        write(codes);
+      }
+    });
+    draw();
+  });
+}
 
 /* ------------------------------------------------------------ tag fields -- */
 

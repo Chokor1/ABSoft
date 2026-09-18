@@ -5,6 +5,8 @@ import { wireNamePickers } from '../name-picker.js';
 import { money2, money2Html, onRateChange, second } from '../currency.js';
 import { attachNamePicker } from '../name-picker.js';
 import { renderImport } from './product-import.js';
+import { attachPicker } from '../picker.js';
+import { productOption } from '../product-option.js';
 import {
   chartSvg,
   confirmDialog,
@@ -34,6 +36,7 @@ import {
   toast,
   todayISO,
   toTop,
+  wireBarcodeTables,
   wireTagInputs,
 } from '../ui.js';
 
@@ -60,17 +63,15 @@ function productFields(product) {
       placeholder: t('prod.description_placeholder'),
       help: t('prod.description_help'),
     },
-    { name: 'barcode', label: t('common.barcode'), value: product?.barcode || '', placeholder: t('prod.barcode_placeholder') },
     { name: 'category', label: t('common.category'), value: product?.category || '', names: 'category', placeholder: t('prod.category_placeholder') },
     {
       name: 'barcodes',
-      label: t('prod.other_barcodes'),
-      type: 'tags',
-      mono: true,
+      label: t('prod.barcodes'),
+      type: 'barcodes',
       span: 2,
-      value: product?.barcodes || [],
-      placeholder: t('prod.other_barcodes_placeholder'),
-      help: t('prod.other_barcodes_help'),
+      value: { main: product?.barcode || '', list: product?.barcodes || [] },
+      placeholder: t('prod.barcode_placeholder'),
+      help: t('prod.barcodes_help'),
     },
     { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
     { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
@@ -82,42 +83,63 @@ function productFields(product) {
   ];
 }
 
-/** Ask how to change the stock, then record it. Resolves true when stock moved. */
-async function adjustStock(product) {
-  const data = await formModal({
-    title: t('prod.adjust'),
-    subtitle: t('prod.adjust_sub', { name: product.name, q: qtyText(product.stock), u: product.unit }),
-    submitLabel: t('prod.adjust_apply'),
+/** The main barcode and the others, as the server takes them. */
+const withBarcodes = (data) => {
+  const codes = data.barcodes && typeof data.barcodes === 'object' && !Array.isArray(data.barcodes) ? data.barcodes : null;
+  return codes ? { ...data, barcode: codes.main, barcodes: codes.list } : data;
+};
+
+/**
+ * The same thing entered twice: choose what this product should become part of,
+ * and everything it holds moves there. Resolves with the product merged into.
+ */
+async function mergeProduct(product) {
+  let target = null;
+  const picked = await formModal({
+    title: t('prod.merge_title', { name: product.name }),
+    subtitle: t('prod.merge_sub'),
+    submitLabel: t('prod.merge_apply'),
     fields: [
       {
-        name: 'mode',
-        label: t('prod.adjust_type'),
-        type: 'select',
-        value: 'set',
-        options: [
-          { value: 'set', label: t('prod.adjust_set') },
-          { value: 'add', label: t('prod.adjust_add') },
-          { value: 'remove', label: t('prod.adjust_remove') },
-        ],
+        name: 'into',
+        label: t('prod.merge_into'),
+        span: 2,
+        placeholder: t('buy.find_product'),
+        autofocus: true,
+        combo: true,
       },
-      { name: 'qty', label: t('common.quantity'), type: 'number', step: 'any', min: 0, value: 0, autofocus: true },
-      { name: 'note', label: t('prod.adjust_reason'), span: 2, placeholder: t('prod.adjust_reason_placeholder') },
+      { type: 'static', span: 2, html: `<div class="help">${esc(t('prod.merge_warning'))}</div>` },
     ],
+    setup: (root) => {
+      const input = root.querySelector('input[name=into]');
+      return attachPicker(input, {
+        // Anything but this product itself, which cannot absorb itself.
+        search: async (q) => (await api.products({ search: q, limit: 25, all: '1' })).filter((p) => p.id !== product.id),
+        render: productOption,
+        emptyText: t('buy.no_product_match'),
+        onPick: (p) => {
+          target = p;
+          input.value = p.name;
+        },
+      });
+    },
   });
-  if (!data) return false;
-  const amount = Number(data.qty) || 0;
-  const delta = data.mode === 'set' ? amount - Number(product.stock) : data.mode === 'remove' ? -amount : amount;
-  if (!delta) {
-    toast(t('prod.adjust_none'), 'warn');
-    return false;
-  }
+  if (!picked || !target) return null;
+
+  const ok = await confirmDialog({
+    title: t('prod.merge_confirm_title', { from: product.name, into: target.name }),
+    message: t('prod.merge_confirm_msg', { from: product.name, into: target.name }),
+    confirmLabel: t('prod.merge_apply'),
+    danger: true,
+  });
+  if (!ok) return null;
   try {
-    const res = await api.adjustStock(product.id, delta, data.note);
-    toast(res.adjustment ? t('prod.adjusted_doc', { doc: res.adjustment.doc_no }) : t('prod.adjusted'), 'success');
-    return true;
+    const saved = await api.mergeProduct(product.id, target.id);
+    toast(t('prod.merged', { from: product.name, into: saved.name }), 'success');
+    return saved;
   } catch (err) {
     toast(errorText(err), 'error');
-    return false;
+    return null;
   }
 }
 
@@ -351,7 +373,7 @@ async function renderForm(root, ctx) {
     onCancel: back,
     onSubmit: async (data) => {
       try {
-        const saved = await api.saveProduct(data);
+        const saved = await api.saveProduct(withBarcodes(data));
         toast(t('prod.created'), 'success');
         forgetSuggestions('category');
         forgetSuggestions('unit');
@@ -381,10 +403,11 @@ async function renderDetail(root, ctx, id, initialTab) {
   let dropPickers = () => {};
 
   ctx.actions.innerHTML = `
-    <button class="btn" id="adjust">${icon('adjust')} ${esc(t('prod.tip_adjust'))}</button>
+    <button class="btn" id="merge">${icon('package')} ${esc(t('prod.merge'))}</button>
     <button class="btn btn-ghost" id="remove" title="${esc(t('common.delete'))}">${icon('trash')}</button>`;
-  ctx.actions.querySelector('#adjust').addEventListener('click', async () => {
-    if (await adjustStock(product)) reload();
+  ctx.actions.querySelector('#merge').addEventListener('click', async () => {
+    const into = await mergeProduct(product);
+    if (into) ctx.navigate(`products/${into.id}`);
   });
   ctx.actions.querySelector('#remove').addEventListener('click', async () => {
     const res = await removeProduct(product);
@@ -422,12 +445,7 @@ async function renderDetail(root, ctx, id, initialTab) {
         ${productThumb(product, 'xs')}
         <div class="ph-text">
           <h2>${esc(product.name)}</h2>
-          <div class="ph-badges">
-            ${product.category ? `<span class="badge">${esc(product.category)}</span>` : ''}
-            <span class="badge ${product.stock <= 0 ? 'danger' : low ? 'warn' : 'success'}">${qtyText(product.stock)} ${esc(product.unit)}</span>
-            <span class="badge accent">${money(product.price)} ${money2Html(product.price)}</span>
-            ${product.active ? '' : `<span class="badge">${esc(t('prod.archived'))}</span>`}
-          </div>
+          ${product.active ? '' : `<div class="ph-badges"><span class="badge warn">${esc(t('prod.archived'))}</span></div>`}
         </div>
         <div class="spacer"></div>
         <div class="seg" id="tabs">${TABS.map(
@@ -493,6 +511,7 @@ async function renderDetail(root, ctx, id, initialTab) {
     const form = body.querySelector('#page-form');
     dropPickers = wireNamePickers(form, fields);
     wireTagInputs(form);
+    wireBarcodeTables(form);
     const paintPrice2 = () => {
       const el = body.querySelector('#price2');
       if (el) el.textContent = money2(form.price.value);
@@ -509,7 +528,7 @@ async function renderDetail(root, ctx, id, initialTab) {
       e.preventDefault();
       if (!form.checkValidity()) return form.reportValidity();
       try {
-        await api.saveProduct({ ...readFields(form, fields), id });
+        await api.saveProduct({ ...withBarcodes(readFields(form, fields)), id });
         forgetSuggestions('category');
         forgetSuggestions('unit');
         toast(t('prod.updated'), 'success');
