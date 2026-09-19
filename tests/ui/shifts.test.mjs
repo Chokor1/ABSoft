@@ -35,6 +35,11 @@ const page = await browser.newPage({ viewport: { width: 1500, height: 980 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 const shot = (n) => page.screenshot({ path: resolve(SHOTS, `${n}.png`) });
+// Count print requests instead of opening a print dialog.
+await page.addInitScript(() => {
+  window.__prints = 0;
+  window.print = () => { window.__prints++; };
+});
 
 await page.goto(BASE);
 await page.waitForSelector('#login-form');
@@ -108,6 +113,16 @@ await page.waitForSelector('.receipt', { timeout: 8000 });
 await page.click('.modal-head [data-close]');
 const sale = (await page.evaluate(async () => (await fetch('/api/sales?limit=1')).json()))[0];
 check('the sale belongs to the shift', !!sale.shift_id, JSON.stringify(sale.shift_id));
+// A second sale paid by card, to count at the close as well.
+await page.fill('#scan', '5901234123457');
+await page.keyboard.press('Enter');
+await page.waitForSelector('.cart-line');
+await page.click('#checkout');
+await page.waitForSelector('#pay-confirm');
+await page.click('#pay-method [data-method=card]');
+await page.click('#pay-confirm');
+await page.waitForSelector('.receipt', { timeout: 8000 });
+await page.click('.modal-head [data-close]');
 
 console.log('\n[closing]');
 await page.click('#shift-chip');
@@ -115,10 +130,29 @@ await page.waitForSelector('#counted-cash');
 const expected = await page.inputValue('#counted-cash');
 check('the count starts at what the drawer should hold', Math.abs(Number(expected) - 118) < 0.01, expected);
 check('which balances', (await page.textContent('#shift-diff')).length > 0 && (await page.getAttribute('#shift-diff', 'class')).includes('settled'));
+const lines = await page.$$eval('.sct-row', (rows) => rows.map((r) => r.dataset.line));
+check('card is counted beside the cash', lines.join() === 'cash,card', lines.join());
+check('expecting the card sale', Math.abs(Number(await page.inputValue('[data-count=card]')) - 18) < 0.01);
 await page.fill('#counted-cash', '115');
 check('counting less shows the drawer short', (await page.getAttribute('#shift-diff', 'class')).includes('owing'));
+check('and the cash line shows by how much', (await page.textContent('[data-diff=cash]')).includes('3.00'));
+await page.waitForTimeout(700);
 await shot('132-shift-close');
 await page.click('#shift-close');
+await page.waitForSelector('.shift-done');
+await page.waitForTimeout(1200);
+const done = (await page.textContent('.shift-done')).replace(/\s+/g, ' ');
+check('closing shows the shift closed, with each method', done.includes('SH-000001') && done.includes('Card') && done.includes('Short'), done);
+check('and asks whether to print', done.includes('Print the shift report?'));
+await shot('134-shift-closed');
+await page.click('.shift-done [data-print]');
+await page.waitForSelector('#shift-report');
+await page.waitForTimeout(400);
+const report = (await page.textContent('#shift-report')).replace(/\s+/g, ' ');
+check('Print opens the shift report and prints it', (await page.evaluate(() => window.__prints)) === 1 &&
+  report.includes('Shift report SH-000001') && report.includes('Card') && report.includes('Total difference'), report);
+await shot('135-shift-report');
+await page.click('.modal-head [data-close]');
 await page.waitForSelector('#shift-gate:not([hidden])');
 check('once closed, the till asks for the next shift', await page.isVisible('#shift-open-form'));
 

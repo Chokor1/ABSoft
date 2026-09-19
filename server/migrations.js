@@ -358,6 +358,14 @@ const MIGRATIONS = [
                CREATE INDEX IF NOT EXISTS idx_payments_shift ON payments(shift_id);`);
     },
   },
+  {
+    // Closing a shift counts every way of paying, not only the cash: what the
+    // card terminal, Whish or OMT say came in, kept as { method: amount }.
+    name: 'shift-method-counts',
+    up: (db) => {
+      addColumn(db, 'shifts', 'counted_methods', "TEXT NOT NULL DEFAULT '{}'");
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

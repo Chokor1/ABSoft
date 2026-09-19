@@ -91,7 +91,11 @@ check('with each way of paying listed', cur.payments.some((p) => p.method === 'c
   JSON.stringify(cur.payments));
 
 console.log('\n[closing]');
-r = await call('POST', `/api/shifts/${shift.id}/close`, { counted_cash: 70, note: 'Five short' });
+check('card is listed to count as well', cur.others.length === 1 && cur.others[0].method === 'card' && near(cur.others[0].expected, 20),
+  JSON.stringify(cur.others));
+r = await call('POST', `/api/shifts/${shift.id}/close`, { counted_cash: 70, counted: { card: 18 }, note: 'Five short' });
+check('closing counts card too', near(r.data.others[0].counted, 18) && near(r.data.others[0].difference, -2) &&
+  near(r.data.difference_total, -7), JSON.stringify(r.data.others));
 check('closing records the count against what was expected', r.status === 200 && r.data.status === 'closed' &&
   near(r.data.expected_cash, 75) && near(r.data.counted_cash, 70) && near(r.data.difference, -5), JSON.stringify(r.data));
 check('a closed shift cannot be closed twice', (await call('POST', `/api/shifts/${shift.id}/close`, { counted_cash: 1 })).data.code === 'SHIFT_CLOSED');

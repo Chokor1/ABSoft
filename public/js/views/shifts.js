@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { formatSecond, second } from '../currency.js';
 import { icon } from '../icons.js';
 import { errorText, methodText, t } from '../i18n.js';
+import { printShiftReport } from './pos-shift.js';
 import { dateTimeText, docPage, emptyState, esc, money, pager, signClass, store, toast } from '../ui.js';
 
 /** How a counted drawer compares with what it should hold. */
@@ -132,6 +133,19 @@ async function renderDoc(root, ctx, id) {
                ${closed ? row(t('shift.counted', { c: cur.symbol }), esc(formatSecond(s.counted_cash2))) : ''}`
             : ''
         }
+        ${(s.others || [])
+          .map(
+            (o) => `<div class="pay-card-head" style="margin-top:12px">${esc(methodText(o.method))}</div>
+              ${row(t('shift.expected'), money(o.expected))}
+              ${closed ? row(t('shift.counted_col'), money(o.counted)) : ''}
+              ${closed ? row(t('shift.difference'), `<span class="${signClass(o.difference)}">${money(o.difference, { sign: true })}</span>`) : ''}`,
+          )
+          .join('')}
+        ${
+          closed && s.others?.length
+            ? row(t('shift.total_difference'), `<b class="${signClass(s.difference_total)}">${money(s.difference_total, { sign: true })}</b>`, 'total')
+            : ''
+        }
       </div></section>
     </div>
     ${
@@ -158,5 +172,5 @@ async function renderDoc(root, ctx, id) {
       }</div>
     </div>`;
   body.querySelectorAll('[data-sale]').forEach((tr) => tr.addEventListener('click', () => ctx.navigate(`sales/${tr.dataset.sale}`)));
-  root.querySelector('[data-print]').addEventListener('click', () => window.print());
+  root.querySelector('[data-print]').addEventListener('click', () => printShiftReport(s));
 }

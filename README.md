@@ -439,10 +439,12 @@ only inside an open shift:
 - **During the shift.** Its number shows at the end of the search bar. Every till sale, and every
   payment taken on an older invoice, belongs to the open shift. Sales entered by hand from **Sell**
   are never blocked.
-- **Closing.** Click the shift's number: the dialog shows what the shift took by payment method,
-  what was left on account, and what the drawer should hold (opening cash + cash taken). Type what
-  you counted and it shows at once whether the drawer balances, is over or is short. Closing keeps
-  that count for good, and the till asks for the next shift.
+- **Closing.** Click the shift's number. One table counts every way of paying: the cash drawer
+  (opening cash + cash taken), and each other method the shift took (card, Whish, OMT…) against
+  what came in. Type what you counted and each line, and the total, shows at once whether it
+  balances, is over or is short. Closing keeps those counts for good, then a short animation shows
+  the result and asks whether to **print the shift report** (a receipt-style summary). The till
+  then asks for the next shift.
 - **History.** **Shifts** in the menu (shown only while shifts are on) lists every shift with its
   expected and counted cash; each opens as a document with its figures and its sales.
 

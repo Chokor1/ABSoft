@@ -41,11 +41,22 @@ function shiftTotals(shift) {
     .all(shift.id);
   const cashIn = money(payments.filter((p) => p.method === 'cash' && p.currency !== 'second').reduce((a, p) => a + p.amount, 0));
   const cashIn2 = money(payments.filter((p) => p.method === 'cash' && p.currency === 'second').reduce((a, p) => a + p.amount2, 0));
+  // Every way of paying other than cash, in the main currency: what the shift
+  // should show on the card terminal, Whish, OMT…
+  const others = new Map();
+  for (const p of payments) {
+    if (p.method === 'cash') continue;
+    const row = others.get(p.method) || { method: p.method, n: 0, expected: 0 };
+    row.n += p.n;
+    row.expected = money(row.expected + p.amount);
+    others.set(p.method, row);
+  }
   return {
     sales: num(sales.n),
     sales_total: num(sales.total),
     on_account: num(sales.owed),
     payments,
+    others: [...others.values()],
     taken: money(payments.reduce((a, p) => a + p.amount, 0)),
     cash_in: cashIn,
     cash_in2: cashIn2,
@@ -68,6 +79,18 @@ export function loadShift(id) {
   // A closed shift keeps what was expected when it was counted, whatever happens after.
   const expected = closed ? num(shift.expected_cash) : totals.expected_cash;
   const expected2 = closed ? num(shift.expected_cash2) : totals.expected_cash2;
+  let counts = {};
+  try {
+    counts = JSON.parse(shift.counted_methods || '{}') || {};
+  } catch {
+    /* an unreadable count reads as none */
+  }
+  // A closed shift shows each method's count; one not counted was taken as expected.
+  const others = totals.others.map((o) => {
+    if (!closed) return { ...o, counted: null, difference: null };
+    const counted = counts[o.method] === undefined ? o.expected : num(counts[o.method]);
+    return { ...o, counted, difference: money(counted - o.expected) };
+  });
   return {
     ...shift,
     status: closed ? 'closed' : 'open',
@@ -76,6 +99,11 @@ export function loadShift(id) {
     expected_cash2: expected2,
     difference: closed ? money(num(shift.counted_cash) - expected) : null,
     difference2: closed ? money(num(shift.counted_cash2) - expected2) : null,
+    others,
+    // Cash and every other method together.
+    difference_total: closed
+      ? money(num(shift.counted_cash) - expected + others.reduce((a, o) => a + o.difference, 0))
+      : null,
   };
 }
 
@@ -108,11 +136,20 @@ export function register(router) {
     if (shift.status === 'closed') throw badRequest(`Shift ${shift.doc_no} is already closed`, 'SHIFT_CLOSED', { doc: shift.doc_no });
     const counted = money(Math.max(0, num(ctx.body.counted_cash)));
     const counted2 = money(Math.max(0, num(ctx.body.counted_cash2)));
+    // What was counted for each other method; one left out counts as expected.
+    const sent = ctx.body.counted && typeof ctx.body.counted === 'object' ? ctx.body.counted : {};
+    const counts = {};
+    for (const o of shift.others) {
+      counts[o.method] = sent[o.method] === undefined || sent[o.method] === '' ? o.expected : money(Math.max(0, num(sent[o.method])));
+    }
     db.prepare(
       `UPDATE shifts SET closed_by = ?, closed_at = ?, expected_cash = ?, expected_cash2 = ?,
-                         counted_cash = ?, counted_cash2 = ?, closing_note = ?
+                         counted_cash = ?, counted_cash2 = ?, counted_methods = ?, closing_note = ?
        WHERE id = ?`,
-    ).run(ctx.user.id, localNow(), shift.expected_cash, shift.expected_cash2, counted, counted2, str(ctx.body.note), shift.id);
+    ).run(
+      ctx.user.id, localNow(), shift.expected_cash, shift.expected_cash2,
+      counted, counted2, JSON.stringify(counts), str(ctx.body.note), shift.id,
+    );
     return loadShift(shift.id);
   });
 
