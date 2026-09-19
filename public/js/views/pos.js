@@ -408,6 +408,29 @@ export async function render(root, ctx) {
   });
   $('#clear-search').addEventListener('click', resetSearch);
 
+  /**
+   * A scanner is a keyboard that types very fast, so a scan is lost whenever the
+   * cursor is not in the search box — after tapping a card, or closing a dialog.
+   * Any stray letter or digit typed on the till is sent to the search box, which
+   * also lets the cashier start typing without aiming at it first.
+   *
+   * Left alone: anything typed in a field, a dialog on top, a shortcut with
+   * Ctrl/Alt/⌘, and Space on a focused button (which is how a button is pressed).
+   */
+  function toScanBox(e) {
+    if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
+    const el = e.target;
+    if (el === scan || el.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+    // A dialog, or the shift gate, has the cashier's attention instead.
+    if (document.querySelector('.modal-backdrop, .sale-done, #shift-gate:not([hidden])')) return;
+    if (e.key === ' ' && el.closest?.('button, a')) return;
+    e.preventDefault();
+    scan.focus();
+    scan.value += e.key;
+    scan.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  document.addEventListener('keydown', toScanBox);
+
   /* ----------------------------------------------------------------- cart -- */
 
   /** A line's discount is typed as a percentage; the invoice records it as money. */
@@ -1000,6 +1023,7 @@ export async function render(root, ctx) {
   // main.js calls this when navigating away.
   return () => {
     window.removeEventListener('scroll', onScroll);
+    document.removeEventListener('keydown', toScanBox);
     stopWatching();
     shifts.destroy();
   };

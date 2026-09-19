@@ -407,7 +407,9 @@ any barcode, category or description, every word counting) and shows the first m
 matches first, with the cards sliding and fading into place. Enter or a scanner looks the code up
 exactly — any of a product's barcodes — so an item that is not on screen still rings up at once;
 Enter also adds the product when only one card matches. Escape or **Clear** brings the best
-sellers back. Both numbers are set under **Settings → Search**: a shop with a very large catalogue can
+sellers back. A scan works wherever the cursor is: any letter or digit typed on the
+till goes into the search box, so a barcode still rings up after tapping a card or closing a
+dialog. Typing inside a field, a dialog on top, and Ctrl/Alt/⌘ shortcuts are left alone. Both numbers are set under **Settings → Search**: a shop with a very large catalogue can
 start the search at 2 to 5 letters instead, and the batch can be 20 to 200 cards.
 
 The cart is only what is being sold. The newest item goes on top, scanning an item that is

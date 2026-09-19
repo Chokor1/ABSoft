@@ -493,6 +493,26 @@ check('the sale was stored with both line and invoice discounts',
   saved.customer === 'Till Customer' && Math.abs(saved.total - 36) < 0.005 && Math.abs(saved.discount - 2.5) < 0.005,
   JSON.stringify({ customer: saved.customer, total: saved.total, discount: saved.discount }));
 
+/* ------------------------------------------- scanning with the cursor away */
+console.log('\n[a scan lands in the search box wherever the cursor is]');
+await page.goto(`${BASE}#/pos`);
+await page.waitForSelector('.tile');
+await page.evaluate(() => document.activeElement?.blur());
+check('the cursor is not in the search box', await page.evaluate(() => document.activeElement?.id !== 'scan'));
+await page.keyboard.type('5449000000996');   // the scanner types fast, then presses Enter
+await page.keyboard.press('Enter');
+await page.waitForSelector('.cart-line', { timeout: 5000 });
+check('the scan still rings the product up', (await page.$$('.cart-line')).length >= 1);
+check('and the cursor is now in the search box', await page.evaluate(() => document.activeElement?.id === 'scan'));
+// Typing inside another field is left alone.
+await page.evaluate(() => document.querySelector('.cart-line [data-field=qty]')?.focus());
+const beforeText = await page.inputValue('#scan');
+await page.keyboard.type('7');
+check('typing in another field does not jump to the search box', (await page.inputValue('#scan')) === beforeText,
+  `${beforeText} → ${await page.inputValue('#scan')}`);
+await page.click('#clear-cart');
+await page.waitForTimeout(200);
+
 /* ---------------------------------------------------------- sound setting */
 console.log('\n[the sound can be turned off]');
 await page.goto(`${BASE}#/settings/pos`);
