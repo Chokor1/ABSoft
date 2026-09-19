@@ -105,7 +105,7 @@ export function register(router) {
     if (patch.pos_shifts !== undefined) patch.pos_shifts = patch.pos_shifts === '1' ? '1' : '0';
     // Searching every product starts after 1 to 5 letters; a small shop can start at one.
     if (patch.search_min_chars !== undefined) {
-      const wanted = patch.search_min_chars === '' ? 3 : Math.round(num(patch.search_min_chars, 3));
+      const wanted = patch.search_min_chars === '' ? 1 : Math.round(num(patch.search_min_chars, 1));
       patch.search_min_chars = String(Math.min(5, Math.max(1, wanted)));
     }
     if (patch.pos_page_size !== undefined) {

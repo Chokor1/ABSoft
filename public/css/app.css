@@ -1621,17 +1621,10 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .barcodes-add .input-icon { flex: 1; }
 .barcodes-add .input { height: 34px; }
 
-/* Settings, one section at a time: the sections down the side, the open one beside them. */
-.set-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; align-items: start; }
-.set-nav { position: sticky; top: 14px; display: grid; gap: 2px; padding: 8px; }
-.set-nav-item {
-  display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
-  color: var(--text-2); font-weight: 600; font-size: 13.5px; text-decoration: none;
-}
-.set-nav-item svg { width: 17px; height: 17px; color: var(--muted); flex: none; }
-.set-nav-item:hover { background: var(--surface-2); color: var(--text); }
-.set-nav-item.active { background: var(--accent-soft, var(--surface-2)); color: var(--accent); }
-.set-nav-item.active svg { color: var(--accent); }
+/* Settings, one section at a time: the sections as tabs in the page header. */
+.set-nav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.set-nav .set-nav-item { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.set-nav .set-nav-item svg { width: 15px; height: 15px; flex: none; }
 .set-panel { display: grid; gap: 18px; min-width: 0; }
 .set-switch {
   display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; cursor: pointer;
@@ -1641,11 +1634,6 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .set-switch b { display: block; font-size: 14px; }
 .set-switch small { display: block; margin-top: 3px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
 .set-foot { justify-content: flex-end; border-top: 1px solid var(--border); border-bottom: 0; }
-@media (max-width: 860px) {
-  .set-layout { grid-template-columns: minmax(0, 1fr); }
-  .set-nav { position: static; display: flex; overflow-x: auto; scrollbar-width: none; }
-  .set-nav-item { white-space: nowrap; flex: none; }
-}
 
 /* Shifts at the till. The shift in progress sits at the end of the search bar;
    with none open, the till asks for one instead of selling. */

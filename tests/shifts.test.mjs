@@ -51,8 +51,8 @@ const tea = (await call('POST', '/api/products', { name: 'Shift Tea', barcode: '
 
 console.log('\n[search settings]');
 let s = await get('/api/settings');
-check('a shop starts searching from 3 letters, 40 cards at a time, shifts off',
-  s.search_min_chars === '3' && s.pos_page_size === '40' && s.pos_shifts === '0', JSON.stringify(s));
+check('a shop starts searching from the first letter, 40 cards at a time, shifts off',
+  s.search_min_chars === '1' && s.pos_page_size === '40' && s.pos_shifts === '0', JSON.stringify(s));
 s = (await call('PUT', '/api/settings', { search_min_chars: '1', pos_page_size: '1000' })).data;
 check('a small shop can search from the first letter', s.search_min_chars === '1');
 check('and a silly batch size is held to 200', s.pos_page_size === '200');

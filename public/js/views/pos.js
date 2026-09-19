@@ -57,7 +57,7 @@ export async function render(root, ctx) {
   // From Settings → Search: how many cards come at a time, and how many letters
   // start a search of every product (a small shop can start at one).
   const QUICK = Math.max(10, Number(store.settings.pos_page_size) || 40);
-  const MIN_SEARCH = Math.min(5, Math.max(1, Number(store.settings.search_min_chars) || 3));
+  const MIN_SEARCH = Math.min(5, Math.max(1, Number(store.settings.search_min_chars) || 1));
   const RESULTS = QUICK;
 
   root.innerHTML = `

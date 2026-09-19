@@ -154,10 +154,10 @@ const DEFAULT_SETTINGS = {
   currency2_symbol: 'L.L',
   currency2_rate: '0',
   currency2_decimals: '0',
-  // The till: shifts off until switched on; search every product from 3 letters;
+  // The till: shifts off until switched on; search every product from the first letter;
   // 40 cards at a time.
   pos_shifts: '0',
-  search_min_chars: '3',
+  search_min_chars: '1',
   pos_page_size: '40',
 };
 

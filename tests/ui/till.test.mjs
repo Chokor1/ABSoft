@@ -141,13 +141,14 @@ const hidden = await page.evaluate(async (ids) => {
 const requests = [];
 page.on('request', (r) => r.url().includes('/api/products?') && requests.push(r.url()));
 const word = hidden.name.split(' ')[0].toLowerCase();
-await page.fill('#scan', word.slice(0, 2));
-await page.waitForTimeout(600);
-check('two letters narrow the cards on screen without asking the server', requests.length === 0, requests.join(' '));
-check('and say how to search everything', (await page.textContent('#tiles')).includes('Type at least 3 letters'));
+// By default a search of every product starts from the first letter.
+await page.fill('#scan', word.slice(0, 1));
+await wait(async () => requests.some((u) => u.includes('search=')), 5000);
+check('one letter already searches every product', requests.some((u) => u.includes('search=')), requests.join(' '));
 await page.fill('#scan', word);
 await page.waitForFunction((id) => !!document.querySelector(`.tile[data-add="${id}"]:not([hidden])`), hidden.id, { timeout: 5000 });
-check('three letters or more search every product', requests.some((u) => u.includes('search=')), requests.join(' '));
+await wait(async () => requests.some((u) => u.includes(`search=${encodeURIComponent(word)}`)), 5000);
+check('and finds a product that was not on screen', requests.some((u) => u.includes(`search=${encodeURIComponent(word)}`)), requests.join(' '));
 await page.keyboard.press('Escape');
 await page.waitForFunction((n) => {
   const shown = document.querySelectorAll('.tile').length;

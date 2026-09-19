@@ -46,7 +46,8 @@ await page.waitForSelector('.shell');
 /* ------------------------------------------------------------ settings */
 console.log('\n[settings, one section at a time]');
 await page.goto(`${BASE}#/settings`);
-await page.waitForSelector('.set-nav');
+await page.waitForSelector('#set-nav');
+check('the sections sit in the page header', !!(await page.$('.page-head #set-nav')));
 const sections = await page.$$eval('.set-nav-item', (as) => as.map((a) => a.dataset.section));
 check('the sections are listed down the side', sections.join() === 'store,pos,search,currency,language,backup,about', sections.join());
 check('the first section opens by default', !!(await page.$('#settings-form')) && !(await page.$('#pos-form')));
@@ -58,10 +59,10 @@ check('no Shifts in the menu while they are off', !(await page.$('.nav-item[data
 await shot('130-settings-pos');
 
 /* ------------------------------------------------------------ search */
-console.log('\n[a small shop searches from the first letter]');
+console.log('\n[searching from the first letter, the default]');
 await page.click('.set-nav-item[data-section=search]');
 await page.waitForSelector('#search-form');
-await page.selectOption('#search-form select[name=search_min_chars]', '1');
+check('search starts from 1 letter by default', (await page.inputValue('#search-form select[name=search_min_chars]')) === '1');
 await page.click('#search-form button[type=submit]');
 await wait(async () => (await page.evaluate(async () => (await fetch('/api/settings')).json())).search_min_chars === '1', 4000);
 await page.goto(`${BASE}#/pos`);

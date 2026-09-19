@@ -402,14 +402,13 @@ and never touches real photos; `-- --refresh` redraws them (after an update chan
 
 The till never loads the whole catalogue, so a shop with thousands of products opens and scans
 as fast as a small one. It opens on the **40 best sellers** of the last 30 days, and scrolling to the end of the cards
-loads the next batch. Typing one or two
-letters narrows those cards instantly; from **three letters** it searches every product (name,
+loads the next batch. From the **first letter** typed it searches every product (name,
 any barcode, category or description, every word counting) and shows the first matches, best
 matches first, with the cards sliding and fading into place. Enter or a scanner looks the code up
 exactly — any of a product's barcodes — so an item that is not on screen still rings up at once;
 Enter also adds the product when only one card matches. Escape or **Clear** brings the best
-sellers back. Both numbers are set under **Settings → Search**: a small shop can search every
-product from the first letter, and the batch can be 20 to 200 cards.
+sellers back. Both numbers are set under **Settings → Search**: a shop with a very large catalogue can
+start the search at 2 to 5 letters instead, and the batch can be 20 to 200 cards.
 
 The cart is only what is being sold. The newest item goes on top, scanning an item that is
 already there adds one to its line, and each line's quantity, unit price and **discount %** are

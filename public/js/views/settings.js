@@ -116,7 +116,7 @@ export async function render(root, ctx) {
             <div class="field">
               <label>${esc(t('set.search_min'))}</label>
               <select class="select" name="search_min_chars">${[1, 2, 3, 4, 5]
-                .map((n) => `<option value="${n}" ${String(n) === String(cfg.search_min_chars || 3) ? 'selected' : ''}>${esc(n === 1 ? t('set.search_min_one') : t('set.search_min_n', { n }))}</option>`)
+                .map((n) => `<option value="${n}" ${String(n) === String(cfg.search_min_chars || 1) ? 'selected' : ''}>${esc(n === 1 ? t('set.search_min_one') : t('set.search_min_n', { n }))}</option>`)
                 .join('')}</select>
               <div class="help">${esc(t('set.search_min_help'))}</div>
             </div>
@@ -237,18 +237,19 @@ export async function render(root, ctx) {
       </div>`,
   };
 
-  root.innerHTML = `
-    <div class="set-layout">
-      <nav class="card set-nav" id="set-nav">
-        ${sections
-          .map(
-            (s) => `<a href="#/settings/${s.key}" class="set-nav-item ${s.key === active ? 'active' : ''}" data-section="${s.key}">
-              ${icon(s.icon)}<span>${esc(t(`set.section.${s.key}`))}</span></a>`,
-          )
-          .join('')}
-      </nav>
-      <div class="set-panel" id="set-panel">${panels[active]()}</div>
-    </div>`;
+  // The sections sit in the page header, beside the title, as one row of tabs.
+  ctx.actions.innerHTML = `
+    <nav class="seg set-nav" id="set-nav">${sections
+      .map(
+        (s) => `<button type="button" class="set-nav-item ${s.key === active ? 'active' : ''}" data-section="${s.key}">
+          ${icon(s.icon)}<span>${esc(t(`set.section.${s.key}`))}</span></button>`,
+      )
+      .join('')}</nav>`;
+  ctx.actions.querySelector('#set-nav').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-section]');
+    if (btn && btn.dataset.section !== active) ctx.navigate(`settings/${btn.dataset.section}`);
+  });
+  root.innerHTML = `<div class="set-panel" id="set-panel">${panels[active]()}</div>`;
 
   /* ------------------------------------------------------------- wiring -- */
 
