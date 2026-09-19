@@ -17,6 +17,7 @@ import * as reports from './views/reports.js';
 import * as lists from './views/lists.js';
 import * as users from './views/users.js';
 import * as settings from './views/settings.js';
+import * as shifts from './views/shifts.js';
 
 /**
  * Route table. Titles are keys so the whole shell re-labels on a language switch.
@@ -28,6 +29,8 @@ const VIEWS = {
   // Not in the menu: the POS button in the top bar (or F2) opens it.
   pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true, hidden: true },
   sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'daily', cashier: true },
+  // The till's shifts, listed only once shifts are switched on in Settings.
+  shifts: { key: 'shifts', icon: 'history', mod: shifts, group: 'daily', cashier: true, when: () => store.settings.pos_shifts === '1' },
   purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
@@ -189,7 +192,7 @@ function navHtml() {
       ${SHORTCUTS[route] && canSee(v) ? `<span class="kbd">${SHORTCUTS[route]}</span>` : ''}
     </a>`;
   return GROUPS.map((group) => {
-    const items = Object.entries(VIEWS).filter(([, v]) => v.group === group && canSee(v) && !v.hidden);
+    const items = Object.entries(VIEWS).filter(([, v]) => v.group === group && canSee(v) && !v.hidden && (!v.when || v.when()));
     if (!items.length) return '';
     if (FOLDING[group]) {
       // Open unless it was folded away on this device.
@@ -302,15 +305,21 @@ function renderShell() {
   document.getElementById('nav-toggle')?.addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('open');
   });
-  document.querySelectorAll('a.nav-item').forEach((a) =>
-    a.addEventListener('click', () => document.getElementById('sidebar').classList.remove('open')),
-  );
-  document.querySelectorAll('[data-fold-toggle]').forEach((btn) =>
-    btn.addEventListener('click', () => {
+  // One listener for the whole menu, so it keeps working when the menu is redrawn.
+  const nav = document.querySelector('nav.nav');
+  nav.addEventListener('click', (e) => {
+    if (e.target.closest('a.nav-item')) document.getElementById('sidebar').classList.remove('open');
+    const btn = e.target.closest('[data-fold-toggle]');
+    if (btn) {
       const fold = btn.closest('.nav-fold');
       setFold(fold, !fold.classList.contains('open'));
-    }),
-  );
+    }
+  });
+  // A setting can add or remove a screen (shifts), so the menu is drawn again.
+  window.addEventListener('absoft:settings', () => {
+    nav.innerHTML = navHtml();
+    nav.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === currentRoute));
+  });
 }
 
 async function openUserMenu() {

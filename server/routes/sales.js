@@ -3,6 +3,7 @@ import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
 import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
 import { secondCurrency, toBase, toSecond } from '../currency.js';
+import { openShift, shiftsEnabled } from './shifts.js';
 
 /**
  * What was handed over, as { currency: '' | 'second', amount, amount2, base } entries.
@@ -169,6 +170,12 @@ export function register(router) {
     const tendered = money(tenders.reduce((s, x) => s + x.base, 0));
     // Use the directory's spelling when this customer is already known.
     const customer = canonicalName('customer', ctx.body.customer);
+    // With shifts on, the till sells only inside an open shift. A sale entered by
+    // hand from Sell is not a till sale, and joins the shift only if one is open.
+    const shift = openShift();
+    if (!shift && ctx.body.source === 'pos' && shiftsEnabled()) {
+      throw badRequest('Open a shift before selling', 'SHIFT_REQUIRED');
+    }
 
     // Selling into negative stock is allowed (counts often lag reality) but reported back.
     const shortages = prepared
@@ -179,8 +186,8 @@ export function register(router) {
       const docNo = str(ctx.body.doc_no) || nextDocNo(db, 'sales', 'INV');
       const res = db
         .prepare(
-          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2, shift_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           docNo,
@@ -196,6 +203,7 @@ export function register(router) {
           str(ctx.body.note),
           ctx.user.id,
           second ? second.rate : null,
+          shift?.id ?? null,
         );
       const saleId = lastId(res);
 
@@ -224,8 +232,8 @@ export function register(router) {
       // currency. Anything above the total is change, not an overpayment, so the
       // rows stop at the total.
       const insertPayment = db.prepare(
-        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate)
-         VALUES (?, ?, ?, ?, '', ?, ?, ?, ?)`,
+        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id)
+         VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
       );
       let owed = total;
       for (const tender of tenders) {
@@ -243,6 +251,7 @@ export function register(router) {
           // The part of the notes that paid the invoice; the rest went back as change.
           isSecond ? Math.min(tender.amount2, toSecond(amount, second)) : null,
           isSecond ? second.rate : null,
+          shift?.id ?? null,
         );
       }
       recalcPaid(saleId);
@@ -286,8 +295,8 @@ export function register(router) {
 
     return transact(() => {
       db.prepare(
-        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         sale.id,
         amount,
@@ -298,6 +307,8 @@ export function register(router) {
         inSecond ? 'second' : '',
         inSecond ? Math.max(0, num(ctx.body.amount)) : null,
         inSecond ? second.rate : null,
+        // Money collected on an old invoice goes into the drawer of the shift open now.
+        openShift()?.id ?? null,
       );
       recalcPaid(sale.id);
       return loadSale(sale.id);

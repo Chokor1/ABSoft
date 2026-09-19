@@ -57,7 +57,7 @@ const shot = (n) => page.screenshot({ path: resolve(SHOTS, `${n}.png`) });
 
 console.log('\n[switching the second currency on]');
 check('no rate box while it is off', await page.$eval('#rate-box', (el) => el.hidden));
-await page.goto(`${BASE}#/settings`);
+await page.goto(`${BASE}#/settings/currency`);
 await page.waitForSelector('#currency2-form');
 await page.check('#currency2-form input[name=currency2_enabled]');
 await page.fill('#currency2-form input[name=currency2_rate]', '89500');

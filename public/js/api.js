@@ -115,6 +115,12 @@ export const api = {
   partyStatement: (kind, id, query) => api.get(`/api/entities/${kind}/${id}/statement`, query),
   supplierItems: (id, query) => api.get(`/api/entities/supplier/${id}/items`, query),
 
+  currentShift: () => api.get('/api/shifts/current'),
+  openShift: (body) => api.post('/api/shifts/open', body),
+  closeShift: (id, body) => api.post(`/api/shifts/${id}/close`, body),
+  shifts: (query) => api.get('/api/shifts', query),
+  shift: (id) => api.get(`/api/shifts/${id}`),
+
   system: () => api.get('/api/system'),
   backupLocal: () => api.post('/api/backup/local'),
 };

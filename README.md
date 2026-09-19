@@ -62,7 +62,7 @@ invoice loses a line.
 | **Lists** | Customers, suppliers, product categories, units, expense categories and **payment methods** — the names you reuse. A customer or supplier opens on their own page, with their balance and statement. |
 | **Reports** | Profit & loss for any date range, **Sales analysis**, product performance, stock valuation, the movement ledger and per-cashier totals. The report menu, the dates and the buttons share one line, so the report itself gets the screen. |
 | **Users** | Add cashiers and administrators. A cashier only gets **POS**, **Sell** (without cost or profit) and their own settings. |
-| **Settings** | Store name, currency, sales tax rate, receipt footer, language, and database backups. |
+| **Settings** | In sections: Store (name, currency, tax, receipt footer), POS (shifts, sound, picture cards), Search, Currency, Language, Backup & data, About. |
 
 Press `/` anywhere to jump to the search box. Every list has an **Export CSV** button.
 **Lists come a page at a time.** Products, sales, purchases, stock adjustments, expenses and the
@@ -358,7 +358,7 @@ a product still works, and now makes a one-line adjustment document too.
 
 | | Administrator | Cashier |
 | --- | --- | --- |
-| POS, receipts, taking payments on invoices | ✓ | ✓ |
+| POS, receipts, taking payments on invoices, opening and closing shifts | ✓ | ✓ |
 | Sell | ✓ with cost and profit | ✓ without cost and profit |
 | Void a sale, remove a payment | ✓ | — |
 | Products, purchases, adjustments, expenses, lists, reports, dashboard | ✓ | — |
@@ -391,7 +391,7 @@ blending the average cost always uses — rather than a replay of every sale sin
 
 ## At the till
 
-**Picture cards.** Off by default. The picture button beside the search box (or **Settings → Till**)
+**Picture cards.** Off by default. The picture button beside the search box (or **Settings → POS**)
 switches the till to picture cards, remembered per device: the product's picture fills the top of
 the card, centred and cropped to cover it, with the name in white over its lower edge and the price
 underneath. Products without a picture show a quiet placeholder. Uploaded photos are kept at up to
@@ -404,11 +404,12 @@ The till never loads the whole catalogue, so a shop with thousands of products o
 as fast as a small one. It opens on the **40 best sellers** of the last 30 days, and scrolling to the end of the cards
 loads the next batch. Typing one or two
 letters narrows those cards instantly; from **three letters** it searches every product (name,
-any barcode, category or description, every word counting) and shows the first 60 matches, best
+any barcode, category or description, every word counting) and shows the first matches, best
 matches first, with the cards sliding and fading into place. Enter or a scanner looks the code up
 exactly — any of a product's barcodes — so an item that is not on screen still rings up at once;
 Enter also adds the product when only one card matches. Escape or **Clear** brings the best
-sellers back.
+sellers back. Both numbers are set under **Settings → Search**: a small shop can search every
+product from the first letter, and the batch can be 20 to 200 cards.
 
 The cart is only what is being sold. The newest item goes on top, scanning an item that is
 already there adds one to its line, and each line's quantity, unit price and **discount %** are
@@ -424,10 +425,29 @@ handed over (in each currency, when a second one is on) and — as you type — 
 back or the amount still owing. On the other, the customer, the payment method as a row of
 buttons, an invoice discount in money **or** as a percentage, the totals, and a note. Confirming saves the sale, plays a short chime with a
 check mark, and opens the receipt to print or close. The chime can be switched off per device
-under **Settings → Till**.
+under **Settings → POS**.
 
 On a phone the search, the cart and the products stack in that order, and a bar at the bottom
 keeps the total and **Make payment** in reach while you scroll.
+
+### Shifts (opening and closing)
+
+Off by default; switch on under **Settings → POS → Work in shifts**. With shifts on, the till sells
+only inside an open shift:
+
+- **Opening.** The till asks for the cash already in the drawer (and in the second currency, when
+  one is on) and an optional note. The shift is numbered `SH-000001`, `SH-000002`, …
+- **During the shift.** Its number shows at the end of the search bar. Every till sale, and every
+  payment taken on an older invoice, belongs to the open shift. Sales entered by hand from **Sell**
+  are never blocked.
+- **Closing.** Click the shift's number: the dialog shows what the shift took by payment method,
+  what was left on account, and what the drawer should hold (opening cash + cash taken). Type what
+  you counted and it shows at once whether the drawer balances, is over or is short. Closing keeps
+  that count for good, and the till asks for the next shift.
+- **History.** **Shifts** in the menu (shown only while shifts are on) lists every shift with its
+  expected and counted cash; each opens as a document with its figures and its sales.
+
+Cashiers open and close shifts; only an administrator can switch shifts on or off.
 
 ---
 

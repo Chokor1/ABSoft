@@ -327,6 +327,37 @@ const MIGRATIONS = [
       );
     },
   },
+  {
+    // Shifts at the till: opened with the cash in the drawer, closed by counting
+    // it. Sales and payments taken during a shift carry its id, so the count can
+    // be checked against what the drawer should hold.
+    name: 'pos-shifts',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS shifts (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_no        TEXT    NOT NULL,
+          opened_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          opened_at     TEXT    NOT NULL,
+          opening_cash  REAL    NOT NULL DEFAULT 0,
+          opening_cash2 REAL    NOT NULL DEFAULT 0,
+          opening_note  TEXT    NOT NULL DEFAULT '',
+          closed_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          closed_at     TEXT,
+          expected_cash  REAL,
+          expected_cash2 REAL,
+          counted_cash   REAL,
+          counted_cash2  REAL,
+          closing_note  TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_shifts_open ON shifts(closed_at);
+      `);
+      addColumn(db, 'sales', 'shift_id', 'INTEGER');
+      addColumn(db, 'payments', 'shift_id', 'INTEGER');
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_sales_shift ON sales(shift_id);
+               CREATE INDEX IF NOT EXISTS idx_payments_shift ON payments(shift_id);`);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

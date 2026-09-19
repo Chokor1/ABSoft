@@ -1620,3 +1620,60 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .barcodes-add { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); }
 .barcodes-add .input-icon { flex: 1; }
 .barcodes-add .input { height: 34px; }
+
+/* Settings, one section at a time: the sections down the side, the open one beside them. */
+.set-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; align-items: start; }
+.set-nav { position: sticky; top: 14px; display: grid; gap: 2px; padding: 8px; }
+.set-nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
+  color: var(--text-2); font-weight: 600; font-size: 13.5px; text-decoration: none;
+}
+.set-nav-item svg { width: 17px; height: 17px; color: var(--muted); flex: none; }
+.set-nav-item:hover { background: var(--surface-2); color: var(--text); }
+.set-nav-item.active { background: var(--accent-soft, var(--surface-2)); color: var(--accent); }
+.set-nav-item.active svg { color: var(--accent); }
+.set-panel { display: grid; gap: 18px; min-width: 0; }
+.set-switch {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.set-switch input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+.set-switch b { display: block; font-size: 14px; }
+.set-switch small { display: block; margin-top: 3px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.set-foot { justify-content: flex-end; border-top: 1px solid var(--border); border-bottom: 0; }
+@media (max-width: 860px) {
+  .set-layout { grid-template-columns: minmax(0, 1fr); }
+  .set-nav { position: static; display: flex; overflow-x: auto; scrollbar-width: none; }
+  .set-nav-item { white-space: nowrap; flex: none; }
+}
+
+/* Shifts at the till. The shift in progress sits at the end of the search bar;
+   with none open, the till asks for one instead of selling. */
+.pos { position: relative; }
+.shift-chip { height: 46px; gap: 8px; flex: none; }
+.shift-chip small { color: var(--muted); font-weight: 500; }
+.shift-chip svg { width: 14px; height: 14px; color: var(--muted); }
+.shift-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
+.shift-gate {
+  position: absolute; inset: 0; z-index: 20; display: grid; place-items: start center; padding: 6vh 16px 16px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(3px);
+}
+.shift-gate[hidden] { display: none; }
+.pos.shift-closed { min-height: 560px; }
+.shift-open { width: min(440px, 100%); display: grid; gap: 12px; justify-items: center; padding: 26px 24px; text-align: center; }
+.shift-open h3 { margin: 0; font-size: 20px; }
+.shift-open p { margin: 0; }
+.shift-open-icon {
+  display: grid; place-items: center; width: 54px; height: 54px; border-radius: 16px;
+  background: var(--accent-soft, var(--surface-2)); color: var(--accent);
+}
+.shift-open-icon svg { width: 26px; height: 26px; }
+.shift-fields { display: grid; gap: 10px; width: 100%; text-align: start; }
+.shift-fields .field, .shift-count, .shift-close .field { display: grid; gap: 6px; }
+.shift-fields label, .shift-close .field > label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.shift-fields .pay-amount, .shift-count .pay-amount { height: 48px; font-size: 20px; font-weight: 700; }
+.shift-close { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.shift-close .shift-count { margin-top: 10px; }
+.shift-close .pay-result { margin-top: 10px; }
+.shift-close .field + .field { margin-top: 8px; }
+@media (max-width: 860px) { .shift-close { grid-template-columns: minmax(0, 1fr); } }

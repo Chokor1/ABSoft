@@ -494,7 +494,7 @@ check('the sale was stored with both line and invoice discounts',
 
 /* ---------------------------------------------------------- sound setting */
 console.log('\n[the sound can be turned off]');
-await page.goto(`${BASE}#/settings`);
+await page.goto(`${BASE}#/settings/pos`);
 await page.waitForSelector('#sound-toggle');
 check('Settings has a till sound switch, on by default', await page.isChecked('#sound-toggle'));
 await page.uncheck('#sound-toggle');
@@ -509,7 +509,7 @@ await page.waitForSelector('.receipt', { timeout: 8000 });
 check('with it off, a sale completes silently', (await page.evaluate(() => window.__tones)) === 0,
   String(await page.evaluate(() => window.__tones)));
 await page.click('.modal-head [data-close]');
-await page.goto(`${BASE}#/settings`);
+await page.goto(`${BASE}#/settings/pos`);
 await page.waitForSelector('#sound-toggle');
 await page.check('#sound-toggle');
 

@@ -96,6 +96,7 @@ export function applySettings(next) {
   const changed = keys.some((k) => String(store.settings?.[k] ?? '') !== String(next?.[k] ?? ''));
   store.settings = next;
   if (changed) announce();
+  window.dispatchEvent(new CustomEvent('absoft:settings'));
   return changed;
 }
 

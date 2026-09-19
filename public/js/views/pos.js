@@ -16,6 +16,7 @@ import {
   toast,
 } from '../ui.js';
 import { showReceipt } from './sales.js';
+import { attachShifts } from './pos-shift.js';
 import { celebrateSale, playSaleChime, primeAudio, setTileImages, tileImagesEnabled } from '../feedback.js';
 import { money2, money2Html, onRateChange, second, toBase, toSecond } from '../currency.js';
 
@@ -53,13 +54,19 @@ export async function render(root, ctx) {
 
   const taxRate = Number(store.settings.tax_rate) || 0;
 
+  // From Settings → Search: how many cards come at a time, and how many letters
+  // start a search of every product (a small shop can start at one).
+  const QUICK = Math.max(10, Number(store.settings.pos_page_size) || 40);
+  const MIN_SEARCH = Math.min(5, Math.max(1, Number(store.settings.search_min_chars) || 3));
+  const RESULTS = QUICK;
+
   root.innerHTML = `
     <div class="pos">
       <div class="scan-bar">
         <div class="input-icon combo">
           ${icon('barcode')}
           <input class="input" id="scan" data-search placeholder="${esc(
-            t('pos.scan_placeholder'),
+            MIN_SEARCH === 1 ? t('pos.scan_placeholder_one') : t('pos.scan_placeholder', { n: MIN_SEARCH }),
           )}" autocomplete="off"/>
         </div>
         <button class="btn btn-icon" id="toggle-images" aria-pressed="${tileImagesEnabled()}"
@@ -116,9 +123,6 @@ export async function render(root, ctx) {
    *   - Enter, or a scanner, looks the code up exactly.
    * Cards that stay glide to their new places, cards that arrive fade in.
    */
-  const QUICK = 40;
-  const MIN_SEARCH = 3;
-  const RESULTS = 60;
   let searchToken = 0; // an answer to an older search must not paint over a newer one
   state.mode = 'popular';
   state.resultsFor = '';
@@ -294,13 +298,13 @@ export async function render(root, ctx) {
       const nothingYet = state.mode === 'popular' && !words.length && !state.products.length;
       empty.innerHTML = emptyState(
         nothingYet ? t('pos.no_products') : t('pos.no_match'),
-        nothingYet ? t('pos.no_products_sub') : short ? t('pos.type_more') : t('pos.no_match_sub'),
+        nothingYet ? t('pos.no_products_sub') : short ? t('pos.type_more', { n: MIN_SEARCH }) : t('pos.no_match_sub'),
         'box',
       );
     }
     const note = tiles.querySelector('#tiles-note');
     note.hidden = !shown || !(short && state.products.length >= QUICK);
-    note.textContent = t('pos.type_more');
+    note.textContent = t('pos.type_more', { n: MIN_SEARCH });
 
     if (fadeIn && !reduceMotion()) {
       cards.forEach((c, i) => {
@@ -906,6 +910,7 @@ export async function render(root, ctx) {
           primeAudio();
           try {
             const saved = await api.createSale({
+              source: 'pos',
               customer: draft.customer.trim(),
               method: draft.method,
               discount: draft.discount,
@@ -930,6 +935,11 @@ export async function render(root, ctx) {
           } catch (err) {
             toast(errorText(err), 'error');
             btn.disabled = false;
+            // The shift was closed elsewhere: back to opening one.
+            if (err.code === 'SHIFT_REQUIRED') {
+              close(undefined);
+              shifts.refresh();
+            }
           }
         });
 
@@ -961,6 +971,16 @@ export async function render(root, ctx) {
   $('#checkout').addEventListener('click', openPayment);
   $('#bar-checkout').addEventListener('click', openPayment);
 
+  // Shifts (when switched on): the till opens one before selling and closes it by
+  // counting the drawer.
+  const shifts = await attachShifts($('.pos') || root.querySelector('.pos'), {
+    scanBar: $('.scan-bar'),
+    navigate: ctx.navigate,
+    onChange: (shift) => {
+      if (shift) scan.focus();
+    },
+  });
+
   ctx.actions.innerHTML = `<span class="muted hide-mobile" style="font-size:12.5px">${esc(
     t('pos.hint'),
   )} <span class="kbd">Enter</span></span>`;
@@ -981,5 +1001,6 @@ export async function render(root, ctx) {
   return () => {
     window.removeEventListener('scroll', onScroll);
     stopWatching();
+    shifts.destroy();
   };
 }
