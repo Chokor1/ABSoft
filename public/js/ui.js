@@ -597,6 +597,18 @@ export function docPage(root, { title, subtitle = '', badges = '', actions = '',
   return root.querySelector('.doc-body');
 }
 
+/**
+ * The head of a printed slip: the shop's logo, if it has one, above its name.
+ * `cfg` lets a stored document print with the settings it was made under.
+ */
+export const slipHead = (cfg = store.settings) => `
+  ${cfg.store_logo ? `<div class="r-logo"><img src="${esc(cfg.store_logo)}" alt="" /></div>` : ''}
+  <div class="r-center r-shop"><b>${esc(cfg.store_name || t('app.name'))}</b></div>`;
+
+/** The tail of a printed slip: the software that printed it, in small type. */
+export const slipFoot = () => `
+  <div class="r-by"><img src="/img/logo-mark.svg" alt="" /><span>${esc(t('print.by', { v: store.version || '' }))}</span></div>`;
+
 /** A product's picture, or its initials on a tinted square when it has none. */
 export function productThumb(p, size = 'sm') {
   if (p?.image_at) {

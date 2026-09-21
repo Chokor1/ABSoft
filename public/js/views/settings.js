@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { playSaleChime, setSoundEnabled, setTileImages, soundEnabled, tileImagesEnabled } from '../feedback.js';
 import { icon } from '../icons.js';
 import { LANGUAGES, errorText, lang, t } from '../i18n.js';
-import { dateTimeText, esc, money, number, store, toast } from '../ui.js';
+import { dateTimeText, esc, money, number, shrinkImage, store, toast } from '../ui.js';
 import { applySettings, money2 } from '../currency.js';
 
 const kb = (bytes) =>
@@ -46,6 +46,23 @@ export async function render(root, ctx) {
           <div class="sub">${esc(t('set.store_sub'))}</div></div></div>
         <div class="card-body">
           <div class="form-grid">
+            <div class="field span-2">
+              <label>${esc(t('set.logo'))}</label>
+              <div class="logo-pick">
+                <div class="logo-preview" id="logo-preview">${
+                  cfg.store_logo ? `<img src="${esc(cfg.store_logo)}" alt=""/>` : icon('image')
+                }</div>
+                <div class="logo-pick-text">
+                  <div class="help">${esc(t('set.logo_help'))}</div>
+                  <div class="logo-pick-buttons">
+                    <button type="button" class="btn btn-sm" id="logo-choose" ${off}>${icon('upload')} ${esc(t('set.logo_choose'))}</button>
+                    <button type="button" class="btn btn-sm btn-ghost" id="logo-clear" ${cfg.store_logo ? '' : 'hidden'} ${off}>${esc(t('common.remove'))}</button>
+                  </div>
+                </div>
+                <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp" hidden/>
+                <input type="hidden" name="store_logo" value="${esc(cfg.store_logo)}"/>
+              </div>
+            </div>
             <div class="field span-2">
               <label>${esc(t('set.store_name'))}</label>
               <input class="input" name="store_name" value="${esc(cfg.store_name)}" ${off}/>
@@ -272,12 +289,34 @@ export async function render(root, ctx) {
     const form = e.target;
     const saved = await save({
       store_name: form.store_name.value.trim(),
+      store_logo: form.store_logo.value,
       currency: form.currency.value.trim() || '$',
       tax_rate: form.tax_rate.value || '0',
       receipt_footer: form.receipt_footer.value.trim(),
       low_stock_alert: form.low_stock_alert.checked ? '1' : '0',
     });
     if (saved) document.querySelector('.brand small').textContent = saved.store_name || t('app.tagline');
+  });
+
+  // The logo: shrunk on this device before it is saved, so the shop's file size
+  // never matters.
+  const logoField = $('#settings-form [name=store_logo]');
+  const setLogo = (data) => {
+    logoField.value = data;
+    $('#logo-preview').innerHTML = data ? `<img src="${esc(data)}" alt=""/>` : icon('image');
+    $('#logo-clear').hidden = !data;
+  };
+  $('#logo-choose')?.addEventListener('click', () => $('#logo-file').click());
+  $('#logo-clear')?.addEventListener('click', () => setLogo(''));
+  $('#logo-file')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      setLogo(await shrinkImage(file, 420));
+    } catch {
+      toast(t('set.logo_failed'), 'error');
+    }
   });
 
   $('#pos-form')?.addEventListener('submit', async (e) => {

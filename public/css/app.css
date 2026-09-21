@@ -1064,16 +1064,40 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
   [dir="rtl"] .sidebar.open { transform: none; }
 }
 
-@media print {
-  .sidebar, .topbar, .toolbar, .modal-foot, .no-print { display: none !important; }
-  body, .page { background: #fff; padding: 0; }
-  .doc-actions, .restart-notice, .sale-side, .tabs-bar { display: none !important; }
-  body:has(.sale-grid) .doc-head { display: none; }
-  .sale-grid { display: block; }
-  .table-scroll { max-height: none !important; overflow: visible !important; }
-  .modal-backdrop { position: static; background: none; padding: 0; }
-  .modal { box-shadow: none; border: 0; max-height: none; }
+/* ==========================================================================
+   on paper
+   A printed page is the shop's own stationery: its logo and name at the top,
+   the document in plain black on white, and the software that printed it at
+   the foot. Everything the screen needs — menus, buttons, filters — is left
+   behind.
+   ========================================================================== */
+
+.print-only { display: none; }
+
+
+
+/* A slip's own letterhead: the shop's logo above its name, and at the foot the
+   software that printed it. */
+.receipt .r-logo { display: flex; justify-content: center; margin-bottom: 6px; }
+.receipt .r-logo img { max-height: 54px; max-width: 70%; object-fit: contain; }
+.receipt .r-shop b { font-size: 14px; }
+.receipt .r-by {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  margin-top: 10px; padding-top: 7px; border-top: 1px dashed var(--border-strong);
+  font-size: 9.5px; color: var(--muted); letter-spacing: 0.01em;
 }
+.receipt .r-by img { width: 11px; height: 11px; opacity: 0.8; }
+
+/* Settings → Store: the shop's logo, chosen from a file on this device. */
+.logo-pick { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.logo-preview {
+  display: grid; place-items: center; width: 92px; height: 92px; flex: none; overflow: hidden;
+  border: 1px dashed var(--border-strong); border-radius: 14px; background: var(--surface-2); color: var(--muted);
+}
+.logo-preview img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
+.logo-preview svg { width: 26px; height: 26px; }
+.logo-pick-text { display: grid; gap: 8px; min-width: 200px; flex: 1; }
+.logo-pick-buttons { display: flex; gap: 8px; }
 
 /* Purchase history */
 .purchase-log { margin-top: 18px; }
@@ -1739,4 +1763,99 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .shift-done-actions { display: flex; gap: 8px; margin-top: 8px; animation: sale-rise 360ms ease-out 980ms both; }
 @media (prefers-reduced-motion: reduce) {
   .shift-stat, .sct-row, .shift-done-row, .shift-done-verdict, .shift-done-ask, .shift-done-actions { animation: none; }
+}
+
+/* Everything above may set a colour or a width; on paper this has the last word. */
+@media print {
+  /* Paper is white whatever the screen was set to. */
+  :root, [data-theme="dark"] {
+    --bg: #fff; --bg-grad: none;
+    --surface: #fff; --surface-2: #fff; --surface-3: #f2f4f7;
+    --text: #000; --text-2: #1c2230; --muted: #4a5464;
+    --border: #c7cdd8; --border-strong: #96a0b0;
+    --accent: #1b3aa6; --accent-soft: #eef2ff; --accent-text: #1b3aa6;
+    --success: #0a6b44; --danger: #a81f34; --warn: #8a5300; --info: #0b5c91;
+    --shadow: none; --shadow-sm: none; --shadow-lg: none;
+  }
+  @page { margin: 14mm 12mm; }
+  html, body { background: #fff !important; }
+  body {
+    color: #000; font-size: 12px;
+    /* Room for the letterhead and the line at the foot, which repeat on every page. */
+    padding-top: 20mm !important; padding-bottom: 12mm !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+
+  .sidebar, .topbar, .toolbar, .modal-foot, .no-print { display: none !important; }
+  .doc-actions, .restart-notice, .sale-side, .tabs-bar, .pager, .set-nav,
+  .page-actions, .filter-select, .rate-box, .pos-bar, .shift-gate { display: none !important; }
+  /* With the menu gone, the page takes the whole sheet instead of the column
+     the menu used to leave it. */
+  .shell { display: block !important; }
+  .main, .page { width: auto !important; max-width: none !important; height: auto !important; }
+  .page { background: #fff; padding: 0; }
+  body:has(.sale-grid) .doc-head { display: none; }
+  .sale-grid { display: block !important; }
+  .table-scroll { max-height: none !important; overflow: visible !important; }
+  .modal-backdrop { position: static; background: none; padding: 0; display: block; }
+  .modal { box-shadow: none; border: 0; max-height: none; width: auto; max-width: none; }
+  .modal-body { padding: 0; overflow: visible; }
+
+  /* The shop's letterhead, and the software line under it. */
+  .print-only { display: flex; }
+  #print-head {
+    position: fixed; top: 0; inset-inline: 0; align-items: center; gap: 12px;
+    padding-bottom: 6px; border-bottom: 1.5px solid #222;
+  }
+  #print-head .print-logo { max-height: 48px; max-width: 150px; object-fit: contain; }
+  #print-head .print-store strong { display: block; font-size: 16px; letter-spacing: -0.01em; }
+  #print-head .print-store small { display: block; font-size: 10.5px; color: #4a5464; }
+  #print-head .spacer { flex: 1; }
+  #print-head .print-when { font-size: 10.5px; color: #4a5464; white-space: nowrap; }
+  #print-foot {
+    position: fixed; bottom: 0; inset-inline: 0; align-items: center; justify-content: center; gap: 6px;
+    padding-top: 5px; border-top: 1px solid #c7cdd8; font-size: 9.5px; color: #6a7383;
+  }
+  #print-foot img { width: 11px; height: 11px; opacity: 0.75; }
+  /* A receipt carries its own head and tail, so the letterhead stands aside,
+     and the screen behind the dialog stays behind it. */
+  body:has(.modal-backdrop) .print-only { display: none !important; }
+  body:has(.modal-backdrop) { padding: 0 !important; }
+  body:has(.modal-backdrop) #app { display: none !important; }
+  /* A document names itself; the screen's own title would only repeat it. */
+  body:has(.doc-head) .page-head { display: none !important; }
+  /* A slip sits in the middle of the sheet, without the card or the dialog's
+     own heading around it. */
+  .card:has(.receipt) { border: 0 !important; }
+  .receipt-page { display: block; }
+  .receipt-page .receipt { width: 74mm; max-width: none; margin: 0 auto; }
+  .modal-head { display: none; }
+  /* On a full page the letterhead already carries the shop and the software
+     line, so the slip inside it drops its own. */
+  body:not(:has(.modal-backdrop)) .receipt .r-logo,
+  body:not(:has(.modal-backdrop)) .receipt .r-shop,
+  body:not(:has(.modal-backdrop)) .receipt .r-by { display: none; }
+
+  /* Cards become plain blocks, and a table keeps its rules. */
+  .card { border: 1px solid #c7cdd8 !important; border-radius: 6px; box-shadow: none !important; break-inside: avoid; }
+  .card-head { border-bottom: 1px solid #c7cdd8; }
+  .doc-head { border: 0 !important; padding-inline: 0; }
+  .doc-head h2 { font-size: 17px; }
+  table.data { font-size: 11.5px; }
+  table.data th { background: #f2f4f7 !important; color: #1c2230 !important; border-bottom: 1px solid #96a0b0; }
+  table.data td, table.data th { padding: 6px 8px; }
+  table.data tfoot td { border-top: 1px solid #96a0b0; font-weight: 700; }
+  tr, .r-line, .sum-row { break-inside: avoid; }
+  thead { display: table-header-group; }
+  .badge { border: 1px solid #96a0b0 !important; color: #000 !important; background: none !important; }
+  /* A button is something to press, not something to read. */
+  table.data button, table.data .btn, .row-actions { display: none !important; }
+  a { color: inherit; text-decoration: none; }
+
+  /* A slip (receipt, shift report) prints at till width, centred on the page. */
+  .receipt {
+    background: none !important; border: 0 !important; padding: 0;
+    width: 74mm; margin: 0 auto; font-size: 11px;
+  }
+  .receipt .r-rule { border-top: 1px dashed #96a0b0; }
 }

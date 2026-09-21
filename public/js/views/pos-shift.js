@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { formatSecond, second } from '../currency.js';
 import { icon } from '../icons.js';
 import { errorText, methodText, t } from '../i18n.js';
-import { dateTimeText, esc, methodIcon, methodMark, modal, money, store, toast } from '../ui.js';
+import { dateTimeText, esc, methodIcon, methodMark, modal, money, slipFoot, slipHead, store, toast } from '../ui.js';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const time = (value) => dateTimeText(value);
@@ -314,7 +314,7 @@ export function shiftReportHtml(s) {
   const closed = s.status === 'closed';
   const heading = (text) => `<div class="r-rule"></div><div class="r-center"><b>${esc(text)}</b></div>`;
   return `<div class="receipt" id="shift-report">
-      <div class="r-center"><b>${esc(store.settings.store_name || t('app.name'))}</b></div>
+      ${slipHead()}
       <div class="r-center">${esc(t('shift.report_title', { doc: s.doc_no }))}</div>
       <div class="r-rule"></div>
       ${line(t('shift.opened_col'), `${esc(dateTimeText(s.opened_at))} · ${esc(s.opened_by_name || '')}`)}
@@ -356,6 +356,7 @@ export function shiftReportHtml(s) {
           : ''
       }
       ${[s.opening_note, s.closing_note].filter(Boolean).map((n) => `<div class="r-center">${esc(n)}</div>`).join('')}
+      ${slipFoot()}
     </div>`;
 }
 

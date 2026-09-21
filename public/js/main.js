@@ -1,7 +1,7 @@
 import { api, setUnauthorizedHandler } from './api.js';
 import { icon } from './icons.js';
 import { LANGUAGES, applyDocumentLang, errorText, lang, roleText, setLang, t } from './i18n.js';
-import { esc, formModal, initials, loadPaymentMethods, modal, store, toast } from './ui.js';
+import { dateTimeText, esc, formModal, initials, loadPaymentMethods, modal, store, toast } from './ui.js';
 
 import * as dashboard from './views/dashboard.js';
 import * as pos from './views/pos.js';
@@ -186,6 +186,28 @@ function renderLogin(message = '') {
 const FOLDING = { stock: 'box' };
 const FOLD_KEY = (group) => `absoft-nav-${group}`;
 
+/**
+ * The letterhead every printed page carries: the shop's logo and name at the
+ * top, and at the foot the software that printed it. Redrawn whenever the
+ * settings change, so a new logo is on the next printout.
+ */
+function paintPrintFrame() {
+  const head = document.getElementById('print-head');
+  const foot = document.getElementById('print-foot');
+  if (!head || !foot) return;
+  const logo = store.settings.store_logo;
+  head.innerHTML = `
+    ${logo ? `<img class="print-logo" src="${esc(logo)}" alt="" />` : ''}
+    <div class="print-store">
+      <strong>${esc(store.settings.store_name || t('app.name'))}</strong>
+      ${store.settings.receipt_footer ? `<small>${esc(store.settings.receipt_footer)}</small>` : ''}
+    </div>
+    <div class="spacer"></div>
+    <div class="print-when">${esc(dateTimeText(new Date().toISOString().slice(0, 19).replace('T', ' ')))}</div>`;
+  foot.innerHTML = `<img src="/img/logo-mark.svg" alt="" />
+    <span>${esc(t('print.by', { v: store.version || '' }))}</span>`;
+}
+
 function navHtml() {
   const link = ([route, v], cls = '') => `<a class="nav-item ${cls}" href="#/${route}" data-route="${route}">
       ${icon(v.icon)}<span>${esc(t(`nav.${v.key}`))}</span>
@@ -317,6 +339,7 @@ function renderShell() {
   });
   // A setting can add or remove a screen (shifts), so the menu is drawn again.
   window.addEventListener('absoft:settings', () => {
+    paintPrintFrame();
     nav.innerHTML = navHtml();
     nav.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === currentRoute));
   });
@@ -546,6 +569,7 @@ function startApp() {
   // The ways to pay belong to the shop; every screen reads the same list.
   loadPaymentMethods();
   renderShell();
+  paintPrintFrame();
   renderRoute();
   window.onhashchange = renderRoute;
   if (store.restartNeeded) showRestartNotice();

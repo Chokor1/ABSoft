@@ -62,7 +62,7 @@ invoice loses a line.
 | **Lists** | Customers, suppliers, product categories, units, expense categories and **payment methods** — the names you reuse. A customer or supplier opens on their own page, with their balance and statement. |
 | **Reports** | Profit & loss for any date range, **Sales analysis**, product performance, stock valuation, the movement ledger and per-cashier totals. The report menu, the dates and the buttons share one line, so the report itself gets the screen. |
 | **Users** | Add cashiers and administrators. A cashier only gets **POS**, **Sell** (without cost or profit) and their own settings. |
-| **Settings** | In sections: Store (name, currency, tax, receipt footer), POS (shifts, sound, picture cards), Search, Currency, Language, Backup & data, About. |
+| **Settings** | In sections: Store (logo, name, currency, tax, receipt footer), POS (shifts, sound, picture cards), Search, Currency, Language, Backup & data, About. |
 
 Press `/` anywhere to jump to the search box. Every list has an **Export CSV** button.
 **Lists come a page at a time.** Products, sales, purchases, stock adjustments, expenses and the
@@ -504,6 +504,23 @@ still counts as revenue**. That is deliberate — profit is earned when the good
 leave, not when the cash arrives. What has not been collected is a separate
 figure, which is why it has its own column rather than being deducted from
 profit.
+
+---
+
+## On paper
+
+Give the shop its logo under **Settings → Store**: choose a PNG or JPG and it is shrunk on your
+own device before it is saved, so a photo straight from a phone is fine.
+
+Everything printed then comes out on the shop's own stationery:
+
+- **Receipts and shift reports** carry the logo above the shop name, and end with a thin line
+  naming the software that printed them — `Printed by ABSoft POS v1.24.0` — with its mark.
+- **A full page** (an invoice, a purchase, a list, a report) gets a letterhead: the logo and shop
+  name on the left, the date printed on the right, and the same software line at the foot of every
+  page. The menu, the top bar, filters, pagers and buttons stay on screen.
+- Paper is always black on white, even when the screen is in dark mode, and tables keep their
+  headings and rules.
 
 ---
 

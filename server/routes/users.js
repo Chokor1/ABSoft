@@ -97,12 +97,18 @@ export function register(router) {
     const allowed = [
       'store_name', 'currency', 'tax_rate', 'low_stock_alert', 'receipt_footer',
       'currency2_enabled', 'currency2_symbol', 'currency2_decimals',
-      'pos_shifts', 'search_min_chars', 'pos_page_size',
+      'pos_shifts', 'search_min_chars', 'pos_page_size', 'store_logo',
     ];
     const patch = {};
     for (const key of allowed) if (ctx.body[key] !== undefined) patch[key] = str(ctx.body[key]);
     if (patch.currency2_enabled !== undefined) patch.currency2_enabled = patch.currency2_enabled === '1' ? '1' : '0';
     if (patch.pos_shifts !== undefined) patch.pos_shifts = patch.pos_shifts === '1' ? '1' : '0';
+    // A logo is a small picture or nothing at all; anything else is not one.
+    if (patch.store_logo) {
+      const ok = /^data:image\/(png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(patch.store_logo);
+      if (!ok) throw badRequest('That does not look like a picture', 'BAD_LOGO');
+      if (patch.store_logo.length > 200000) throw badRequest('That picture is too large', 'LOGO_TOO_BIG');
+    }
     // Searching every product starts after 1 to 5 letters; a small shop can start at one.
     if (patch.search_min_chars !== undefined) {
       const wanted = patch.search_min_chars === '' ? 1 : Math.round(num(patch.search_min_chars, 1));

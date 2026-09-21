@@ -21,6 +21,8 @@ import {
   qtyText,
   rangeBar,
   signClass,
+  slipFoot,
+  slipHead,
   store,
   toast,
   todayISO,
@@ -42,7 +44,7 @@ function receiptHtml(sale, change = 0, change2 = null) {
   const line = (label, value, cls = '') =>
     `<div class="r-line ${cls}"><span>${esc(label)}</span><span>${value}</span></div>`;
   return `<div class="receipt" id="receipt-print">
-        <div class="r-center"><b>${esc(cfg.store_name || t('app.name'))}</b></div>
+        ${slipHead(cfg)}
         <div class="r-center">${esc(sale.doc_no)} · ${dateTimeText(sale.created_at || sale.date)}</div>
         <div class="r-rule"></div>
         ${sale.items
@@ -71,7 +73,8 @@ function receiptHtml(sale, change = 0, change2 = null) {
         ${change > 0.004 && change2 ? line('', esc(formatSecond(change2)), 'r-second') : ''}
         ${sale.balance > 0.004 ? line(t('pay.balance'), money(sale.balance), 'r-total') : ''}
         <div class="r-rule"></div>
-        <div class="r-center">${esc(cfg.receipt_footer || '')}</div>
+        ${cfg.receipt_footer ? `<div class="r-center">${esc(cfg.receipt_footer)}</div>` : ''}
+        ${slipFoot()}
       </div>`;
 }
 
