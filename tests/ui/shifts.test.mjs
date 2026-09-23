@@ -156,12 +156,84 @@ await page.click('.modal-head [data-close]');
 await page.waitForSelector('#shift-gate:not([hidden])');
 check('once closed, the till asks for the next shift', await page.isVisible('#shift-open-form'));
 
+/* --------------------------------------------- a shift that took two currencies */
+console.log('\n[counting two currencies, method by method]');
+await page.goto(`${BASE}#/settings/currency`);
+await page.waitForSelector('#currency2-form');
+await page.check('#currency2-form input[name=currency2_enabled]');
+await page.fill('#currency2-form input[name=currency2_rate]', '89500');
+await page.click('#currency2-form button[type=submit]');
+await wait(async () => (await page.evaluate(async () => (await fetch('/api/settings')).json())).currency2_enabled === '1', 5000);
+
+await page.goto(`${BASE}#/pos`);
+await page.waitForSelector('#shift-gate:not([hidden])');
+await page.fill('#opening-cash', '50');
+await page.fill('#opening-cash2', '1000000');
+await page.click('#shift-open');
+await page.waitForSelector('#shift-gate', { state: 'hidden' });
+
+// One sale paid in L.L on the card, one in dollars in cash.
+await page.fill('#scan', '5901234123457');   // 18.00
+await page.keyboard.press('Enter');
+await page.waitForSelector('.cart-line');
+await page.click('#checkout');
+await page.waitForSelector('#pay-confirm');
+await page.click('#pay-method [data-method=card]');
+await page.fill('#pay-amount2', '1611000');   // 18.00 in L.L
+await page.click('#pay-confirm');
+await page.waitForSelector('.receipt', { timeout: 8000 });
+await page.click('.modal-head [data-close]');
+await page.fill('#scan', '5901234123457');
+await page.keyboard.press('Enter');
+await page.waitForSelector('.cart-line');
+await page.click('#checkout');
+await page.waitForSelector('#pay-confirm');
+await page.click('#pay-confirm');
+await page.waitForSelector('.receipt', { timeout: 8000 });
+await page.click('.modal-head [data-close]');
+
+await page.click('#shift-chip');
+await page.waitForSelector('#counted-cash');
+const rows2 = await page.$$eval('.sct-row', (rs) => rs.map((r) => r.dataset.line));
+check('cash and the card are each counted in both currencies', rows2.join() === 'cash,cash2,card~2', rows2.join());
+check('the drawer expects the dollars it took', Math.abs(Number(await page.inputValue('#counted-cash')) - 68) < 0.01,
+  await page.inputValue('#counted-cash'));
+check('and the L.L it started with', Math.abs(Number(await page.inputValue('#counted-cash2')) - 1000000) < 1,
+  await page.inputValue('#counted-cash2'));
+check('the card row expects L.L, not dollars', Math.abs(Number(await page.inputValue('[data-count="card~2"]')) - 1611000) < 1,
+  await page.inputValue('[data-count="card~2"]'));
+check('and says which money it is counted in', (await page.textContent('.sct-row[data-line="card~2"] .sct-cur')).includes('L.L'));
+await page.fill('[data-count="card~2"]', '1600000');
+const banner = (await page.textContent('#shift-diff')).replace(/\s+/g, ' ');
+check('a shortfall in L.L is said in L.L, not turned into dollars', banner.includes('11,000') && !banner.includes('$'), banner);
+await page.waitForTimeout(600);
+await shot('136-shift-close-two-currencies');
+await page.click('#shift-close');
+await page.waitForSelector('.shift-done');
+await page.waitForTimeout(1300);
+const done2 = (await page.textContent('.shift-done')).replace(/\s+/g, ' ');
+check('the closing card shows each method in the money it took', done2.includes('1,600,000') && done2.includes('Short'), done2);
+await shot('137-shift-closed-two-currencies');
+await page.click('.shift-done [data-print]');
+await page.waitForSelector('#shift-report');
+const report2 = (await page.textContent('#shift-report')).replace(/\s+/g, ' ');
+check('so does the report', report2.includes('1,600,000') && report2.includes('11,000'), report2.slice(0, 400));
+await page.click('.modal-head [data-close]');
+await page.goto(`${BASE}#/settings/currency`);
+await page.waitForSelector('#currency2-form');
+await page.uncheck('#currency2-form input[name=currency2_enabled]');
+await page.click('#currency2-form button[type=submit]');
+await wait(async () => (await page.evaluate(async () => (await fetch('/api/settings')).json())).currency2_enabled === '0', 5000);
+
 console.log('\n[history]');
+await page.goto(`${BASE}#/pos`);
+await page.waitForSelector('#shift-gate:not([hidden])');
 await page.click('#shift-history');
 await page.waitForSelector('#shift-table');
 const rows = await page.$$eval('#shift-table tbody tr', (trs) => trs.map((tr) => tr.textContent.replace(/\s+/g, ' ')));
-check('the closed shift is in the history', rows.length === 1 && rows[0].includes('SH-000001'), rows.join(' | '));
-await page.click('#shift-table tbody tr');
+check('every closed shift is in the history, newest first',
+  rows.length === 2 && rows[0].includes('SH-000002') && rows[1].includes('SH-000001'), rows.join(' | '));
+await page.click('#shift-table tbody tr:last-child');
 await page.waitForSelector('.doc-head');
 const doc = (await page.textContent('#page')).replace(/\s+/g, ' ');
 check('a shift opens with its count and its sales', doc.includes('SH-000001') && doc.includes('115') && doc.includes(sale.doc_no), doc.slice(0, 300));

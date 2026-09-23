@@ -443,7 +443,9 @@ only inside an open shift:
   are never blocked.
 - **Closing.** Click the shift's number. One table counts every way of paying: the cash drawer
   (opening cash + cash taken), and each other method the shift took (card, Whish, OMT…) against
-  what came in. Type what you counted and each line, and the total, shows at once whether it
+  what came in. With a second currency on, a method that took both gets a row per currency —
+  L.L is counted in L.L, never turned into dollars first — and each currency balances on its own.
+  Type what you counted and each line, and the total, shows at once whether it
   balances, is over or is short. Closing keeps those counts for good, then a short animation shows
   the result and asks whether to **print the shift report** (a receipt-style summary). The till
   then asks for the next shift.

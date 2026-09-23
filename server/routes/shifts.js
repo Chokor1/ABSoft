@@ -41,14 +41,15 @@ function shiftTotals(shift) {
     .all(shift.id);
   const cashIn = money(payments.filter((p) => p.method === 'cash' && p.currency !== 'second').reduce((a, p) => a + p.amount, 0));
   const cashIn2 = money(payments.filter((p) => p.method === 'cash' && p.currency === 'second').reduce((a, p) => a + p.amount2, 0));
-  // Every way of paying other than cash, in the main currency: what the shift
-  // should show on the card terminal, Whish, OMT…
+  // Every way of paying other than cash — the card terminal, Whish, OMT… — kept
+  // in the currency it was taken in, because that is how it will be counted.
   const others = new Map();
   for (const p of payments) {
     if (p.method === 'cash') continue;
-    const row = others.get(p.method) || { method: p.method, n: 0, expected: 0 };
+    const row = others.get(p.method) || { method: p.method, n: 0, expected: 0, expected2: 0 };
     row.n += p.n;
-    row.expected = money(row.expected + p.amount);
+    if (p.currency === 'second') row.expected2 = money(row.expected2 + p.amount2);
+    else row.expected = money(row.expected + p.amount);
     others.set(p.method, row);
   }
   return {
@@ -58,6 +59,8 @@ function shiftTotals(shift) {
     payments,
     others: [...others.values()],
     taken: money(payments.reduce((a, p) => a + p.amount, 0)),
+    // What came in through the second currency, whatever way it was paid.
+    taken2: money(payments.filter((p) => p.currency === 'second').reduce((a, p) => a + p.amount2, 0)),
     cash_in: cashIn,
     cash_in2: cashIn2,
     expected_cash: money(num(shift.opening_cash) + cashIn),
@@ -87,9 +90,19 @@ export function loadShift(id) {
   }
   // A closed shift shows each method's count; one not counted was taken as expected.
   const others = totals.others.map((o) => {
-    if (!closed) return { ...o, counted: null, difference: null };
-    const counted = counts[o.method] === undefined ? o.expected : num(counts[o.method]);
-    return { ...o, counted, difference: money(counted - o.expected) };
+    if (!closed) return { ...o, counted: null, counted2: null, difference: null, difference2: null };
+    // Older shifts kept one number per method; newer ones keep one per currency.
+    const kept = counts[o.method];
+    const pair = kept !== null && typeof kept === 'object' ? kept : { main: kept };
+    const counted = pair.main === undefined || pair.main === null ? o.expected : num(pair.main);
+    const counted2 = pair.second === undefined || pair.second === null ? o.expected2 : num(pair.second);
+    return {
+      ...o,
+      counted,
+      counted2,
+      difference: money(counted - o.expected),
+      difference2: money(counted2 - o.expected2),
+    };
   });
   return {
     ...shift,
@@ -100,9 +113,13 @@ export function loadShift(id) {
     difference: closed ? money(num(shift.counted_cash) - expected) : null,
     difference2: closed ? money(num(shift.counted_cash2) - expected2) : null,
     others,
-    // Cash and every other method together.
+    // Cash and every other method together, each currency on its own: a drawer
+    // short 5,000 L.L has not lost $5.
     difference_total: closed
       ? money(num(shift.counted_cash) - expected + others.reduce((a, o) => a + o.difference, 0))
+      : null,
+    difference2_total: closed
+      ? money(num(shift.counted_cash2) - expected2 + others.reduce((a, o) => a + o.difference2, 0))
       : null,
   };
 }
@@ -140,7 +157,11 @@ export function register(router) {
     const sent = ctx.body.counted && typeof ctx.body.counted === 'object' ? ctx.body.counted : {};
     const counts = {};
     for (const o of shift.others) {
-      counts[o.method] = sent[o.method] === undefined || sent[o.method] === '' ? o.expected : money(Math.max(0, num(sent[o.method])));
+      const given = sent[o.method];
+      const pair = given !== null && typeof given === 'object' ? given : { main: given };
+      const pick = (value, fallback) =>
+        value === undefined || value === null || value === '' ? fallback : money(Math.max(0, num(value)));
+      counts[o.method] = { main: pick(pair.main, o.expected), second: pick(pair.second, o.expected2) };
     }
     db.prepare(
       `UPDATE shifts SET closed_by = ?, closed_at = ?, expected_cash = ?, expected_cash2 = ?,

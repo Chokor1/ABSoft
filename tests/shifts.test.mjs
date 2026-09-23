@@ -103,10 +103,38 @@ check('and once closed, the till waits for the next one', (await sell({ source: 
 await call('POST', `/api/sales/${old.id}/payments`, { amount: 5, method: 'cash' });
 check('a closed shift keeps what it expected, whatever comes after', near((await get(`/api/shifts/${shift.id}`)).expected_cash, 75));
 
+console.log('\n[a second currency, method by method]');
+await call('PUT', '/api/settings', { currency2_enabled: '1', currency2_symbol: 'L.L', currency2_decimals: '0', currency2_rate: '89500' });
+await call('PUT', '/api/exchange-rate', { rate: 89500 });
+const sh2 = (await call('POST', '/api/shifts/open', { opening_cash: 40, opening_cash2: 500000 })).data;
+await sell({ source: 'pos', tenders: [{ currency: 'second', amount: 1790000 }] });          // 20 in cash, paid in L.L
+await sell({ source: 'pos', method: 'card', tenders: [{ currency: 'second', amount: 895000 }] }); // 10 on the card, in L.L
+await sell({ source: 'pos', method: 'card' });                                              // 20 on the card, in dollars
+cur = (await get('/api/shifts/current')).shift;
+check('cash in each currency stays apart', near(cur.cash_in, 0) && near(cur.cash_in2, 1790000),
+  `${cur.cash_in} / ${cur.cash_in2}`);
+check('so does the drawer', near(cur.expected_cash, 40) && near(cur.expected_cash2, 2290000),
+  `${cur.expected_cash} / ${cur.expected_cash2}`);
+const card = cur.others.find((o) => o.method === 'card');
+check('a card row shows both the dollars and the L.L it took', near(card.expected, 20) && near(card.expected2, 895000),
+  JSON.stringify(card));
+check('and the shift says what came in through the second currency', near(cur.taken2, 2685000), String(cur.taken2));
+
+r = await call('POST', `/api/shifts/${sh2.id}/close`, {
+  counted_cash: 40, counted_cash2: 2280000, counted: { card: { main: 20, second: 890000 } },
+});
+const card2 = r.data.others.find((o) => o.method === 'card');
+check('each currency is counted and differs on its own', near(card2.counted2, 890000) && near(card2.difference2, -5000) &&
+  near(card2.difference, 0), JSON.stringify(card2));
+check('the totals keep the two currencies apart', near(r.data.difference_total, 0) && near(r.data.difference2_total, -15000),
+  `${r.data.difference_total} / ${r.data.difference2_total}`);
+await call('PUT', '/api/settings', { currency2_enabled: '0' });
+
 console.log('\n[history]');
 await call('POST', '/api/shifts/open', { opening_cash: 70 });
 const list = await get('/api/shifts?page=1&per=10');
-check('shifts are kept, newest first', list.total === 2 && list.rows[0].status === 'open' && list.rows[1].status === 'closed');
+check('shifts are kept, newest first', list.total === 3 && list.rows[0].status === 'open' && list.rows[1].status === 'closed',
+  JSON.stringify(list.rows.map((r) => r.status)));
 const detail = await get(`/api/shifts/${shift.id}`);
 check('a shift opens with its sales', detail.sale_list.length === 3 && detail.opened_by_name === 'admin');
 

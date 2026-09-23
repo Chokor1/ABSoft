@@ -1714,6 +1714,13 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .sct-method { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .sct-method b { display: block; font-size: 14px; }
 .sct-method small { display: block; font-size: 11.5px; color: var(--muted); }
+/* Which money this row is counted in, when a shop keeps two. */
+.sct-cur {
+  display: inline-block; margin-inline-start: 6px; padding: 1px 7px; border-radius: 999px;
+  background: var(--money2-soft); color: var(--money2); font-size: 10.5px; font-weight: 700;
+}
+.sct-diff .money2, .shift-stat .money2, .shift-done-row .money2 { display: block; font-size: 11.5px; color: var(--money2); }
+.pay-result .amount .money2 { color: inherit; }
 .sct-icon {
   display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 10px;
   background: var(--accent-soft); color: var(--accent); overflow: hidden;

@@ -117,23 +117,44 @@ export async function attachShifts(pos, { scanBar, navigate, onChange = () => {}
     const shift = await api.currentShift().then((r) => r.shift);
     if (!shift) return refresh();
     const cur = second();
-    const main = store.settings.currency || '$';
-    // One row per thing to count: cash in each currency, then every other method.
+    // One row for every drawer to count: cash and each other method, and where a
+    // second currency is in use, the same method again in that currency — money
+    // in L.L is counted in L.L, never turned into dollars first.
+    const payments = (o) => t(o.n === 1 ? 'shift.payments_one' : 'shift.payments_n', { n: o.n });
     const lines = [
-      { key: 'cash', label: methodText('cash'), glyph: methodIcon('cash'), expected: shift.expected_cash, id: 'counted-cash', sub: t('shift.cash_sub', { o: money(shift.opening_cash), i: money(shift.cash_in) }) },
+      {
+        key: 'cash',
+        label: methodText('cash'),
+        glyph: methodIcon('cash'),
+        expected: shift.expected_cash,
+        id: 'counted-cash',
+        sub: t('shift.cash_sub', { o: money(shift.opening_cash), i: money(shift.cash_in) }),
+      },
       ...(cur && (shift.opening_cash2 || shift.cash_in2)
-        ? [{ key: 'cash2', label: `${methodText('cash')} · ${cur.symbol}`, glyph: methodIcon('cash'), expected: shift.expected_cash2, id: 'counted-cash2', second: true }]
+        ? [{
+            key: 'cash2',
+            label: methodText('cash'),
+            glyph: methodIcon('cash'),
+            expected: shift.expected_cash2,
+            id: 'counted-cash2',
+            second: true,
+            sub: t('shift.cash_sub', { o: formatSecond(shift.opening_cash2), i: formatSecond(shift.cash_in2) }),
+          }]
         : []),
-      ...shift.others.map((o) => ({
-        key: o.method,
-        label: methodText(o.method),
-        glyph: methodIcon(o.method),
-        expected: o.expected,
-        sub: t(o.n === 1 ? 'shift.payments_one' : 'shift.payments_n', { n: o.n }),
-      })),
+      ...shift.others.flatMap((o) => [
+        ...(o.expected || !o.expected2
+          ? [{ key: o.method, label: methodText(o.method), glyph: methodIcon(o.method), expected: o.expected, sub: payments(o) }]
+          : []),
+        ...(cur && o.expected2
+          ? [{ key: `${o.method}~2`, method: o.method, label: methodText(o.method), glyph: methodIcon(o.method), expected: o.expected2, second: true }]
+          : []),
+      ]),
     ];
     const fmt = (l, v) => (l.second ? esc(formatSecond(v)) : money(v));
-    const tile = (label, value, cls = '') => `<div class="shift-stat ${cls}"><span>${esc(label)}</span><b>${value}</b></div>`;
+    const tile = (label, value, cls = '', foot = '') =>
+      `<div class="shift-stat ${cls}"><span>${esc(label)}</span><b>${value}</b>${
+        foot ? `<small class="money2">${esc(foot)}</small>` : ''
+      }</div>`;
 
     const closed = await modal({
       title: t('shift.close_title', { doc: shift.doc_no }),
@@ -143,7 +164,7 @@ export async function attachShifts(pos, { scanBar, navigate, onChange = () => {}
         <div class="shift-close-v2">
           <div class="shift-stats">
             ${tile(t(shift.sales === 1 ? 'shift.sales_one' : 'shift.sales_n', { n: shift.sales }), money(shift.sales_total))}
-            ${tile(t('shift.taken_total'), money(shift.taken))}
+            ${tile(t('shift.taken_total'), money(shift.taken), '', cur && shift.taken2 ? formatSecond(shift.taken2) : '')}
             ${tile(t('shift.on_account'), money(shift.on_account), shift.on_account > 0.004 ? 'warn' : '')}
             ${tile(t('shift.opening'), money(shift.opening_cash))}
           </div>
@@ -156,7 +177,9 @@ export async function attachShifts(pos, { scanBar, navigate, onChange = () => {}
               .map(
                 (l, i) => `<div class="sct-row" style="--i:${i}" data-line="${esc(l.key)}">
                   <div class="sct-method"><span class="sct-icon">${methodMark(l.glyph)}</span>
-                    <div><b>${esc(l.label)}</b>${l.sub ? `<small>${esc(l.sub)}</small>` : ''}</div></div>
+                    <div><b>${esc(l.label)}</b>${
+                      l.second ? `<span class="sct-cur">${esc(cur.symbol)}</span>` : ''
+                    }${l.sub ? `<small>${esc(l.sub)}</small>` : ''}</div></div>
                   <div class="sct-expected">${fmt(l, l.expected)}</div>
                   <div><input class="input sct-input pay-amount" ${l.id ? `id="${l.id}"` : ''} data-count="${esc(l.key)}"
                     type="number" step="${l.second ? 'any' : '0.01'}" min="0" value="${l.expected}" aria-label="${esc(l.label)}"/></div>
@@ -179,20 +202,27 @@ export async function attachShifts(pos, { scanBar, navigate, onChange = () => {}
         const diffOf = (l) => round2((Number(dialog.querySelector(`[data-count="${CSS.escape(l.key)}"]`).value) || 0) - l.expected);
         const verdict = (d) => (Math.abs(d) < 0.005 ? 'settled' : d > 0 ? 'change' : 'owing');
         const paint = () => {
+          // Each currency is its own money: a drawer short 5,000 L.L has not lost $5.
           let total = 0;
+          let total2 = 0;
           for (const l of lines) {
             const d = diffOf(l);
-            // The second currency is its own drawer; the total is in the main one.
-            if (!l.second) total = round2(total + d);
+            if (l.second) total2 = round2(total2 + d);
+            else total = round2(total + d);
             const cell = dialog.querySelector(`[data-diff="${CSS.escape(l.key)}"]`);
             cell.className = `sct-diff ${verdict(d)}`;
             cell.innerHTML = Math.abs(d) < 0.005 ? icon('check') : `${d > 0 ? '+' : '−'}${fmt(l, Math.abs(d))}`;
           }
           const box = dialog.querySelector('#shift-diff');
-          box.className = `pay-result ${verdict(total)}`;
-          box.innerHTML = `<span>${icon(Math.abs(total) < 0.005 ? 'check' : 'alert')} ${esc(
-            t(Math.abs(total) < 0.005 ? 'shift.all_balanced' : total > 0 ? 'shift.over' : 'shift.short'),
-          )}</span><span class="amount">${Math.abs(total) < 0.005 ? '' : money(Math.abs(total))}</span>`;
+          const mainOff = Math.abs(total) >= 0.005;
+          const secondOff = Math.abs(total2) >= 0.005;
+          const short = total < -0.004 || total2 < -0.004;
+          box.className = `pay-result ${mainOff || secondOff ? (short ? 'owing' : 'change') : 'settled'}`;
+          const said = !mainOff && !secondOff ? 'shift.all_balanced' : short ? 'shift.short' : 'shift.over';
+          box.innerHTML = `<span>${icon(mainOff || secondOff ? 'alert' : 'check')} ${esc(t(said))}</span>
+            <span class="amount">${mainOff ? money(Math.abs(total)) : ''}${
+              secondOff ? `<small class="money2">${esc(formatSecond(Math.abs(total2)))}</small>` : ''
+            }</span>`;
         };
         dialog.querySelectorAll('[data-count]').forEach((input) => {
           input.addEventListener('input', paint);
@@ -207,11 +237,17 @@ export async function attachShifts(pos, { scanBar, navigate, onChange = () => {}
           const btn = e.currentTarget;
           btn.disabled = true;
           const value = (key) => Number(dialog.querySelector(`[data-count="${CSS.escape(key)}"]`)?.value) || 0;
+          const has = (key) => !!dialog.querySelector(`[data-count="${CSS.escape(key)}"]`);
           try {
             const done = await api.closeShift(shift.id, {
               counted_cash: value('cash'),
               counted_cash2: value('cash2'),
-              counted: Object.fromEntries(shift.others.map((o) => [o.method, value(o.method)])),
+              counted: Object.fromEntries(
+                shift.others.map((o) => [
+                  o.method,
+                  { main: has(o.method) ? value(o.method) : o.expected, second: has(`${o.method}~2`) ? value(`${o.method}~2`) : o.expected2 },
+                ]),
+              ),
               note: dialog.querySelector('#closing-note').value.trim(),
             });
             close(done);
@@ -250,21 +286,38 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
  */
 export function celebrateClose(shift) {
   return new Promise((resolve) => {
+    const cur = second();
     const total = Number(shift.difference_total ?? shift.difference) || 0;
-    const balanced = Math.abs(total) < 0.005;
+    const total2 = cur ? Number(shift.difference2_total ?? shift.difference2) || 0 : 0;
+    const balanced = Math.abs(total) < 0.005 && Math.abs(total2) < 0.005;
     const layer = document.createElement('div');
     layer.className = `sale-done shift-done ${balanced ? '' : 'off'}`;
     layer.setAttribute('role', 'dialog');
     layer.setAttribute('aria-modal', 'true');
     const row = (label, value, i) => `<div class="shift-done-row" style="--i:${i}"><span>${esc(label)}</span><b>${value}</b></div>`;
+    // What was counted, in the currency it was counted in.
+    const counted = (label, main, secondAmount) => {
+      const inSecond = cur && secondAmount;
+      // A method that only ever took L.L says so, instead of claiming $0.00.
+      const showMain = main > 0.004 || !inSecond;
+      return [
+        label,
+        `${showMain ? money(main) : ''}${inSecond ? `<small class="money2">${esc(formatSecond(secondAmount))}</small>` : ''}`,
+      ];
+    };
     const rows = [
       [t(shift.sales === 1 ? 'shift.sales_one' : 'shift.sales_n', { n: shift.sales }), money(shift.sales_total)],
-      [methodText('cash'), money(shift.counted_cash)],
-      ...(shift.others || []).map((o) => [methodText(o.method), money(o.counted)]),
+      counted(methodText('cash'), shift.counted_cash, shift.counted_cash2),
+      ...(shift.others || []).map((o) => counted(methodText(o.method), o.counted, o.counted2)),
     ];
+    const off = [
+      Math.abs(total) >= 0.005 ? money(Math.abs(total)) : '',
+      cur && Math.abs(total2) >= 0.005 ? formatSecond(Math.abs(total2)) : '',
+    ].filter(Boolean);
+    const short = total < -0.004 || total2 < -0.004;
     const verdictText = balanced
       ? t('shift.all_balanced')
-      : `${t(total > 0 ? 'shift.over' : 'shift.short')} ${money(Math.abs(total))}`;
+      : `${t(short ? 'shift.short' : 'shift.over')} ${off.join(' · ')}`;
     layer.innerHTML = `
       <div class="sale-done-card shift-done-card">
         <svg class="sale-done-check" viewBox="0 0 52 52" aria-hidden="true">
@@ -274,7 +327,7 @@ export function celebrateClose(shift) {
         <div class="sale-done-title">${esc(t('shift.closed_title'))}</div>
         <div class="sale-done-doc mono">${esc(shift.doc_no)}</div>
         <div class="shift-done-rows">${rows.map(([l, v], i) => row(l, v, i)).join('')}</div>
-        <div class="shift-done-verdict ${balanced ? 'settled' : total > 0 ? 'change' : 'owing'}" style="--i:${rows.length}">
+        <div class="shift-done-verdict ${balanced ? 'settled' : short ? 'owing' : 'change'}" style="--i:${rows.length}">
           ${icon(balanced ? 'check' : 'alert')}<span>${esc(verdictText)}</span>
         </div>
         <div class="shift-done-ask">${esc(t('shift.print_ask'))}</div>
@@ -311,6 +364,8 @@ export function shiftReportHtml(s) {
   const cur = second();
   const line = (label, value, cls = '') => `<div class="r-line ${cls}"><span>${esc(label)}</span><span>${value}</span></div>`;
   const signed = (v) => money(v, { sign: true });
+  // The second currency signs itself: formatSecond has no sign of its own.
+  const signedSecond = (v) => `${Number(v) > 0 ? '+' : Number(v) < 0 ? '−' : ''}${formatSecond(Math.abs(Number(v) || 0))}`;
   const closed = s.status === 'closed';
   const heading = (text) => `<div class="r-rule"></div><div class="r-center"><b>${esc(text)}</b></div>`;
   return `<div class="receipt" id="shift-report">
@@ -338,21 +393,38 @@ export function shiftReportHtml(s) {
       ${closed ? line(t('shift.difference'), signed(s.difference)) : ''}
       ${
         cur && (s.opening_cash2 || s.expected_cash2)
-          ? `${line(t('shift.expected_in', { c: cur.symbol }), esc(formatSecond(s.expected_cash2)))}
-             ${closed ? line(t('shift.counted', { c: cur.symbol }), esc(formatSecond(s.counted_cash2))) : ''}`
+          ? `${line(`${t('shift.opening')} · ${cur.symbol}`, esc(formatSecond(s.opening_cash2)))}
+             ${line(`${t('shift.cash_in')} · ${cur.symbol}`, esc(formatSecond(s.cash_in2)))}
+             ${line(t('shift.expected_in', { c: cur.symbol }), esc(formatSecond(s.expected_cash2)), 'r-total')}
+             ${closed ? line(t('shift.counted', { c: cur.symbol }), esc(formatSecond(s.counted_cash2))) : ''}
+             ${closed ? line(`${t('shift.difference')} · ${cur.symbol}`, esc(signedSecond(s.difference2))) : ''}`
           : ''
       }
       ${(s.others || [])
         .map(
           (o) => `${heading(methodText(o.method))}
-            ${line(t('shift.expected'), money(o.expected))}
-            ${closed ? line(t('shift.counted_col'), money(o.counted)) : ''}
-            ${closed ? line(t('shift.difference'), signed(o.difference)) : ''}`,
+            ${
+              o.expected || !o.expected2
+                ? `${line(t('shift.expected'), money(o.expected))}
+                   ${closed ? line(t('shift.counted_col'), money(o.counted)) : ''}
+                   ${closed ? line(t('shift.difference'), signed(o.difference)) : ''}`
+                : ''
+            }
+            ${
+              cur && o.expected2
+                ? `${line(t('shift.expected_in', { c: cur.symbol }), esc(formatSecond(o.expected2)))}
+                   ${closed ? line(t('shift.counted', { c: cur.symbol }), esc(formatSecond(o.counted2))) : ''}
+                   ${closed ? line(`${t('shift.difference')} · ${cur.symbol}`, esc(signedSecond(o.difference2))) : ''}`
+                : ''
+            }`,
         )
         .join('')}
       ${
         closed
-          ? `<div class="r-rule"></div>${line(t('shift.total_difference'), signed(s.difference_total ?? s.difference), 'r-total')}`
+          ? `<div class="r-rule"></div>${line(t('shift.total_difference'), signed(s.difference_total ?? s.difference), 'r-total')}
+             ${cur && s.difference2_total !== null && s.difference2_total !== undefined
+               ? line(`${t('shift.total_difference')} · ${cur.symbol}`, esc(signedSecond(s.difference2_total)), 'r-total')
+               : ''}`
           : ''
       }
       ${[s.opening_note, s.closing_note].filter(Boolean).map((n) => `<div class="r-center">${esc(n)}</div>`).join('')}

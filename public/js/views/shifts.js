@@ -92,6 +92,9 @@ async function renderDoc(root, ctx, id) {
   }
   const cur = second();
   const row = (label, value, cls = '') => `<div class="sum-row ${cls}"><span>${esc(label)}</span><span class="v">${value}</span></div>`;
+  // An amount in the second currency, signed and coloured like any other difference.
+  const second2 = (v) =>
+    `<span class="${signClass(v)}">${Number(v) > 0 ? '+' : Number(v) < 0 ? '−' : ''}${esc(formatSecond(Math.abs(Number(v) || 0)))}</span>`;
   const body = docPage(root, {
     title: t('shift.doc_title', { doc: s.doc_no }),
     subtitle: [
@@ -130,20 +133,37 @@ async function renderDoc(root, ctx, id) {
         ${
           cur && (s.opening_cash2 || s.expected_cash2 || s.counted_cash2)
             ? `${row(t('shift.expected_in', { c: cur.symbol }), esc(formatSecond(s.expected_cash2)))}
-               ${closed ? row(t('shift.counted', { c: cur.symbol }), esc(formatSecond(s.counted_cash2))) : ''}`
+               ${closed ? row(t('shift.counted', { c: cur.symbol }), esc(formatSecond(s.counted_cash2))) : ''}
+               ${closed ? row(`${t('shift.difference')} · ${cur.symbol}`, second2(s.difference2)) : ''}`
             : ''
         }
         ${(s.others || [])
           .map(
             (o) => `<div class="pay-card-head" style="margin-top:12px">${esc(methodText(o.method))}</div>
-              ${row(t('shift.expected'), money(o.expected))}
-              ${closed ? row(t('shift.counted_col'), money(o.counted)) : ''}
-              ${closed ? row(t('shift.difference'), `<span class="${signClass(o.difference)}">${money(o.difference, { sign: true })}</span>`) : ''}`,
+              ${
+                o.expected || !o.expected2
+                  ? `${row(t('shift.expected'), money(o.expected))}
+                     ${closed ? row(t('shift.counted_col'), money(o.counted)) : ''}
+                     ${closed ? row(t('shift.difference'), `<span class="${signClass(o.difference)}">${money(o.difference, { sign: true })}</span>`) : ''}`
+                  : ''
+              }
+              ${
+                cur && o.expected2
+                  ? `${row(t('shift.expected_in', { c: cur.symbol }), esc(formatSecond(o.expected2)))}
+                     ${closed ? row(t('shift.counted', { c: cur.symbol }), esc(formatSecond(o.counted2))) : ''}
+                     ${closed ? row(`${t('shift.difference')} · ${cur.symbol}`, second2(o.difference2)) : ''}`
+                  : ''
+              }`,
           )
           .join('')}
         ${
           closed && s.others?.length
             ? row(t('shift.total_difference'), `<b class="${signClass(s.difference_total)}">${money(s.difference_total, { sign: true })}</b>`, 'total')
+            : ''
+        }
+        ${
+          closed && cur && s.difference2_total
+            ? row(`${t('shift.total_difference')} · ${cur.symbol}`, second2(s.difference2_total), 'total')
             : ''
         }
       </div></section>
