@@ -107,6 +107,8 @@ export function register(router) {
     if (stock === 'low') where.push('COALESCE(s.stock, 0) <= p.min_stock AND COALESCE(s.stock, 0) > 0');
     if (stock === 'out') where.push('COALESCE(s.stock, 0) <= 0');
     if (stock === 'in') where.push('COALESCE(s.stock, 0) > 0');
+    // Low or out: everything at or below its minimum — what the menu badge counts.
+    if (stock === 'restock') where.push('COALESCE(s.stock, 0) <= p.min_stock');
 
     const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
     // A search puts the closest matches first: the exact barcode or name, then

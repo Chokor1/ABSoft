@@ -51,7 +51,7 @@ invoice loses a line.
 
 | Screen | What it is for |
 | --- | --- |
-| **Dashboard** | Today and this month at a glance: sales, profit, stock value, low-stock warnings, 30-day trend. |
+| **Dashboard** | Today and this month at a glance: sales, profit, stock value, low-stock warnings, 30-day trend. Each figure says how it compares — ▲ 12% against yesterday, or against the same days of last month — and says nothing when there is no earlier figure to compare with. The chart shows revenue, gross profit and, underneath, each day's expenses, on a round-number axis. |
 | **POS** (`F2`) | The till, full screen: the sidebar slides away, and the ABSoft mark at the start of the top bar leads back home (a cashier's leads to Sell); the exchange rate moves into the top bar. Scan or tap products (newest on top), adjust quantity, price or discount right on each line, then **Make payment**. The receipt opens as soon as the sale is saved. |
 | **Sell** | Every invoice — those rung up at the POS and those entered here. **New sale** enters a sale as a document, like a purchase: customer, date, lines with price and discount, an invoice discount, and what was paid now (the rest stays owing). Click an invoice to open it: the receipt, its payments, print, take the rest, void. Cost and profit per sale for administrators. |
 | **Buy** (`F4`) | Record a supplier purchase. Multiple lines per document; stock goes up and the cost is re-averaged. Administrators can edit a saved purchase; every change is logged. |
@@ -62,14 +62,20 @@ invoice loses a line.
 | **Lists** | Customers, suppliers, product categories, units, expense categories and **payment methods** — the names you reuse. A customer or supplier opens on their own page, with their balance and statement. |
 | **Reports** | Profit & loss for any date range, **Sales analysis**, product performance, stock valuation, the movement ledger and per-cashier totals. The report menu, the dates and the buttons share one line, so the report itself gets the screen. |
 | **Users** | Add cashiers and administrators. A cashier only gets **POS**, **Sell** (without cost or profit) and their own settings. |
-| **Settings** | In sections: Store (logo, name, currency, tax, receipt footer), POS (shifts, sound, picture cards), Search, Currency, Language, Backup & data, About. |
+| **Settings** | In sections: Store (logo, name, currency, tax, receipt footer), POS (shifts, sound, picture cards), Search, Currency, Language, Backup & data (including the automatic backups), About. |
+
+The menu is short enough for a 1366×720 till screen: **Dashboard**, then **Money** (Sell, Shifts
+when they are on, Buy, Expenses, Reports), then **Stock** (Products, Stock Count, Stock Adjustment,
+Lists). **Users** and **Settings** open from the user menu at the foot of the sidebar, and the gear
+beside your name opens Settings. **Products** carries the number of products at or below their
+minimum (switch it off under Settings → Store); click it for exactly that list.
 
 Press `/` anywhere to jump to the search box. Every list has an **Export CSV** button.
 **Lists come a page at a time.** Products, sales, purchases, stock adjustments, expenses and the
 customer/supplier lists ask the server for one page (50 rows by default; 25, 100 or 200 from the
 strip under the table), so a shop with years of invoices opens as fast as a new one. Each list has
-filters that narrow the page before it loads — products by category, stock (in, low, out) and
-archived; sales by payment status and method; adjustments by reason; expenses by category — and
+filters that narrow the page before it loads — products by category, stock (in, low, out, needs
+restocking) and archived; sales by payment status and method; adjustments by reason; expenses by category — and
 any change of filter goes back to page one. The badges above a list count everything that
 matches; the row under the table adds up the page on screen.
 
@@ -141,6 +147,11 @@ Choosing Arabic does more than swap words:
 - **Error messages come back translated too.** The server sends an error *code* rather than a
   fixed English sentence, so "this barcode is already used" is Arabic for an Arabic user.
 - Charts stay left-to-right, because a time axis reads the same way in every locale.
+- **Counted things take the right form.** English has "1 product" and "3 products"; Arabic has
+  six forms — منتج واحد، منتجان، 3 منتجات، 11 منتجاً، 100 منتج — and every counted string picks
+  the one the number calls for, from the browser's own plural rules.
+- Product names line up on one edge whichever script they are written in: an Arabic name in
+  the English till starts at the left with the English ones, and the other way round.
 
 Two things stay exactly as you typed them, by design: **your data and your money**. Product
 names, customers, suppliers, notes, categories and the store name are never translated — you
@@ -431,6 +442,13 @@ under **Settings → POS**.
 On a phone the search, the cart and the products stack in that order, and a bar at the bottom
 keeps the total and **Make payment** in reach while you scroll.
 
+**The whole sale works from the keyboard.** `F2` opens the till with the cursor in the search
+box; a scan or a typed name adds a line; **`F9`** opens Make payment from anywhere on the till
+(Tab and Shift+Tab stay inside the dialog, Escape closes it and puts the cursor back where it
+was); Enter confirms. The receipt then holds the focus itself rather than its Print button, so a
+scanner's Enter after the next barcode never prints a second copy. Wherever the keyboard lands
+there is a visible ring, and every button that is only an icon has a name a screen reader can say.
+
 ### Shifts (opening and closing)
 
 Off by default; switch on under **Settings → POS → Work in shifts**. With shifts on, the till sells
@@ -528,19 +546,22 @@ Everything printed then comes out on the shop's own stationery:
 
 ## Backups
 
-Everything the business owns is in one file: **`data/absoft.db`**. Three ways to copy it:
+Everything the business owns is in one file: **`data/absoft.db`**. It is copied for you, and there
+are three ways to copy it yourself:
 
 | How | What it does |
 | --- | --- |
+| **Automatic** | One backup a day — at the first start of the day, or within half an hour of midnight on a server left running — and one whenever a shift closes, into `data/backups/`. **Settings → Backup & data** shows when the last one was taken and, should one fail, why. |
+| **A second folder** | Name a folder under Settings → Backup & data — a OneDrive or Google Drive folder, a USB stick, anywhere off this disk — and every automatic backup is copied into it too, the first one the moment you save. A folder that has gone missing is made again; one that cannot be written shows up as a failure on that screen, never silently. |
 | **Settings → Download backup** | Sends a snapshot to your Downloads folder. Put it on a USB stick or cloud drive. |
 | **Settings → Save a copy on this computer** | Writes into `data/backups/`. The 20 most recent are kept. |
 | `npm run backup` | The same thing from a terminal. This is what `update.cmd` runs. |
 
-All three are **safe while the shop is trading** — no need to close ABSoft POS. They use SQLite's
+All of them are **safe while the shop is trading** — no need to close ABSoft POS. They use SQLite's
 `VACUUM INTO`, which writes a fully consistent copy in one step. That detail matters: ABSoft POS
 runs in WAL mode, so hand-copying `absoft.db` while it is open can grab the file *without* its
 `-wal` companion and silently lose the most recent sales. Never back up by copying that one
-file — use one of the three above, or copy the whole `data` folder with ABSoft POS closed.
+file — use one of the ways above, or copy the whole `data` folder with ABSoft POS closed.
 
 `npm run backup` is strictly read-only — it opens the database directly rather than through the
 app, so it never applies a pending migration. That is what makes it trustworthy as the first
@@ -694,6 +715,7 @@ server/
   migrations.js     schema changes made after v1.0.0  ← add yours here
   entities.js       reusable names (customers, suppliers, categories, units)
   backup.js         consistent snapshots via VACUUM INTO
+  autobackup.js     the daily and shift-close backups, and the second folder
   auth.js           scrypt password hashing, sessions
   http.js           tiny router, JSON body, static files
   util.js           money/quantity rounding, date ranges, doc numbers
@@ -702,7 +724,8 @@ server/
 public/
   index.html
   css/app.css       design tokens, light + dark themes, RTL rules
-  js/i18n.js        English + Arabic strings, direction, error-code lookup
+  js/i18n.js        English + Arabic strings, plural forms, direction, error-code lookup
+  js/chart-scale.js round-number axes for the charts (tested on its own)
   js/               api.js, ui.js, icons.js, main.js, views/
 tests/              npm test - each suite runs its own server on a scratch database
 data/absoft.db      your database (created on first run)

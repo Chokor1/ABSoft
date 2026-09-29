@@ -13,19 +13,22 @@ import {
   qtyText,
   signClass,
   statTile,
-  store,
-  toast,
+  trendPill,
 } from '../ui.js';
 
 export async function render(root, ctx) {
   const d = await api.dashboard();
   const { today, month, inventory } = d;
+  // Older servers send no comparison figures; the tiles then simply carry no pill.
+  const yesterday = d.yesterday || {};
+  const lastMonth = d.last_month || {};
 
   root.innerHTML = `
     <div class="grid cols-4" style="margin-bottom:16px">
       ${statTile({
         label: t('dash.today_sales'),
         value: money(today.gross_sales),
+        trend: trendPill(today.gross_sales, yesterday.gross_sales, 'dash.vs_yesterday'),
         foot: t('dash.today_sales_foot', { n: number(today.sale_count), v: money(today.avg_ticket) }),
         iconName: 'cart',
         tint: 'info',
@@ -33,6 +36,7 @@ export async function render(root, ctx) {
       ${statTile({
         label: t('dash.today_profit'),
         value: `<span class="${signClass(today.net_profit)}">${money(today.net_profit)}</span>`,
+        trend: trendPill(today.net_profit, yesterday.net_profit, 'dash.vs_yesterday'),
         foot: t('dash.profit_foot', { g: money(today.gross_profit), e: money(today.expenses) }),
         iconName: 'trendUp',
         tint: today.net_profit >= 0 ? 'success' : 'danger',
@@ -40,12 +44,14 @@ export async function render(root, ctx) {
       ${statTile({
         label: t('dash.month_revenue'),
         value: money(month.revenue),
+        trend: trendPill(month.revenue, lastMonth.revenue, 'dash.vs_last_month'),
         foot: t('dash.month_revenue_foot', { n: number(month.sale_count), m: pct(month.gross_margin) }),
         iconName: 'coins',
       })}
       ${statTile({
         label: t('dash.month_profit'),
         value: `<span class="${signClass(month.net_profit)}">${money(month.net_profit)}</span>`,
+        trend: trendPill(month.net_profit, lastMonth.net_profit, 'dash.vs_last_month'),
         foot: t('dash.month_profit_foot', { c: money(month.cogs), e: money(month.expenses) }),
         iconName: month.net_profit >= 0 ? 'trendUp' : 'trendDown',
         tint: month.net_profit >= 0 ? 'success' : 'danger',
@@ -59,10 +65,11 @@ export async function render(root, ctx) {
           <div class="spacer"></div>
           <div class="chart-legend">
             <span><i style="background:var(--accent)"></i>${esc(t('common.revenue'))}</span>
-            <span><i style="background:var(--success)"></i>${esc(t('dash.net_profit'))}</span>
+            <span><i style="background:var(--success)"></i>${esc(t('rep.gross_profit'))}</span>
+            <span><i style="background:var(--warn)"></i>${esc(t('rep.expenses'))}</span>
           </div>
         </div>
-        <div class="card-body">${chartSvg(d.chart)}</div>
+        <div class="card-body">${chartSvg(d.chart, { markKey: 'expenses' })}</div>
       </div>
 
       <div class="card">
@@ -120,7 +127,7 @@ export async function render(root, ctx) {
       <div class="card">
         <div class="card-head"><div><h3>${esc(t('dash.low_stock'))}</h3>
             <div class="sub">${esc(t('dash.low_stock_sub'))}</div></div>
-          <div class="spacer"></div><button class="btn btn-sm btn-ghost" data-go="products">${esc(
+          <div class="spacer"></div><button class="btn btn-sm btn-ghost" data-go="products/restock">${esc(
             t('dash.manage'),
           )}</button></div>
         <div class="card-body flush">
@@ -161,8 +168,4 @@ export async function render(root, ctx) {
   root.querySelectorAll('[data-sale]').forEach((tr) =>
     tr.addEventListener('click', () => ctx.navigate(`sales/${tr.dataset.sale}`)),
   );
-
-  if (store.settings.low_stock_alert === '1' && inventory.low_stock > 0) {
-    toast(t('dash.restock_warning', { n: inventory.low_stock }), 'warn');
-  }
 }

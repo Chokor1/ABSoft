@@ -26,6 +26,8 @@
   --muted: #677389;
   --accent: #2f5bea;
   --accent-2: #5b8cff;
+  /* Keyboard focus: strong enough to find at a glance on white and on the brand blue. */
+  --focus-ring: #1b3aa6;
   --accent-soft: #ebf0fe;
   --accent-text: #2446c4;
   --success: #0c8f5a;
@@ -70,6 +72,7 @@
   --muted: #9ba6bb;
   --accent: #6b8cff;
   --accent-2: #9ab5ff;
+  --focus-ring: #9ab5ff;
   --accent-soft: #2e3d6a;
   --accent-text: #b5c8ff;
   --success: #45d198;
@@ -92,6 +95,15 @@
 *,
 *::before,
 *::after { box-sizing: border-box; }
+
+/* Keyboard focus: a ring wherever the keyboard lands, never after a mouse click.
+   Text fields keep their own glow (see .input:focus); the ring stands off filled
+   buttons and till cards so it reads against their colour. */
+:focus-visible { outline: 2.5px solid var(--focus-ring); outline-offset: 2px; }
+.btn-primary:focus-visible, .btn-danger:focus-visible, .tile:focus-visible { outline-offset: 3px; }
+.nav-item:focus-visible { outline-offset: -2px; }
+/* A dialog holding the focus itself (no field to start in) needs no ring round the whole box. */
+.modal:focus-visible { outline: none; }
 
 html, body { height: 100%; }
 
@@ -245,6 +257,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav-item.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 650; }
 .nav-item.active svg { opacity: 1; }
 .nav-item .kbd { margin-inline-start: auto; }
+/* How many products need restocking: beside Products, or on the Stock header while it is folded. */
+.nav-badge {
+  margin-inline-start: auto; min-width: 22px; padding: 2px 7px; border-radius: 999px;
+  background: var(--warn-soft); color: var(--warn); font-size: 11.5px; font-weight: 700;
+  text-align: center; font-variant-numeric: tabular-nums; line-height: 1.35; cursor: pointer;
+}
+.nav-badge:hover { background: var(--warn); color: var(--surface); }
+.nav-badge + .kbd { margin-inline-start: 6px; }
+.nav-fold:not(.open) .nav-badge.on-fold + .nav-chevron { margin-inline-start: 8px; }
+.nav-fold.open .nav-badge.on-fold, .nav-fold:not(.open) .nav-children .nav-badge { display: none; }
 
 .sidebar-foot { padding-top: 12px; border-top: 1px solid var(--border); margin-top: 10px; }
 .user-chip {
@@ -253,6 +275,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer; text-align: left; transition: background 0.14s ease;
 }
 .user-chip:hover { background: var(--surface-3); }
+/* The user, and Settings one click away beside them: both left the menu to keep it short. */
+.user-row { display: flex; align-items: center; gap: 4px; }
+.user-row .user-chip { flex: 1; min-width: 0; }
+.user-chip.active, .nav-gear.active { background: var(--accent-soft); color: var(--accent-text); }
 .avatar {
   width: 32px; height: 32px; border-radius: 50%; flex: none;
   display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff;
@@ -359,6 +385,8 @@ textarea.input { resize: vertical; min-height: 68px; }
   font-family: var(--mono); color: var(--muted);
   background: var(--surface-3); border: 1px solid var(--border); border-radius: 6px;
 }
+/* A shortcut hint on a filled button: light on the brand blue. */
+.kbd-on-brand { color: #fff; background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.3); margin-inline-start: 4px; }
 
 .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: 10px; border: 1px solid var(--border); }
 .seg button {
@@ -417,11 +445,18 @@ textarea.input { resize: vertical; min-height: 68px; }
 .stat .label svg { width: 15px; height: 15px; }
 .stat .value { margin-top: 9px; font-size: 25px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .stat .foot { margin-top: 5px; font-size: 12px; color: var(--muted); }
-.stat::after {
-  content: ""; position: absolute; inset: auto -20% -60% auto;
-  width: 130px; height: 130px; border-radius: 50%;
-  background: var(--tint, var(--accent)); opacity: 0.09; filter: blur(6px);
+/* The tint colours the tile's icon: green for a profit, red for a loss. */
+.stat.tint-success .label svg, .stat.tint-danger .label svg, .stat.tint-warn .label svg, .stat.tint-info .label svg { color: var(--tint); }
+/* Up or down on yesterday / last month, beside the figure. */
+.stat-trend {
+  display: inline-block; vertical-align: 3px; margin-inline-start: 8px;
+  padding: 2px 7px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0; font-variant-numeric: tabular-nums;
+  background: var(--surface-3); color: var(--muted); white-space: nowrap;
 }
+.stat-trend.up { background: var(--success-soft); color: var(--success); }
+.stat-trend.down { background: var(--danger-soft); color: var(--danger); }
+.stat-trend [aria-hidden] { font-size: 9px; vertical-align: 1px; }
 .stat.tint-success { --tint: var(--success); }
 .stat.tint-danger { --tint: var(--danger); }
 .stat.tint-warn { --tint: var(--warn); }
@@ -831,7 +866,11 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
    ========================================================================== */
 
 .chart { width: 100%; height: 210px; display: block; overflow: visible; }
+.chart.has-marks { height: 228px; }
 .chart .grid-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
+.chart .zero-line { stroke: var(--border-strong); stroke-width: 1.25; }
+.chart .mark { fill: var(--warn); opacity: 0.8; }
+.chart .mark:hover { opacity: 1; }
 .chart .axis-text { fill: var(--muted); font-size: 10px; font-family: var(--font); }
 .chart .bar { fill: var(--accent); opacity: 0.85; transition: opacity 0.12s; }
 .chart .bar:hover { opacity: 1; }
@@ -1031,7 +1070,6 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 
 [dir="rtl"] .bar-fill { background: linear-gradient(270deg, var(--accent), var(--accent-2)); }
 
-[dir="rtl"] .stat::after { inset: auto auto -60% -20%; }
 
 [dir="rtl"] .toast { animation-name: slide-in-rtl; }
 [dir="rtl"] .toast.hide { animation-name: slide-out-rtl; }
@@ -1055,6 +1093,11 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .credit {
   unicode-bidi: plaintext;
 }
+/* …but the edge a name starts from is the interface's, not the text's. With plaintext,
+   `start` follows the text, so an Arabic name in an English till sat at the right while
+   the English names sat at the left, and the grid looked uneven. */
+.tile .t-name, .tile .t-desc, .tp-name, .cl-name { text-align: left; }
+[dir="rtl"] .tile .t-name, [dir="rtl"] .tile .t-desc, [dir="rtl"] .tp-name, [dir="rtl"] .cl-name { text-align: right; }
 
 /* The monospace stack has no Arabic glyphs, so receipts switch to the UI font. */
 [dir="rtl"] .receipt { font-family: var(--font); font-size: 13px; }
@@ -1238,6 +1281,21 @@ table.data.compact td { padding: 8px 14px; }
   background: var(--surface-2); border: 1px solid var(--border);
 }
 .rate-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+/* A short till screen (1366×720, 1280×720…): the whole menu, the rate and the user still fit
+   without scrolling. Rows tighten a little and the rate drops its heading, since
+   "1 $ = 89,500 L.L" says what it is. */
+@media (min-width: 901px) and (max-height: 820px) {
+  .sidebar { padding-block: 12px; }
+  .brand { padding-bottom: 8px; }
+  .nav-item { padding-block: 7px; }
+  .nav-label { padding-block: 10px 4px; }
+  .nav-fold { margin-top: 4px; }
+  .sidebar .rate-box { margin-top: 6px; padding-block: 6px; }
+  .sidebar .rate-label { display: none; }
+  .sidebar .rate-row { margin-top: 0; }
+  .sidebar-foot { padding-top: 8px; margin-top: 6px; }
+  .sidebar-foot .credit { padding-top: 4px; }
+}
 .rate-label svg { width: 13px; height: 13px; }
 .rate-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .rate-value b { color: var(--money2); }
@@ -1320,7 +1378,7 @@ table.data.compact td { padding: 8px 14px; }
   font-size: 13px; font-weight: 750; line-height: 1.3; letter-spacing: 0.01em; text-transform: uppercase;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  unicode-bidi: plaintext; text-align: start;
+  unicode-bidi: plaintext;
 }
 .tp-body { padding: 8px 12px 10px; }
 .tile-pic .t-meta { margin-top: 0; }

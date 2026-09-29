@@ -70,7 +70,7 @@ export async function render(root, ctx) {
           )}" autocomplete="off"/>
         </div>
         <button class="btn btn-icon" id="toggle-images" aria-pressed="${tileImagesEnabled()}"
-                title="${esc(t('pos.show_images'))}">${icon('image')}</button>
+                title="${esc(t('pos.show_images'))}" aria-label="${esc(t('pos.show_images'))}">${icon('image')}</button>
         <button class="btn" id="clear-search">${esc(t('pos.clear'))}</button>
       </div>
 
@@ -78,15 +78,15 @@ export async function render(root, ctx) {
         <div class="cart-head">
           <h3>${esc(t('pos.current_sale'))}</h3>
           <span class="badge accent" id="cart-count"></span>
-          <button class="btn btn-ghost btn-icon" id="clear-cart" title="${esc(t('pos.clear_cart'))}">${icon(
+          <button class="btn btn-ghost btn-icon" id="clear-cart" title="${esc(t('pos.clear_cart'))}" aria-label="${esc(t('pos.clear_cart'))}">${icon(
             'trash',
           )}</button>
         </div>
         <div class="cart-lines" id="cart-lines"></div>
         <div class="cart-foot">
-          <div id="totals"></div>
-          <button class="btn btn-primary btn-lg btn-block" id="checkout" disabled>
-            ${icon('coins')} ${esc(t('pos.make_payment'))}
+          <div id="totals" aria-live="polite" aria-atomic="true"></div>
+          <button class="btn btn-primary btn-lg btn-block" id="checkout" disabled aria-keyshortcuts="F9">
+            ${icon('coins')} ${esc(t('pos.make_payment'))} <span class="kbd kbd-on-brand hide-mobile" aria-hidden="true">F9</span>
           </button>
         </div>
       </aside>
@@ -108,6 +108,17 @@ export async function render(root, ctx) {
   const $ = (sel) => root.querySelector(sel);
   const tiles = $('#tiles');
   const scan = $('#scan');
+  // A phone's search box is too narrow for the whole hint; a short one says the same.
+  const narrow = matchMedia('(max-width: 560px)');
+  const placeholder = () => {
+    scan.placeholder = narrow.matches
+      ? t('pos.scan_placeholder_short')
+      : MIN_SEARCH === 1
+        ? t('pos.scan_placeholder_one')
+        : t('pos.scan_placeholder', { n: MIN_SEARCH });
+  };
+  placeholder();
+  narrow.addEventListener('change', placeholder);
   const linesEl = $('#cart-lines');
 
   /* ------------------------------------------------------------ catalogue -- */
@@ -489,13 +500,13 @@ export async function render(root, ctx) {
   function lineHtml(l) {
     return `<div class="cart-line ${l.open ? 'open' : ''}" data-line="${l.product_id}">
       <div class="cl-top">
-        <button class="cl-toggle" data-toggle title="${esc(t(l.open ? 'pos.line_close' : 'pos.line_open'))}"
+        <button class="cl-toggle" data-toggle title="${esc(t(l.open ? 'pos.line_close' : 'pos.line_open'))}" aria-label="${esc(t(l.open ? 'pos.line_close' : 'pos.line_open'))}"
                 aria-expanded="${l.open ? 'true' : 'false'}">${icon('chevron')}</button>
         <div class="cl-name" title="${esc(l.name)}">${esc(l.name)}</div>
         <span class="cl-short" data-stock ${l.qty > l.stock ? '' : 'hidden'}
               title="${esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }))}">${esc(t('pos.low_badge'))}</span>
         <span class="cl-totals"><span class="cl-total" data-total>${money(lineTotal(l))}</span>${money2Html(lineTotal(l), { cls: 'cl-total2' })}</span>
-        <button class="cl-remove" data-remove title="${esc(t('pos.remove_line'))}">${icon('trash')}</button>
+        <button class="cl-remove" data-remove title="${esc(t('pos.remove_line'))}" aria-label="${esc(t('pos.remove_line'))}">${icon('trash')}</button>
       </div>
       <div class="cl-fields">
         <div class="cl-field">
@@ -668,6 +679,7 @@ export async function render(root, ctx) {
       el.classList.toggle('open', line.open);
       btn.setAttribute('aria-expanded', String(line.open));
       btn.title = t(line.open ? 'pos.line_close' : 'pos.line_open');
+      btn.setAttribute('aria-label', btn.title);
       if (line.open) el.querySelector('[data-field="total"]').focus();
       return;
     }
@@ -993,6 +1005,14 @@ export async function render(root, ctx) {
 
   $('#checkout').addEventListener('click', openPayment);
   $('#bar-checkout').addEventListener('click', openPayment);
+  // F9 pays from anywhere on the till, so the keyboard never tabs past every card to reach the
+  // button. Not Enter: Enter also confirms in the payment dialog, and a double press would sell.
+  const payKey = (e) => {
+    if (e.key !== 'F9' || document.querySelector('.modal-backdrop, .sale-done, #shift-gate:not([hidden])')) return;
+    e.preventDefault();
+    if (!$('#checkout').disabled) openPayment();
+  };
+  document.addEventListener('keydown', payKey);
 
   // Shifts (when switched on): the till opens one before selling and closes it by
   // counting the drawer.
@@ -1024,6 +1044,8 @@ export async function render(root, ctx) {
   return () => {
     window.removeEventListener('scroll', onScroll);
     document.removeEventListener('keydown', toScanBox);
+    document.removeEventListener('keydown', payKey);
+    narrow.removeEventListener('change', placeholder);
     stopWatching();
     shifts.destroy();
   };

@@ -179,11 +179,15 @@ async function renderList(root, ctx, startKind) {
                           isAdmin
                             ? `<button class="btn btn-sm btn-ghost" data-open="${r.id}" title="${esc(
                                 t('common.edit'),
+                              )}" aria-label="${esc(
+                                t('common.edit'),
                               )}">${icon('edit')}</button>
                                ${
                                  r.builtin
                                    ? ''
                                    : `<button class="btn btn-sm btn-ghost" data-del="${r.id}" title="${esc(
+                                       t('common.remove'),
+                                     )}" aria-label="${esc(
                                        t('common.remove'),
                                      )}">${icon('trash')}</button>`
                                }`

@@ -157,6 +157,8 @@ function paymentsHtml(sale) {
                   store.user.role === 'admin'
                     ? `<button class="btn btn-sm btn-ghost" data-del-pay="${r.id}" title="${esc(
                         t('common.remove'),
+                      )}" aria-label="${esc(
+                        t('common.remove'),
                       )}">${icon('trash')}</button>`
                     : ''
                 }</td>
@@ -278,7 +280,7 @@ async function renderSale(root, ctx, id) {
       actions: `${admin && sale.customer ? `<button class="btn" data-customer>${icon('users')} ${esc(t('party.open_customer'))}</button>` : ''}
                 ${owing ? `<button class="btn btn-primary" data-pay>${icon('coins')} ${esc(t('pay.record'))}</button>` : ''}
                 <button class="btn ${owing ? '' : 'btn-primary'}" data-print>${icon('print')} ${esc(t('common.print'))}</button>
-                ${admin ? `<button class="btn btn-ghost" data-void title="${esc(t('sales.void_tip'))}">${icon('trash')}</button>` : ''}`,
+                ${admin ? `<button class="btn btn-ghost" data-void title="${esc(t('sales.void_tip'))}" aria-label="${esc(t('sales.void_tip'))}">${icon('trash')}</button>` : ''}`,
       onBack: back,
     });
     root.querySelector('[data-customer]')?.addEventListener('click', () => openParty(ctx, 'customer', sale.customer));
@@ -529,6 +531,8 @@ export async function render(root, ctx) {
                           ${
                             store.user.role === 'admin'
                               ? `<button class="btn btn-sm btn-ghost" data-void="${s.id}" title="${esc(
+                                  t('sales.void_tip'),
+                                )}" aria-label="${esc(
                                   t('sales.void_tip'),
                                 )}">${icon('trash')}</button>`
                               : ''

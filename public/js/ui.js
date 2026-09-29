@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
 import { isRtl, locale, t } from './i18n.js';
+import { niceTicks, stepDecimals } from './chart-scale.js';
 import { wireNamePickers } from './name-picker.js';
 import { sweepPickers } from './picker.js';
 
@@ -128,20 +129,29 @@ export function toast(message, kind = 'info', ms = 3200) {
  * Open a modal. `render(close)` returns HTML for the body; `setup(root, close)`
  * wires events. Resolves with whatever `close(value)` is called with.
  */
+let modalSeq = 0;
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function modal({ title, subtitle = '', body, footer = '', wide = false, setup, onOpen }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modal-root');
+    // Where the keyboard was, so closing puts it back there.
+    const opener = document.activeElement;
+    const id = `modal-${++modalSeq}`;
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
-      <div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
+      <div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="${id}-title"
+           ${subtitle ? `aria-describedby="${id}-sub"` : ''}>
         <div class="modal-head">
           <div>
-            <h3>${esc(title)}</h3>
-            ${subtitle ? `<div class="sub">${esc(subtitle)}</div>` : ''}
+            <h3 id="${id}-title">${esc(title)}</h3>
+            ${subtitle ? `<div class="sub" id="${id}-sub">${esc(subtitle)}</div>` : ''}
           </div>
           <div class="spacer"></div>
-          <button class="btn btn-ghost btn-icon no-print" data-close aria-label="Close">${icon('close')}</button>
+          <button class="btn btn-ghost btn-icon no-print" data-close aria-label="${esc(t('common.close'))}"
+                  title="${esc(t('common.close'))}">${icon('close')}</button>
         </div>
         <div class="modal-body">${body}</div>
         ${footer ? `<div class="modal-foot">${footer}</div>` : ''}
@@ -152,10 +162,28 @@ export function modal({ title, subtitle = '', body, footer = '', wide = false, s
       document.removeEventListener('keydown', onKey);
       backdrop.remove();
       sweepPickers();
+      // Back to the button that opened it, unless the page moved on and took it away.
+      if (opener?.isConnected && !root.children.length) opener.focus?.();
       resolve(value);
     };
     const onKey = (e) => {
-      if (e.key === 'Escape') close(undefined);
+      // Dialogs stack (a receipt over the till, a confirm over a form): only the top one answers.
+      if (root.lastElementChild !== backdrop) return;
+      if (e.key === 'Escape') return close(undefined);
+      // Tab stays inside the dialog, wrapping at either end.
+      if (e.key !== 'Tab') return;
+      const items = [...backdrop.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const inside = backdrop.contains(document.activeElement);
+      if (e.shiftKey && (document.activeElement === first || !inside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     backdrop.addEventListener('mousedown', (e) => {
@@ -165,9 +193,15 @@ export function modal({ title, subtitle = '', body, footer = '', wide = false, s
 
     setup?.(backdrop, close);
     onOpen?.(backdrop, close);
-    const focusTarget = backdrop.querySelector('[autofocus], input:not([type=hidden]), select, textarea');
-    focusTarget?.focus();
-    focusTarget?.select?.();
+    // Start in the first field. A dialog without one (a receipt, a confirm) takes the focus
+    // itself rather than a button: a scanner's Enter after the next barcode must not press Print.
+    const field = backdrop.querySelector('[autofocus], input:not([type=hidden]), select, textarea');
+    if (field) {
+      field.focus();
+      field.select?.();
+    } else if (!backdrop.contains(document.activeElement)) {
+      backdrop.querySelector('.modal').focus();
+    }
   });
 }
 
@@ -389,7 +423,7 @@ export function wireBarcodeTables(root) {
                       : `<button type="button" class="btn btn-sm btn-ghost" data-main="${esc(r.code)}">${esc(t('prod.barcode_make_main'))}</button>`
                   }
                   <button type="button" class="btn btn-sm btn-ghost" data-drop="${esc(r.code)}"
-                          title="${esc(t('common.remove'))}">${icon('trash')}</button>
+                          title="${esc(t('common.remove'))}" aria-label="${esc(t('common.remove'))}">${icon('trash')}</button>
                 </td>
               </tr>`,
             )
@@ -567,7 +601,7 @@ export function filterSelect({ label, value, options, onChange }) {
  * headings instead of repeating a header of its own.
  *
  *   const sum = listSummary(bar);
- *   sum.innerHTML = `${count('sales', total)} · ${badge}`;
+ *   sum.innerHTML = `${t('prod.totals', { n: total })} · ${badge}`;
  */
 export function listSummary(bar) {
   const el = document.createElement('div');
@@ -654,12 +688,32 @@ export function shrinkImage(file, max = 1024) {
 export const emptyState = (title, message, iconName = 'box') =>
   `<div class="empty">${icon(iconName)}<strong>${esc(title)}</strong><p>${esc(message)}</p></div>`;
 
-export const statTile = ({ label, value, foot = '', tint = '', iconName = '' }) => `
+export const statTile = ({ label, value, foot = '', tint = '', iconName = '', trend = '' }) => `
   <div class="stat ${tint ? `tint-${tint}` : ''}">
     <div class="label">${iconName ? icon(iconName) : ''}${esc(label)}</div>
-    <div class="value">${value}</div>
+    <div class="value">${value}${trend}</div>
     ${foot ? `<div class="foot">${foot}</div>` : ''}
   </div>`;
+
+/**
+ * Whether a figure is up or down on an earlier one, as a small pill beside it:
+ * "▲ 12%" against yesterday, or the same days last month. `vs` is the i18n key that
+ * names the comparison. Nothing at all when there is no earlier figure to compare
+ * with — a percentage of zero (or of a loss) would only mislead.
+ */
+export function trendPill(now, before, vs) {
+  now = Number(now) || 0;
+  before = Number(before) || 0;
+  if (!(before > 0)) return '';
+  const pct = ((now - before) / before) * 100;
+  const dir = Math.abs(pct) < 0.5 ? 'same' : pct > 0 ? 'up' : 'down';
+  const p = `${Math.round(Math.abs(pct))}%`;
+  const said = `${t(`dash.trend_${dir}`, { p })} ${t(vs, { v: money(before) })}`;
+  const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '▬';
+  return `<span class="stat-trend ${dir}" title="${esc(said)}" aria-label="${esc(said)}"><span aria-hidden="true">${arrow}</span>${
+    dir === 'same' ? '' : ` ${p}`
+  }</span>`;
+}
 
 export const spinner = () => `<div class="empty"><p>${esc(t('common.loading'))}</p></div>`;
 
@@ -679,24 +733,32 @@ export function barList(items, { valueFormat = money } = {}) {
 /**
  * Combined bar (revenue) + line (profit) chart, drawn as plain SVG.
  * Kept deliberately simple: no external chart library, no build step.
+ *
+ * `markKey` adds a lane under the axis with one small bar per day that has a value
+ * (expenses): a rent day shows as a mark of its own instead of dragging the profit
+ * line, and the scale, far below everything else.
  */
-export function chartSvg(series, { barKey = 'revenue', lineKey = 'net_profit' } = {}) {
+export function chartSvg(series, { barKey = 'revenue', lineKey = 'gross_profit', markKey = null } = {}) {
   if (!series.length) return emptyState(t('rep.chart_empty'), t('rep.chart_empty_sub'), 'chart');
 
+  const marks = markKey ? series.map((d) => Number(d[markKey]) || 0) : [];
+  const markMax = Math.max(0, ...marks);
+  const lane = markMax > 0 ? 18 : 0;
+
   const W = 760;
-  const H = 210;
+  const H = 210 + lane;
   const padL = 46;
   const padR = 10;
   const padT = 12;
-  const padB = 24;
+  const padB = 24 + lane;
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
 
   const bars = series.map((d) => Number(d[barKey]) || 0);
   const lines = series.map((d) => Number(d[lineKey]) || 0);
-  const top = Math.max(...bars, ...lines, 1);
-  const bottom = Math.min(...lines, 0);
-  const span = top - bottom || 1;
+  const scale = niceTicks(Math.min(...bars, ...lines), Math.max(...bars, ...lines));
+  const bottom = scale.min;
+  const span = scale.max - scale.min;
 
   const y = (v) => padT + innerH - ((v - bottom) / span) * innerH;
   const slot = innerW / series.length;
@@ -717,14 +779,29 @@ export function chartSvg(series, { barKey = 'revenue', lineKey = 'net_profit' } 
   const pts = series.map((d, i) => [padL + slot * i + slot / 2, y(Number(d[lineKey]) || 0)]);
   const linePath = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
 
-  // Narrow ranges need a decimal, or every tick would round to the same label.
-  const tickLabel = (v) => (span >= 10 ? shortNum(v) : v.toFixed(1));
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => {
-    const v = bottom + span * t;
+  // Steps under 1 need decimals, or neighbouring ticks would read the same.
+  const decimals = stepDecimals(scale.step);
+  const tickLabel = (v) => (decimals ? v.toFixed(decimals) : shortNum(v));
+  const ticks = scale.ticks.map((v) => {
     const yy = y(v);
-    return `<line class="grid-line" x1="${padL}" x2="${W - padR}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}"/>
+    return `<line class="${v === 0 ? 'zero-line' : 'grid-line'}" x1="${padL}" x2="${W - padR}" y1="${yy.toFixed(
+      1,
+    )}" y2="${yy.toFixed(1)}"/>
             <text class="axis-text" x="${padL - 7}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${tickLabel(v)}</text>`;
   });
+
+  // Mark heights follow the square root of the amount, so a small bill stays visible beside the rent.
+  const laneTop = padT + innerH + 5;
+  const marksHtml = marks
+    .map((v, i) => {
+      if (v <= 0) return '';
+      const h = 3 + 10 * Math.sqrt(v / markMax);
+      const x = padL + slot * i + (slot - barW) / 2;
+      return `<rect class="mark" x="${x.toFixed(1)}" y="${laneTop}" width="${barW.toFixed(1)}" height="${h.toFixed(
+        1,
+      )}" rx="1.5"><title>${esc(series[i].date)} · ${esc(t('rep.expenses'))} ${money(v)}</title></rect>`;
+    })
+    .join('');
 
   const step = Math.max(1, Math.ceil(series.length / 8));
   const last = series.length - 1;
@@ -740,10 +817,11 @@ export function chartSvg(series, { barKey = 'revenue', lineKey = 'net_profit' } 
     )
     .join('');
 
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+  return `<svg class="chart${lane ? ' has-marks' : ''}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     ${ticks.join('')}
     ${barsHtml}
     <path class="line" d="${linePath}"/>
+    ${marksHtml}
     ${labels}
   </svg>`;
 }

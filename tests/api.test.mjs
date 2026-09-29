@@ -132,6 +132,31 @@ check('cogs = 46.70', near(pnl.cogs, 46.7), String(pnl.cogs));
 check('gross profit = 53.30', near(pnl.gross_profit, 53.3), String(pnl.gross_profit));
 check('purchases counted separately = 360', near(pnl.purchases, 360), String(pnl.purchases));
 
+console.log('\n[dashboard comparisons]');
+const shift = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const yday = shift(today, -1);
+const [ty, tm, td] = today.split('-').map(Number);
+const lm = new Date(Date.UTC(ty, tm - 2, 1));
+const lmDays = new Date(Date.UTC(lm.getUTCFullYear(), lm.getUTCMonth() + 1, 0)).getUTCDate();
+const lmKey = `${lm.getUTCFullYear()}-${String(lm.getUTCMonth() + 1).padStart(2, '0')}`;
+const dashBefore = (await call('GET', '/api/reports/dashboard')).data;
+check('the tiles get yesterday to compare with', dashBefore.yesterday?.from === yday && dashBefore.yesterday?.to === yday, JSON.stringify(dashBefore.yesterday));
+check("…and the same days of last month, its 1st to today's date",
+  dashBefore.last_month?.from === `${lmKey}-01` && dashBefore.last_month?.to === `${lmKey}-${String(Math.min(td, lmDays)).padStart(2, '0')}`,
+  JSON.stringify(dashBefore.last_month));
+const cmpProduct = (await call('GET', '/api/products?page=1&per=1')).data.rows[0].id;
+for (const [date, price] of [[yday, 7.77], [`${lmKey}-01`, 3.33], [dashBefore.last_month.to, 2.22]]) {
+  const r = await call('POST', '/api/sales', { date, items: [{ product_id: cmpProduct, qty: 1, unit_price: price }] });
+  if (r.status !== 201 && r.status !== 200) console.log('  (sale on', date, 'answered', r.status, JSON.stringify(r.data), ')');
+}
+const dashAfter = (await call('GET', '/api/reports/dashboard')).data;
+check("a sale dated yesterday moves yesterday's figure, not today's",
+  near(dashAfter.yesterday.gross_sales - dashBefore.yesterday.gross_sales, 7.77) && near(dashAfter.today.gross_sales, dashBefore.today.gross_sales),
+  JSON.stringify({ before: dashBefore.yesterday.gross_sales, after: dashAfter.yesterday.gross_sales }));
+check('sales on the first and the last compared day of last month both count for it',
+  near(dashAfter.last_month.gross_sales - dashBefore.last_month.gross_sales, 5.55),
+  JSON.stringify({ before: dashBefore.last_month.gross_sales, after: dashAfter.last_month.gross_sales }));
+
 console.log('\n[unchanged guards]');
 check('an empty purchase is still rejected', (await call('POST', '/api/purchases', { items: [] })).status === 400);
 check('an empty cart is still rejected', (await call('POST', '/api/sales', { items: [] })).status === 400);

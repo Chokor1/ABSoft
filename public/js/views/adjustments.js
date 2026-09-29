@@ -167,6 +167,8 @@ async function renderList(root, ctx) {
                         <td class="muted">${esc(a.username || t('common.none'))}</td>
                         <td class="right"><button class="btn btn-sm btn-ghost" data-del="${a.id}" title="${esc(
                           t('common.delete'),
+                        )}" aria-label="${esc(
+                          t('common.delete'),
                         )}">${icon('trash')}</button></td>
                       </tr>`,
                     )
@@ -235,7 +237,7 @@ async function renderDoc(root, ctx, id) {
     badges: `${a.type === 'opening' ? `<span class="badge accent">${esc(t('adj.type.opening'))}</span>` : a.reason ? `<span class="badge">${esc(a.reason)}</span>` : ''}
              <span class="badge ${signClass(a.value) === 'money-neg' ? 'danger' : 'success'}">${esc(t('adj.value_badge', { v: money(a.value) }))}</span>`,
     actions: `<button class="btn" data-print>${icon('print')} ${esc(t('common.print'))}</button>
-              <button class="btn btn-ghost" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>`,
+              <button class="btn btn-ghost" data-del title="${esc(t('common.delete'))}" aria-label="${esc(t('common.delete'))}">${icon('trash')}</button>`,
     onBack: back,
   });
   body.innerHTML = `
@@ -395,7 +397,7 @@ async function renderForm(root, ctx) {
                       value="${l.mode === 'change' ? esc(l.change) : ''}" placeholder="±0"/></td>
                 <td class="right nowrap" data-after></td>
                 <td class="right" data-value></td>
-                <td class="right"><button type="button" class="cl-remove" data-remove="${i}">${icon('trash')}</button></td>
+                <td class="right"><button type="button" class="cl-remove" data-remove="${i}" title="${esc(t('common.remove'))}" aria-label="${esc(t('common.remove'))}">${icon('trash')}</button></td>
               </tr>`,
             )
             .join('')}</tbody>
@@ -605,7 +607,7 @@ async function renderOpeningForm(root, ctx) {
                 <td><input class="input" type="number" step="any" min="0" data-qty="${i}" value="${esc(l.qty)}" style="text-align:end"/></td>
                 <td><input class="input" type="number" step="0.01" min="0" data-cost="${i}" value="${esc(l.unit_cost)}" style="text-align:end"/></td>
                 <td class="right" data-value="${i}">${money(Number(l.qty) * Number(l.unit_cost))}</td>
-                <td class="right"><button type="button" class="cl-remove" data-remove="${i}">${icon('trash')}</button></td>
+                <td class="right"><button type="button" class="cl-remove" data-remove="${i}" title="${esc(t('common.remove'))}" aria-label="${esc(t('common.remove'))}">${icon('trash')}</button></td>
               </tr>`,
             )
             .join('')}</tbody>

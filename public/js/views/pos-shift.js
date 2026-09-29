@@ -120,7 +120,7 @@ export async function attachShifts(pos, { scanBar, navigate, onChange = () => {}
     // One row for every drawer to count: cash and each other method, and where a
     // second currency is in use, the same method again in that currency — money
     // in L.L is counted in L.L, never turned into dollars first.
-    const payments = (o) => t(o.n === 1 ? 'shift.payments_one' : 'shift.payments_n', { n: o.n });
+    const payments = (o) => t('shift.payments_n', { n: o.n });
     const lines = [
       {
         key: 'cash',
@@ -163,7 +163,7 @@ export async function attachShifts(pos, { scanBar, navigate, onChange = () => {}
       body: `
         <div class="shift-close-v2">
           <div class="shift-stats">
-            ${tile(t(shift.sales === 1 ? 'shift.sales_one' : 'shift.sales_n', { n: shift.sales }), money(shift.sales_total))}
+            ${tile(t('shift.sales_n', { n: shift.sales }), money(shift.sales_total))}
             ${tile(t('shift.taken_total'), money(shift.taken), '', cur && shift.taken2 ? formatSecond(shift.taken2) : '')}
             ${tile(t('shift.on_account'), money(shift.on_account), shift.on_account > 0.004 ? 'warn' : '')}
             ${tile(t('shift.opening'), money(shift.opening_cash))}
@@ -306,7 +306,7 @@ export function celebrateClose(shift) {
       ];
     };
     const rows = [
-      [t(shift.sales === 1 ? 'shift.sales_one' : 'shift.sales_n', { n: shift.sales }), money(shift.sales_total)],
+      [t('shift.sales_n', { n: shift.sales }), money(shift.sales_total)],
       counted(methodText('cash'), shift.counted_cash, shift.counted_cash2),
       ...(shift.others || []).map((o) => counted(methodText(o.method), o.counted, o.counted2)),
     ];
@@ -375,7 +375,7 @@ export function shiftReportHtml(s) {
       ${line(t('shift.opened_col'), `${esc(dateTimeText(s.opened_at))} · ${esc(s.opened_by_name || '')}`)}
       ${closed ? line(t('shift.closed_col'), `${esc(dateTimeText(s.closed_at))} · ${esc(s.closed_by_name || '')}`) : ''}
       <div class="r-rule"></div>
-      ${line(t(s.sales === 1 ? 'shift.sales_one' : 'shift.sales_n', { n: s.sales }), money(s.sales_total), 'r-total')}
+      ${line(t('shift.sales_n', { n: s.sales }), money(s.sales_total), 'r-total')}
       ${(s.payments || [])
         .map((p) =>
           line(

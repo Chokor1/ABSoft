@@ -353,10 +353,11 @@ function pnlHtml(r) {
           <div class="spacer"></div>
           <div class="chart-legend">
             <span><i style="background:var(--accent)"></i>${esc(t('common.revenue'))}</span>
-            <span><i style="background:var(--success)"></i>${esc(t('rep.net_profit'))}</span>
+            <span><i style="background:var(--success)"></i>${esc(t('rep.gross_profit'))}</span>
+            <span><i style="background:var(--warn)"></i>${esc(t('rep.expenses'))}</span>
           </div>
         </div>
-        <div class="card-body">${chartSvg(r.series)}</div>
+        <div class="card-body">${chartSvg(r.series, { markKey: 'expenses' })}</div>
       </div>
     </div>
 

@@ -1,3 +1,4 @@
+import { autoBackup } from '../autobackup.js';
 import { db, getSettings, lastId, transact } from '../db.js';
 import { badRequest, notFound } from '../http.js';
 import { money, nextDocNo, num, pageParams, pageResult, str } from '../util.js';
@@ -171,6 +172,9 @@ export function register(router) {
       ctx.user.id, localNow(), shift.expected_cash, shift.expected_cash2,
       counted, counted2, JSON.stringify(counts), str(ctx.body.note), shift.id,
     );
+    // The day's takings are counted: a good moment for a backup. After the reply,
+    // so the till is not kept waiting on a large database.
+    setImmediate(() => autoBackup('shift'));
     return loadShift(shift.id);
   });
 

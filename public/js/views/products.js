@@ -40,13 +40,14 @@ import {
   wireTagInputs,
 } from '../ui.js';
 
-/** #/products, #/products/new, #/products/<id>[/<tab>] */
+/** #/products, #/products/restock, #/products/new, #/products/<id>[/<tab>] */
 export async function render(root, ctx) {
   const [first, second] = ctx.params;
   if (first === 'new') return renderForm(root, ctx);
   if (first === 'import') return renderImport(root, ctx);
   if (first && /^\d+$/.test(first)) return renderDetail(root, ctx, Number(first), second === 'edit' ? 'details' : second);
-  return renderList(root, ctx);
+  // The menu's restock badge lands here: everything at or below its minimum.
+  return renderList(root, ctx, { stock: first === 'restock' ? 'restock' : '' });
 }
 
 /** The editable fields of a product, shared by the new-product page and the details tab. */
@@ -164,8 +165,8 @@ async function removeProduct(product) {
 
 /* ------------------------------------------------------------------ list -- */
 
-async function renderList(root, ctx) {
-  const state = { search: '', showInactive: false, stock: '', category: '', rows: [], page: 1, per: 50, result: null };
+async function renderList(root, ctx, { stock = '' } = {}) {
+  const state = { search: '', showInactive: false, stock, category: '', rows: [], page: 1, per: 50, result: null };
   let dropPicker = () => {};
 
   ctx.actions.innerHTML = `
@@ -236,9 +237,12 @@ async function renderList(root, ctx) {
         { value: 'in', label: t('filter.in_stock') },
         { value: 'low', label: t('filter.low_stock') },
         { value: 'out', label: t('filter.out_of_stock') },
+        { value: 'restock', label: t('filter.restock') },
       ],
       onChange: (v) => {
         state.stock = v;
+        // Leaving the badge's list: the address goes back to the plain list.
+        if (location.hash === '#/products/restock') history.replaceState(null, '', '#/products');
         refilter();
       },
     }),
@@ -404,7 +408,7 @@ async function renderDetail(root, ctx, id, initialTab) {
 
   ctx.actions.innerHTML = `
     <button class="btn" id="merge">${icon('package')} ${esc(t('prod.merge'))}</button>
-    <button class="btn btn-ghost" id="remove" title="${esc(t('common.delete'))}">${icon('trash')}</button>`;
+    <button class="btn btn-ghost" id="remove" title="${esc(t('common.delete'))}" aria-label="${esc(t('common.delete'))}">${icon('trash')}</button>`;
   ctx.actions.querySelector('#merge').addEventListener('click', async () => {
     const into = await mergeProduct(product);
     if (into) ctx.navigate(`products/${into.id}`);
@@ -489,7 +493,7 @@ async function renderDetail(root, ctx, id, initialTab) {
                 </label>
                 ${
                   product.image_at
-                    ? `<button type="button" class="btn btn-sm btn-ghost" id="image-remove" title="${esc(t('prod.image_remove'))}">${icon('trash')}</button>`
+                    ? `<button type="button" class="btn btn-sm btn-ghost" id="image-remove" title="${esc(t('prod.image_remove'))}" aria-label="${esc(t('prod.image_remove'))}">${icon('trash')}</button>`
                     : ''
                 }
               </div>

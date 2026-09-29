@@ -299,6 +299,30 @@ check('with its quantity increased',
   await page.inputValue('.cl-head + .cart-line [data-field="qty"]'));
 check('the total is 2×1.00 + 2.50 + 18.00 = 22.50', (await text('#totals')).includes('$22.50'), await text('#totals'));
 await shot('90-till-cart');
+// Every name starts at the card's left edge, whichever script it is written in: an
+// Arabic name is not pushed to the right just because Arabic reads right to left.
+const edges = await page.evaluate(() => {
+  const out = { arabic: [], latin: [] };
+  for (const tile of document.querySelectorAll('.tile:not([hidden])')) {
+    const name = tile.querySelector('.t-name');
+    if (!name) continue;
+    const range = document.createRange();
+    range.selectNodeContents(name);
+    const inset = Math.round(range.getBoundingClientRect().left - tile.getBoundingClientRect().left);
+    out[/[؀-ۿ]/.test(name.textContent) ? 'arabic' : 'latin'].push(inset);
+  }
+  return out;
+});
+const insets = [...edges.arabic, ...edges.latin];
+check('the till shows names in both scripts', edges.arabic.length > 0 && edges.latin.length > 0, JSON.stringify(edges));
+check('every name starts at the same edge, Arabic and English alike',
+  insets.length > 0 && Math.max(...insets) - Math.min(...insets) <= 1, JSON.stringify(edges));
+const cartEdges = await page.evaluate(() => [...document.querySelectorAll('.cart-line .cl-name')].map((n) => {
+  const range = document.createRange();
+  range.selectNodeContents(n);
+  return Math.round(range.getBoundingClientRect().left - n.getBoundingClientRect().left);
+}));
+check('cart line names too', cartEdges.length > 0 && cartEdges.every((x) => x <= 1), JSON.stringify(cartEdges));
 const sizes = await page.evaluate(() => ({
   line: Math.round(document.querySelector('.cart-line').getBoundingClientRect().height),
   cart: Math.round(document.querySelector('.cart').getBoundingClientRect().height),
@@ -592,6 +616,16 @@ for (const [w, h, label] of [[1024, 800, 'tablet'], [390, 844, 'phone']]) {
     });
     check('phone: the bar stays at the bottom while scrolling products', Math.abs(bar.bottom - bar.vh) <= 1, JSON.stringify(bar));
     await shot('95-till-phone');
+    const hint = await page.evaluate(() => {
+      const i = document.querySelector('#scan');
+      const cs = getComputedStyle(i);
+      const c = document.createElement('canvas').getContext('2d');
+      c.font = cs.font;
+      return { text: i.placeholder, width: Math.round(c.measureText(i.placeholder).width),
+        room: Math.round(i.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) };
+    });
+    check('phone: the search hint is a short one', hint.text === 'Scan or search', hint.text);
+    check('phone: …that fits the box whole', hint.width <= hint.room, JSON.stringify(hint));
     await page.click('#bar-checkout');
     await page.waitForSelector('#pay-amount');
     const dialog = await page.evaluate(() => {

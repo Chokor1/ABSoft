@@ -162,7 +162,7 @@ export async function render(root, ctx) {
                       <td class="right nowrap" data-diff></td>
                       <td class="right nowrap muted" data-after></td>
                       <td class="right"><button type="button" class="cl-remove" data-drop="${r.id}"
-                              title="${esc(t('cnt.drop_row'))}">${icon('trash')}</button></td>
+                              title="${esc(t('cnt.drop_row'))}" aria-label="${esc(t('cnt.drop_row'))}">${icon('trash')}</button></td>
                     </tr>`,
                   )
                   .join('')}</tbody>

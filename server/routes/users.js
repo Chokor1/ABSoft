@@ -2,6 +2,8 @@ import { db, getSettings, saveSettings } from '../db.js';
 import { createUser, hashPassword, publicUser, verifyPassword } from '../auth.js';
 import { badRequest, forbidden, notFound } from '../http.js';
 import { num, required, str } from '../util.js';
+import { mkdirSync, statSync } from 'node:fs';
+import { autoBackup } from '../autobackup.js';
 
 const ROLES = new Set(['admin', 'cashier']);
 
@@ -97,7 +99,7 @@ export function register(router) {
     const allowed = [
       'store_name', 'currency', 'tax_rate', 'low_stock_alert', 'receipt_footer',
       'currency2_enabled', 'currency2_symbol', 'currency2_decimals',
-      'pos_shifts', 'search_min_chars', 'pos_page_size', 'store_logo',
+      'pos_shifts', 'search_min_chars', 'pos_page_size', 'store_logo', 'backup_dir2',
     ];
     const patch = {};
     for (const key of allowed) if (ctx.body[key] !== undefined) patch[key] = str(ctx.body[key]);
@@ -124,7 +126,23 @@ export function register(router) {
     if (ctx.body.currency2_rate !== undefined && num(ctx.body.currency2_rate) !== num(getSettings().currency2_rate)) {
       recordRate(ctx.body.currency2_rate, patch.currency2_symbol ?? getSettings().currency2_symbol, ctx.user.id);
     }
-    return saveSettings(patch);
+    // A second backup folder must exist, or be creatable, before it is kept.
+    const hadDir2 = getSettings().backup_dir2 || '';
+    if (patch.backup_dir2) {
+      try {
+        mkdirSync(patch.backup_dir2, { recursive: true });
+        if (!statSync(patch.backup_dir2).isDirectory()) throw new Error('not a folder');
+      } catch {
+        throw badRequest('That folder cannot be used', 'BACKUP_DIR_BAD');
+      }
+    }
+    const saved = saveSettings(patch);
+    // A new folder gets its first copy at once, so the shop sees that it works.
+    if (patch.backup_dir2 && patch.backup_dir2 !== hadDir2) {
+      autoBackup('folder');
+      return getSettings();
+    }
+    return saved;
   });
 
   /** Update the exchange rate, from the sidebar. Every change is kept. */

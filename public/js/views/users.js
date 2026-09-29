@@ -44,10 +44,12 @@ async function renderList(root, ctx) {
                       <td class="right">${number(u.sales_count)}</td>
                       <td class="muted nowrap">${dateText(u.created_at)}</td>
                       <td class="right nowrap">
-                        <button class="btn btn-sm btn-ghost" data-edit="${u.id}" title="${esc(t('common.edit'))}">${icon(
+                        <button class="btn btn-sm btn-ghost" data-edit="${u.id}" title="${esc(t('common.edit'))}" aria-label="${esc(t('common.edit'))}">${icon(
                           'edit',
                         )}</button>
                         <button class="btn btn-sm btn-ghost" data-del="${u.id}" title="${esc(
+                          t('common.remove'),
+                        )}" aria-label="${esc(
                           t('common.remove'),
                         )}">${icon('trash')}</button>
                       </td>

@@ -135,8 +135,12 @@ async function renderList(root, ctx) {
                           <td class="right nowrap">
                             <button class="btn btn-sm btn-ghost" data-edit="${e.id}" title="${esc(
                               t('common.edit'),
+                            )}" aria-label="${esc(
+                              t('common.edit'),
                             )}">${icon('edit')}</button>
                             <button class="btn btn-sm btn-ghost" data-del="${e.id}" title="${esc(
+                              t('common.delete'),
+                            )}" aria-label="${esc(
                               t('common.delete'),
                             )}">${icon('trash')}</button>
                           </td>

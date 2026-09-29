@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { BACKUP_DIR, DB_FILE } from './paths.js';
@@ -37,7 +37,12 @@ export function backupFilename(now = new Date()) {
 /** Write a timestamped backup into data/backups, pruning old ones. */
 export function createLocalBackup({ keep = 20, source } = {}) {
   mkdirSync(BACKUP_DIR, { recursive: true });
-  const result = createBackup(join(BACKUP_DIR, backupFilename()), source);
+  // Two in the same second (a folder saved, then a shift closed) must not fight over
+  // one name: VACUUM INTO refuses to overwrite, so the second gets a suffix.
+  const base = join(BACKUP_DIR, backupFilename().slice(0, -3));
+  let file = `${base}.db`;
+  for (let n = 2; existsSync(file); n++) file = `${base}-${n}.db`;
+  const result = createBackup(file, source);
   pruneBackups(keep);
   return result;
 }

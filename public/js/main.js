@@ -25,23 +25,23 @@ import * as shifts from './views/shifts.js';
  * (the server enforces the same split).
  */
 const VIEWS = {
-  dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'overview' },
+  dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'home' },
   // Not in the menu: the POS button in the top bar (or F2) opens it.
-  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'daily', cashier: true, hidden: true },
-  sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'daily', cashier: true },
+  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'money', cashier: true, hidden: true },
+  sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'money', cashier: true },
   // The till's shifts, listed only once shifts are switched on in Settings.
-  shifts: { key: 'shifts', icon: 'history', mod: shifts, group: 'daily', cashier: true, when: () => store.settings.pos_shifts === '1' },
-  purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'daily' },
-  expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'daily' },
+  shifts: { key: 'shifts', icon: 'history', mod: shifts, group: 'money', cashier: true, when: () => store.settings.pos_shifts === '1' },
+  purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'money' },
+  expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'money' },
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
   'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
   adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
-  lists: { key: 'lists', icon: 'users', mod: lists, group: 'catalogue' },
+  lists: { key: 'lists', icon: 'users', mod: lists, group: 'stock' },
   // Sales Analysis lives in Reports now; old links still land there.
   analysis: {
     key: 'reports',
     icon: 'chart',
-    group: 'reports',
+    group: 'money',
     hidden: true,
     bare: true,
     mod: {
@@ -52,16 +52,19 @@ const VIEWS = {
   },
   // Reports put their menu, dates and buttons on one line of their own, so the
   // screen header would only repeat what the menu already says.
-  reports: { key: 'reports', icon: 'chart', mod: reports, group: 'reports', bare: true },
-  users: { key: 'users', icon: 'users', mod: users, group: 'settings' },
-  settings: { key: 'settings', icon: 'settings', mod: settings, group: 'settings', cashier: true },
+  reports: { key: 'reports', icon: 'chart', mod: reports, group: 'money', bare: true },
+  // Not in the menu: the user menu at the foot of the sidebar opens these (Settings also has its gear there).
+  users: { key: 'users', icon: 'users', mod: users, group: 'account', hidden: true },
+  settings: { key: 'settings', icon: 'settings', mod: settings, group: 'account', cashier: true, hidden: true },
 };
 
 const isAdmin = () => store.user?.role === 'admin';
 const canSee = (view) => isAdmin() || !!view.cashier;
 const homeRoute = () => (isAdmin() ? 'dashboard' : 'pos');
 
-const GROUPS = ['overview', 'daily', 'stock', 'catalogue', 'reports', 'settings'];
+// Dashboard on its own, then money in and out, then what is on the shelf. Short enough
+// to fit a 1366×720 till screen without scrolling.
+const GROUPS = ['home', 'money', 'stock'];
 const SHORTCUTS = { pos: 'F2', products: 'F3', purchases: 'F4', expenses: 'F5' };
 
 const app = document.getElementById('app');
@@ -97,6 +100,7 @@ function paintFullscreenButton() {
   if (!btn) return;
   btn.innerHTML = icon(isFullscreen() ? 'minimize' : 'maximize');
   btn.title = t(isFullscreen() ? 'common.exit_fullscreen' : 'common.fullscreen');
+  btn.setAttribute('aria-label', btn.title);
 }
 document.addEventListener('fullscreenchange', paintFullscreenButton);
 
@@ -208,6 +212,39 @@ function paintPrintFrame() {
     <span>${esc(t('print.by', { v: store.version || '' }))}</span>`;
 }
 
+/**
+ * How many products are at or below their minimum, as a badge beside Products.
+ * Counted again on every screen change, so a sale, a purchase or a count shows up
+ * as soon as you move on; clicking the badge lists exactly those products.
+ */
+let restockSeq = 0;
+async function paintRestockBadge() {
+  const seq = ++restockSeq;
+  let n = 0;
+  if (isAdmin() && store.settings.low_stock_alert === '1') {
+    try {
+      n = (await api.products({ stock: 'restock', page: 1, per: 5 })).total || 0;
+    } catch {
+      return; // offline or signed out: leave the badge as it was
+    }
+  }
+  if (seq !== restockSeq) return;
+  const link = document.querySelector('nav.nav [data-route="products"]');
+  if (!link) return;
+  const fold = link.closest('.nav-fold')?.querySelector('[data-fold-toggle]');
+  link.querySelector('.nav-badge')?.remove();
+  fold?.querySelector('.nav-badge')?.remove();
+  if (!n) return;
+  const label = esc(t('dash.restock_warning', { n }));
+  const badge = (cls = '') => `<span class="nav-badge ${cls}" data-restock title="${label}" aria-label="${label}">${n}</span>`;
+  // Before the F3 hint, so the shortcut keeps its place at the end of the row.
+  const kbd = link.querySelector('.kbd');
+  if (kbd) kbd.insertAdjacentHTML('beforebegin', badge());
+  else link.insertAdjacentHTML('beforeend', badge());
+  // With the Stock group folded away, its header carries the badge instead.
+  fold?.querySelector('.nav-chevron').insertAdjacentHTML('beforebegin', badge('on-fold'));
+}
+
 function navHtml() {
   const link = ([route, v], cls = '') => `<a class="nav-item ${cls}" href="#/${route}" data-route="${route}">
       ${icon(v.icon)}<span>${esc(t(`nav.${v.key}`))}</span>
@@ -232,7 +269,9 @@ function navHtml() {
         <div class="nav-children"><div>${items.map((item) => link(item, 'nav-child')).join('')}</div></div>
       </div>`;
     }
-    return `<div class="nav-label">${esc(t(`nav.group.${group}`))}</div>${items.map((item) => link(item)).join('')}`;
+    // The dashboard needs no heading of its own above it.
+    const label = group === 'home' ? '' : `<div class="nav-label">${esc(t(`nav.group.${group}`))}</div>`;
+    return `${label}${items.map((item) => link(item)).join('')}`;
   }).join('');
 }
 
@@ -263,28 +302,33 @@ function renderShell() {
           )}</small></div>
         </div>
         <nav class="nav">${navHtml()}</nav>
-        <div class="rate-box" id="rate-box" hidden></div>
+        <div class="rate-box" id="rate-box" role="group" aria-label="${esc(t('rate.title'))}" hidden></div>
         <div class="sidebar-foot">
-          <button class="user-chip" id="user-menu">
-            <div class="avatar">${esc(initials(store.user.full_name || store.user.username))}</div>
-            <div style="min-width:0">
-              <strong>${esc(store.user.full_name || store.user.username)}</strong>
-              <small>${esc(roleText(store.user.role))}</small>
-            </div>
-          </button>
+          <div class="user-row">
+            <button class="user-chip" id="user-menu" aria-haspopup="dialog" data-route="users">
+              <div class="avatar">${esc(initials(store.user.full_name || store.user.username))}</div>
+              <div style="min-width:0">
+                <strong>${esc(store.user.full_name || store.user.username)}</strong>
+                <small>${esc(roleText(store.user.role))}</small>
+              </div>
+            </button>
+            <a class="btn btn-ghost btn-icon nav-gear" href="#/settings" data-route="settings"
+               title="${esc(t('nav.settings'))}" aria-label="${esc(t('nav.settings'))}">${icon('settings')}</a>
+          </div>
           <div class="credit">${esc(t('app.author'))}</div>
         </div>
       </aside>
       <div class="main">
         <header class="topbar">
-          <button class="btn btn-ghost btn-icon only-mobile" id="nav-toggle">${icon('menu')}</button>
+          <button class="btn btn-ghost btn-icon only-mobile" id="nav-toggle" aria-controls="sidebar" aria-expanded="false"
+                  title="${esc(t('menu.menu'))}" aria-label="${esc(t('menu.menu'))}">${icon('menu')}</button>
           <a class="mark topbar-mark" href="#/${isAdmin() ? 'dashboard' : 'sales'}" title="${esc(t(isAdmin() ? 'nav.dashboard' : 'nav.sales'))}"
              aria-label="${esc(t(isAdmin() ? 'nav.dashboard' : 'nav.sales'))}"><img src="/img/logo-mark.svg" alt="ABSoft" /></a>
           <div class="spacer"></div>
           <a class="btn btn-primary topbar-pos" id="go-pos" href="#/pos" title="${esc(t('nav.pos.sub'))} (F2)">${icon('pos')} ${esc(t('nav.pos'))}</a>
           ${languagePicker(lang)}
           <button class="btn btn-ghost btn-icon theme-toggle" id="fullscreen-toggle"></button>
-          <button class="btn btn-ghost btn-icon theme-toggle" id="theme-toggle" title="${esc(t('menu.toggle_theme'))}">
+          <button class="btn btn-ghost btn-icon theme-toggle" id="theme-toggle" title="${esc(t('menu.toggle_theme'))}" aria-label="${esc(t('menu.toggle_theme'))}">
             ${icon(isDark() ? 'sun' : 'moon')}
           </button>
         </header>
@@ -324,13 +368,28 @@ function renderShell() {
     e.currentTarget.innerHTML = icon(isDark() ? 'sun' : 'moon');
   });
   document.getElementById('user-menu').addEventListener('click', openUserMenu);
-  document.getElementById('nav-toggle')?.addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('open');
+  // On a phone the sidebar slides over the page; leaving for Settings closes it.
+  app.querySelector('.nav-gear').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('nav-toggle')?.setAttribute('aria-expanded', 'false');
+  });
+  document.getElementById('nav-toggle')?.addEventListener('click', (e) => {
+    const open = document.getElementById('sidebar').classList.toggle('open');
+    e.currentTarget.setAttribute('aria-expanded', String(open));
   });
   // One listener for the whole menu, so it keeps working when the menu is redrawn.
   const nav = document.querySelector('nav.nav');
   nav.addEventListener('click', (e) => {
-    if (e.target.closest('a.nav-item')) document.getElementById('sidebar').classList.remove('open');
+    if (e.target.closest('a.nav-item')) {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('nav-toggle')?.setAttribute('aria-expanded', 'false');
+    }
+    // The badge is inside the Products link, but opens only the products that need restocking.
+    if (e.target.closest('[data-restock]')) {
+      e.preventDefault();
+      location.hash = '#/products/restock';
+      return;
+    }
     const btn = e.target.closest('[data-fold-toggle]');
     if (btn) {
       const fold = btn.closest('.nav-fold');
@@ -341,7 +400,8 @@ function renderShell() {
   window.addEventListener('absoft:settings', () => {
     paintPrintFrame();
     nav.innerHTML = navHtml();
-    nav.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === currentRoute));
+    nav.querySelectorAll('[data-route]').forEach((a) => a.classList.toggle('active', a.dataset.route === currentRoute));
+    paintRestockBadge();
   });
 }
 
@@ -350,6 +410,16 @@ async function openUserMenu() {
     title: store.user.full_name || store.user.username,
     subtitle: t('menu.signed_in_as', { role: roleText(store.user.role) }),
     body: `<div style="display:flex;flex-direction:column;gap:8px;padding:6px 0 14px">
+        <button class="btn btn-block" data-pick="settings" style="justify-content:flex-start">${icon('settings')} ${esc(
+          t('nav.settings'),
+        )}</button>
+        ${
+          isAdmin()
+            ? `<button class="btn btn-block" data-pick="users" style="justify-content:flex-start">${icon('users')} ${esc(
+                t('nav.users'),
+              )}</button>`
+            : ''
+        }
         <button class="btn btn-block" data-pick="password" style="justify-content:flex-start">${icon('key')} ${esc(
           t('menu.change_password'),
         )}</button>
@@ -364,7 +434,9 @@ async function openUserMenu() {
       root.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => close(b.dataset.pick))),
   });
 
-  if (choice === 'theme') {
+  if (choice === 'settings' || choice === 'users') {
+    location.hash = `#/${choice}`;
+  } else if (choice === 'theme') {
     toggleTheme();
     document.getElementById('theme-toggle').innerHTML = icon(isDark() ? 'sun' : 'moon');
   } else if (choice === 'logout') {
@@ -455,7 +527,8 @@ async function drawRoute() {
   pageActions.innerHTML = '';
   pageHead.querySelector('#page-title').textContent = t(`nav.${view.key}`);
   pageHead.querySelector('#page-sub').textContent = t(`nav.${view.key}.sub`);
-  document.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.route === route));
+  document.querySelectorAll('.sidebar [data-route]').forEach((a) => a.classList.toggle('active', a.dataset.route === route));
+  paintRestockBadge();
   // The POS folds the sidebar away, so the exchange rate moves up into the top bar.
   const rateBox = document.getElementById('rate-box');
   if (rateBox) {
@@ -519,7 +592,7 @@ function paintRateBox(editing = false) {
       <div class="rate-label">${icon('coins')} ${esc(t('rate.title'))}</div>
       <div class="rate-row">
         <div class="rate-value" dir="ltr">1 ${esc(base)} = <b>${esc(rateText)}</b> ${esc(cur.symbol)}</div>
-        ${canEdit ? `<button class="btn btn-ghost btn-icon btn-sm" id="rate-edit" title="${esc(t('rate.edit'))}">${icon('edit')}</button>` : ''}
+        ${canEdit ? `<button class="btn btn-ghost btn-icon btn-sm" id="rate-edit" title="${esc(t('rate.edit'))}" aria-label="${esc(t('rate.edit'))}">${icon('edit')}</button>` : ''}
       </div>`;
     box.querySelector('#rate-edit')?.addEventListener('click', () => paintRateBox(true));
     return;
@@ -532,8 +605,8 @@ function paintRateBox(editing = false) {
       <input class="input" id="rate-input" type="number" min="0" step="any" value="${cur.rate}" required
              aria-label="${esc(t('rate.title'))}"/>
       <span class="muted">${esc(cur.symbol)}</span>
-      <button class="btn btn-primary btn-icon btn-sm" type="submit" title="${esc(t('common.save'))}">${icon('check')}</button>
-      <button class="btn btn-ghost btn-icon btn-sm" type="button" id="rate-cancel" title="${esc(t('common.cancel'))}">${icon('close')}</button>
+      <button class="btn btn-primary btn-icon btn-sm" type="submit" title="${esc(t('common.save'))}" aria-label="${esc(t('common.save'))}">${icon('check')}</button>
+      <button class="btn btn-ghost btn-icon btn-sm" type="button" id="rate-cancel" title="${esc(t('common.cancel'))}" aria-label="${esc(t('common.cancel'))}">${icon('close')}</button>
     </form>`;
   const input = box.querySelector('#rate-input');
   input.focus();

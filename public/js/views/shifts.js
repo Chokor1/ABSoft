@@ -60,7 +60,7 @@ async function renderList(root, ctx) {
                   <td><div class="cell-title mono">${esc(s.doc_no)}</div></td>
                   <td>${esc(dateTimeText(s.opened_at))}<div class="cell-sub">${esc(s.opened_by_name || '')}</div></td>
                   <td>${s.closed_at ? `${esc(dateTimeText(s.closed_at))}<div class="cell-sub">${esc(s.closed_by_name || '')}</div>` : '<span class="muted">—</span>'}</td>
-                  <td class="right">${money(s.sales_total)}<div class="cell-sub">${esc(t(s.sales === 1 ? 'shift.sales_one' : 'shift.sales_n', { n: s.sales }))}</div></td>
+                  <td class="right">${money(s.sales_total)}<div class="cell-sub">${esc(t('shift.sales_n', { n: s.sales }))}</div></td>
                   <td class="right">${money(s.expected_cash)}</td>
                   <td class="right">${s.status === 'closed' ? money(s.counted_cash) : '<span class="muted">—</span>'}</td>
                   <td>${differenceBadge(s)}</td>
@@ -112,7 +112,7 @@ async function renderDoc(root, ctx, id) {
     <div class="shift-close">
       <section class="card"><div class="card-body pay-summary">
         <div class="pay-card-head">${esc(t('shift.taken'))}</div>
-        ${row(t(s.sales === 1 ? 'shift.sales_one' : 'shift.sales_n', { n: s.sales }), `<b>${money(s.sales_total)}</b>`)}
+        ${row(t('shift.sales_n', { n: s.sales }), `<b>${money(s.sales_total)}</b>`)}
         ${s.payments
           .map((p) =>
             row(

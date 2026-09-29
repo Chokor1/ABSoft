@@ -26,6 +26,7 @@ import { register as registerSystem } from './routes/system.js';
 import { register as registerEntities } from './routes/entities.js';
 import { register as registerAdjustments } from './routes/adjustments.js';
 import { register as registerShifts } from './routes/shifts.js';
+import { startAutoBackups } from './autobackup.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -169,6 +170,7 @@ const server = createServer(async (req, res) => {
 const seeded = ensureSeedAdmin();
 purgeExpiredSessions();
 setInterval(purgeExpiredSessions, 6 * 3600 * 1000).unref();
+startAutoBackups();
 
 server.listen(PORT, HOST, () => {
   const { n } = db.prepare(`SELECT COUNT(*) AS n FROM products`).get();

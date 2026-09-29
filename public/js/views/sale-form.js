@@ -60,7 +60,7 @@ export async function renderSaleForm(root, ctx) {
                 <td><input class="input" type="number" step="0.01" min="0" value="${l.unit_price}" data-price="${i}" style="text-align:end"/></td>
                 <td><input class="input" type="number" step="0.01" min="0" value="${l.discount || ''}" data-discount="${i}" placeholder="0" style="text-align:end"/></td>
                 <td class="right"><b data-line-total="${i}">${money(lineTotal(l))}</b></td>
-                <td class="right"><button type="button" class="cl-remove" data-remove="${i}" title="${esc(t('common.remove'))}">${icon('trash')}</button></td>
+                <td class="right"><button type="button" class="cl-remove" data-remove="${i}" title="${esc(t('common.remove'))}" aria-label="${esc(t('common.remove'))}">${icon('trash')}</button></td>
               </tr>`,
             )
             .join('')}</tbody>

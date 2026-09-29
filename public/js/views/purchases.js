@@ -4,7 +4,7 @@ import { attachPicker } from '../picker.js';
 import { productOption } from '../product-option.js';
 import { wireNamePickers } from '../name-picker.js';
 import { icon } from '../icons.js';
-import { count, errorText, t } from '../i18n.js';
+import { errorText, t } from '../i18n.js';
 import {
   confirmDialog,
   dateText,
@@ -132,7 +132,11 @@ async function renderList(root, ctx) {
                           isAdmin()
                             ? `<button class="btn btn-sm btn-ghost" data-edit="${p.id}" title="${esc(
                                 t('common.edit'),
+                              )}" aria-label="${esc(
+                                t('common.edit'),
                               )}">${icon('edit')}</button><button class="btn btn-sm btn-ghost" data-del="${p.id}" title="${esc(
+                                t('common.delete'),
+                              )}" aria-label="${esc(
                                 t('common.delete'),
                               )}">${icon('trash')}</button>`
                             : ''
@@ -214,7 +218,7 @@ async function renderDoc(root, ctx, id) {
               ${
                 isAdmin()
                   ? `<button class="btn btn-primary" data-edit>${icon('edit')} ${esc(t('common.edit'))}</button>
-                     <button class="btn btn-ghost" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>`
+                     <button class="btn btn-ghost" data-del title="${esc(t('common.delete'))}" aria-label="${esc(t('common.delete'))}">${icon('trash')}</button>`
                   : ''
               }`,
     onBack: back,
@@ -285,7 +289,7 @@ function logChangesHtml(entry) {
   if (entry.action !== 'edited') {
     return c.total !== undefined
       ? `<li>${esc(t('buy.log_total', { v: money(c.total) }))}${
-          c.lines !== undefined ? ` · ${esc(count('buy.lines', c.lines))}` : ''
+          c.lines !== undefined ? ` · ${esc(t('buy.lines.count', { n: c.lines }))}` : ''
         }</li>`
       : '';
   }
@@ -388,7 +392,7 @@ async function renderForm(root, ctx, editId = null) {
                 <td><input class="input" type="number" step="any" min="0" value="${l.qty}" data-qty="${i}" style="text-align:end"/></td>
                 <td><input class="input" type="number" step="0.01" min="0" value="${l.unit_cost}" data-cost="${i}" style="text-align:end"/></td>
                 <td class="right"><b>${money(l.qty * l.unit_cost)}</b></td>
-                <td class="right"><button type="button" class="cl-remove" data-remove="${i}">${icon('trash')}</button></td>
+                <td class="right"><button type="button" class="cl-remove" data-remove="${i}" title="${esc(t('common.remove'))}" aria-label="${esc(t('common.remove'))}">${icon('trash')}</button></td>
               </tr>`,
             )
             .join('')}</tbody>

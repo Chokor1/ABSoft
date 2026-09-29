@@ -133,7 +133,7 @@ export async function render(root, ctx) {
             <div class="field">
               <label>${esc(t('set.search_min'))}</label>
               <select class="select" name="search_min_chars">${[1, 2, 3, 4, 5]
-                .map((n) => `<option value="${n}" ${String(n) === String(cfg.search_min_chars || 1) ? 'selected' : ''}>${esc(n === 1 ? t('set.search_min_one') : t('set.search_min_n', { n }))}</option>`)
+                .map((n) => `<option value="${n}" ${String(n) === String(cfg.search_min_chars || 1) ? 'selected' : ''}>${esc(t('set.search_min_n', { n }))}</option>`)
                 .join('')}</select>
               <div class="help">${esc(t('set.search_min_help'))}</div>
             </div>
@@ -217,7 +217,25 @@ export async function render(root, ctx) {
           <p class="muted" style="font-size:12px;margin-top:13px">${esc(t('set.backup_help'))}</p>
           <div id="backup-list" style="margin-top:14px"></div>
         </div>
-      </div>`,
+      </div>
+      <form class="card" id="backup-form" style="margin-top:16px">
+        <div class="card-head"><div><h3>${esc(t('set.backup_auto'))}</h3>
+          <div class="sub">${esc(t('set.backup_auto_sub'))}</div></div></div>
+        <div class="card-body">
+          <div class="pnl" style="margin-bottom:14px">
+            <div class="pnl-row"><span>${esc(t('set.backup_last'))}</span><span class="v" id="backup-auto-status"></span></div>
+          </div>
+          <div class="form-grid">
+            <div class="field span-2">
+              <label for="backup-dir2">${esc(t('set.backup_dir2'))}</label>
+              <input class="input" id="backup-dir2" name="backup_dir2" value="${esc(cfg.backup_dir2 || '')}"
+                     placeholder="D:\\ABSoft backups" autocomplete="off" dir="ltr" spellcheck="false"/>
+              <div class="help">${esc(t('set.backup_dir2_help'))}</div>
+            </div>
+          </div>
+        </div>
+        ${saveBar()}
+      </form>`,
 
     about: () => `
       <div class="card">
@@ -391,6 +409,23 @@ export async function render(root, ctx) {
         : `<div class="cell-sub">${esc(t('set.no_backups'))}</div>`;
     };
     drawBackups(sys.backups || []);
+
+    // When the last automatic backup was taken, and whether the last attempt went wrong.
+    const paintAuto = (s) => {
+      const when = s.backup_last_auto ? dateTimeText(s.backup_last_auto) : t('set.backup_none_auto');
+      $('#backup-auto-status').innerHTML = s.backup_last_error
+        ? `${esc(when)} · <span class="money-neg">${esc(t('set.backup_error', { e: s.backup_last_error }))}</span>`
+        : esc(when);
+    };
+    paintAuto(cfg);
+    $('#backup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const saved = await save({ backup_dir2: e.target.backup_dir2.value.trim() });
+      if (!saved) return;
+      // Saving a folder takes a backup at once, so the list and the status move.
+      paintAuto(saved);
+      drawBackups((await api.system()).backups || []);
+    });
 
     $('#backup-download').addEventListener('click', async (e) => {
       const btn = e.currentTarget;

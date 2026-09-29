@@ -78,6 +78,11 @@ const out = await get('/api/products?page=1&per=100&stock=out');
 check('out of stock', out.total === 6 && out.rows.every((r) => r.stock <= 0), String(out.total));
 const low = await get('/api/products?page=1&per=100&stock=low');
 check('running low, but not empty', low.rows.every((r) => r.stock > 0 && r.stock <= r.min_stock) && low.total === 6, String(low.total));
+const restock = await get('/api/products?page=1&per=100&stock=restock');
+check('needs restocking: low and out together, what the menu badge counts', restock.total === low.total + out.total &&
+  restock.rows.every((r) => r.stock <= r.min_stock), String(restock.total));
+const badgeCount = await get('/api/products?page=1&per=5&stock=restock');
+check('the badge needs only the total, from a page of five', badgeCount.total === restock.total && badgeCount.rows.length <= 5);
 const inStock = await get('/api/products?page=1&per=100&stock=in');
 check('in stock', inStock.total === 54, String(inStock.total));
 check('search and category together', (await get('/api/products?page=1&per=100&category=Right&search=Item 02')).total === 1);

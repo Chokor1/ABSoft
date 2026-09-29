@@ -218,6 +218,15 @@ export function register(router) {
     const day = today();
     const monthStart = `${day.slice(0, 7)}-01`;
     const chartStart = shiftDays(day, -29);
+    // What the tiles compare against: yesterday, and the same days of last month
+    // (the 1st to today's date, or to its last day when last month was shorter).
+    const yesterday = shiftDays(day, -1);
+    const [y, m, d] = day.split('-').map(Number);
+    const lm = new Date(Date.UTC(y, m - 2, 1)); // month is 0-based: m-2 is last month
+    const lmDays = new Date(Date.UTC(lm.getUTCFullYear(), lm.getUTCMonth() + 1, 0)).getUTCDate();
+    const lmKey = `${lm.getUTCFullYear()}-${String(lm.getUTCMonth() + 1).padStart(2, '0')}`;
+    const lastMonthStart = `${lmKey}-01`;
+    const lastMonthEnd = `${lmKey}-${String(Math.min(d, lmDays)).padStart(2, '0')}`;
 
     const inventory = db
       .prepare(
@@ -232,7 +241,9 @@ export function register(router) {
 
     return {
       today: summarise(day, day),
+      yesterday: summarise(yesterday, yesterday),
       month: summarise(monthStart, day),
+      last_month: summarise(lastMonthStart, lastMonthEnd),
       chart: dailySeries(chartStart, day),
       inventory,
       low_stock: db
