@@ -702,6 +702,11 @@ export async function render(root, ctx) {
                         <td class="muted">${esc(s.username || t('common.none'))}</td>
                         <td class="right nowrap">
                           ${
+                            s.kind !== 'return'
+                              ? `<button class="btn btn-sm" data-return-row="${s.id}" title="${esc(t('ret.button'))}">${icon('refresh')} ${esc(t('ret.short'))}</button>`
+                              : ''
+                          }
+                          ${
                             s.balance > 0.004
                               ? `<button class="btn btn-sm" data-pay-row="${s.id}" title="${esc(
                                   t('pay.record'),
@@ -752,13 +757,28 @@ export async function render(root, ctx) {
 
     body.querySelectorAll('[data-open]').forEach((tr) =>
       tr.addEventListener('click', async (e) => {
-        if (e.target.closest('[data-void]') || e.target.closest('[data-pay-row]')) return;
+        if (e.target.closest('[data-void]') || e.target.closest('[data-pay-row]') || e.target.closest('[data-return-row]')) return;
         ctx.navigate(`sales/${tr.dataset.open}`);
       }),
     );
 
     // Taking money owed is a one-click job from the list; no need to open the
     // invoice first.
+    // Return straight from the list: the dialog opens on that invoice's lines.
+    body.querySelectorAll('[data-return-row]').forEach((btn) =>
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          const saved = await returnDialog(await api.sale(btn.dataset.returnRow));
+          if (!saved) return;
+          toast(t(saved.method === 'credit' ? 'ret.done_credit' : 'ret.done', { doc: saved.doc_no, v: money(Math.abs(saved.total)) }), 'success', 5000);
+          load();
+        } catch (err) {
+          toast(errorText(err), 'error');
+        }
+      }),
+    );
+
     body.querySelectorAll('[data-pay-row]').forEach((btn) =>
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();

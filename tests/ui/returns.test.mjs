@@ -145,6 +145,34 @@ await page.keyboard.press('Enter');
 await page.waitForTimeout(600);
 check('an unknown invoice number says so', (await toasts()).some((s) => s.includes('No invoice INV-999999')), JSON.stringify(await toasts()));
 
+/* ------------------------------------------------- the obvious ways in */
+console.log('\n[a Return button at the till and on every Sell row]');
+check('the till has a Return button beside the search', await page.isVisible('#take-return') && (await text('#take-return')).includes('Return'));
+await page.click('#take-return');
+await page.waitForSelector('#ret-list [data-pick]');
+check('it lists the latest invoices to choose from, and no returns', (await text('.modal h3')).includes('Return from which invoice') &&
+  (await page.$$('#ret-list [data-pick]')).length >= 2 && !(await text('#ret-list')).includes('RET-'), await text('#ret-list'));
+await page.fill('#ret-search', sale.doc_no);
+await page.waitForTimeout(700);
+check('the box finds an invoice by its number', (await page.$$('#ret-list [data-pick]')).length === 1 && (await text('#ret-list')).includes(sale.doc_no));
+await page.click('#ret-list [data-pick]');
+await page.waitForSelector('.modal .ret-table');
+check('choosing one opens its return', (await text('.modal h3')).includes(`Return from ${sale.doc_no}`));
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+
+await page.goto(`${BASE}#/sales`);
+await page.waitForSelector('table.data tbody tr');
+await page.waitForTimeout(400);
+const rowOf = `table.data tbody tr:has-text("${sale.doc_no}")`;
+check('every invoice row in Sell has a Return button', await page.isVisible(`${rowOf} [data-return-row]`));
+check("…and a return's own row does not", (await page.$$('table.data tbody tr:has-text("RET-000001") [data-return-row]')).length === 0);
+await page.click(`${rowOf} [data-return-row]`);
+await page.waitForSelector('.modal .ret-table');
+check('it opens the return for that row without leaving the list', (await text('.modal h3')).includes(sale.doc_no) && page.url().endsWith('#/sales'));
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+
 /* --------------------------------------------------------------- cashier */
 console.log('\n[a cashier can, an administrator voids]');
 await send('POST', '/api/users', { username: 'till6', password: 'test1234', role: 'cashier' });

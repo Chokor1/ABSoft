@@ -514,8 +514,10 @@ Cashiers open and close shifts; only an administrator can switch shifts on or of
 
 ## Returns and exchanges
 
-Something comes back. Open the invoice (from **Sell**, or at the till type its number — `INV-000269`
-— into the search box) and press **Return items**. Say how many of each line are coming back and
+Something comes back. There are three ways in: the **Return** button on the invoice's row in
+**Sell**; the **Return** button beside the search box at the till, which lists the latest invoices
+and finds older ones by number or customer; or typing the invoice's number — `INV-000269` — into
+the till's search box. (An opened invoice has **Return items** too.) Say how many of each line are coming back and
 whether each goes **back on the shelf** or was **damaged**, choose how the money goes out — cash,
 card, Whish, or **on account**, which leaves it owed to the customer — and confirm. The refund is
 what the customer paid for those goods: their share of the invoice's discount and tax comes back

@@ -74,6 +74,7 @@ export async function render(root, ctx) {
         <button class="btn btn-icon" id="toggle-images" aria-pressed="${tileImagesEnabled()}"
                 title="${esc(t('pos.show_images'))}" aria-label="${esc(t('pos.show_images'))}">${icon('image')}</button>
         <button class="btn" id="clear-search">${esc(t('pos.clear'))}</button>
+        <button class="btn" id="take-return" title="${esc(t('ret.pick_sub'))}">${icon('refresh')} <span class="hide-mobile">${esc(t('ret.short'))}</span></button>
       </div>
 
       <aside class="cart">
@@ -436,12 +437,16 @@ export async function render(root, ctx) {
    * chip reminds the cashier which return the next sale follows, and that sale
    * is rung up as usual, so the drawer moves by the difference.
    */
-  async function takeReturn(docNo) {
+  async function takeReturn(docNo, saleId = null) {
     try {
-      const hits = await api.sales({ search: docNo, page: 1, per: 5 });
-      const hit = (hits.rows || []).find((s) => s.doc_no === docNo && s.kind !== 'return');
-      if (!hit) return toast(t('ret.not_found', { doc: docNo }), 'warn');
-      const saved = await returnDialog(await api.sale(hit.id), { atTill: true });
+      let id = saleId;
+      if (!id) {
+        const hits = await api.sales({ search: docNo, page: 1, per: 5 });
+        const hit = (hits.rows || []).find((s) => s.doc_no === docNo && s.kind !== 'return');
+        if (!hit) return toast(t('ret.not_found', { doc: docNo }), 'warn');
+        id = hit.id;
+      }
+      const saved = await returnDialog(await api.sale(id), { atTill: true });
       scan.focus();
       if (!saved) return;
       const v = money(Math.abs(saved.total));
@@ -452,6 +457,51 @@ export async function render(root, ctx) {
       toast(errorText(err), 'error');
     }
   }
+  /** The Returns button: the latest invoices, and a box to find an older one by number or customer. */
+  async function pickReturn() {
+    const picked = await modal({
+      title: t('ret.pick_title'),
+      subtitle: t('ret.pick_sub'),
+      wide: true,
+      body: `<div class="input-icon" style="margin-bottom:12px">${icon('search')}
+          <input class="input" id="ret-search" placeholder="${esc(t('sales.search'))}" autocomplete="off"/></div>
+        <div id="ret-list"></div>`,
+      footer: `<button class="btn" data-close>${esc(t('common.cancel'))}</button>`,
+      setup: (dialog, close) => {
+        const list = dialog.querySelector('#ret-list');
+        let seq = 0;
+        const load = async (search = '') => {
+          const mine = ++seq;
+          const res = await api.sales({ kind: 'sale', search, page: 1, per: 8 });
+          if (mine !== seq) return;
+          list.innerHTML = res.rows.length
+            ? `<div class="table-wrap"><table class="data held-table"><tbody>${res.rows
+                .map(
+                  (s) => `<tr class="row-click" data-pick="${s.id}" tabindex="0">
+                    <td><div class="cell-title mono">${esc(s.doc_no)}</div>
+                        <div class="cell-sub">${dateTimeText(s.created_at || s.date)} · ${esc(s.customer || t('common.walk_in'))}</div></td>
+                    <td class="right nowrap"><div class="cell-title">${money(s.total)}</div>
+                        <div class="cell-sub">${esc(methodText(s.method))}</div></td>
+                  </tr>`,
+                )
+                .join('')}</tbody></table></div>`
+            : emptyState(t('sales.none'), t('sales.none_sub'), 'receipt');
+        };
+        dialog.querySelector('#ret-search').addEventListener('input', debounce((e) => load(e.target.value.trim()), 200));
+        const choose = (e) => {
+          const row = e.target.closest('[data-pick]');
+          if (row && (e.type === 'click' || e.key === 'Enter')) close(Number(row.dataset.pick));
+        };
+        list.addEventListener('click', choose);
+        list.addEventListener('keydown', choose);
+        load();
+      },
+    });
+    if (picked) await takeReturn('', picked);
+    else scan.focus();
+  }
+  $('#take-return').addEventListener('click', pickReturn);
+
   function paintExchange() {
     const chip = $('#exchange-chip');
     chip.hidden = !state.exchange;
