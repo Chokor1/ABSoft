@@ -27,7 +27,7 @@ import {
   toast,
   todayISO,
 } from '../ui.js';
-import { paymentMethods } from '../ui.js';
+import { methodMark, paymentMethods } from '../ui.js';
 import { openParty } from './lists.js';
 import { renderSaleForm } from './sale-form.js';
 
@@ -46,6 +46,11 @@ function receiptHtml(sale, change = 0, change2 = null) {
   return `<div class="receipt" id="receipt-print">
         ${slipHead(cfg)}
         <div class="r-center">${esc(sale.doc_no)} · ${dateTimeText(sale.created_at || sale.date)}</div>
+        ${
+          sale.kind === 'return'
+            ? `<div class="r-center"><b>${esc(t('ret.badge').toUpperCase())}</b>${sale.original ? ` · ${esc(t('ret.for', { doc: sale.original.doc_no }))}` : ''}</div>`
+            : ''
+        }
         <div class="r-rule"></div>
         ${sale.items
           .map(
@@ -64,7 +69,8 @@ function receiptHtml(sale, change = 0, change2 = null) {
         ${sale.tax ? line(t('common.tax'), money(sale.tax)) : ''}
         ${line(t('receipt.total'), money(sale.total), 'r-total')}
         ${sale.rate2 && second() ? line('', money2(sale.total, sale.rate2), 'r-second') : ''}
-        ${line(t('pay.paid'), money(sale.paid))}
+        ${sale.kind === 'return' ? line(t('ret.refund'), money(-sale.paid)) : line(t('pay.paid'), money(sale.paid))}
+        ${sale.balance < -0.004 ? line(t('ret.credited'), money(-sale.balance), 'r-total') : ''}
         ${(sale.payments || [])
           .filter((p) => p.currency === 'second' && p.amount2)
           .map((p) => line(t('receipt.paid_in', { c: second()?.symbol || '' }), esc(formatSecond(p.amount2)), 'r-second'))
@@ -254,9 +260,138 @@ export async function recordPayment(sale) {
 
 /** paid / part paid / unpaid, from the balance rather than a stored flag. */
 function payStatus(sale) {
+  if (sale.kind === 'return') {
+    return sale.balance < -0.004
+      ? `<span class="badge warn">${esc(t('ret.credited'))}</span>`
+      : `<span class="badge">${esc(t('ret.refunded'))}</span>`;
+  }
   if (sale.balance <= 0.004) return `<span class="badge success">${esc(t('pay.status_paid'))}</span>`;
   if (sale.paid > 0.004) return `<span class="badge warn">${esc(t('pay.status_partial'))}</span>`;
   return `<span class="badge danger">${esc(t('pay.status_unpaid'))}</span>`;
+}
+
+const round3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
+
+/**
+ * Part of an invoice comes back. Pick the lines and how many, say whether each goes
+ * back on the shelf or was damaged, choose how the money goes out (or leave it owed
+ * to the customer), and the return is saved as a document of its own. Resolves with
+ * the saved return — carrying `exchange: true` when the till should start a new sale
+ * for the customer straight after — or null.
+ */
+export function returnDialog(sale, { atTill = false } = {}) {
+  const lines = sale.items.map((i) => ({ item: i, left: round3(Math.max(0, i.qty - (i.returned || 0))), qty: 0, restock: true }));
+  if (!lines.some((l) => l.left > 0)) {
+    toast(t('ret.all_back'), 'info');
+    return Promise.resolve(null);
+  }
+  const methods = paymentMethods().map((m) => ({ value: m.name, label: methodText(m.name), icon: m.icon }));
+  if (!methods.some((m) => m.value === 'credit')) methods.push({ value: 'credit', label: methodText('credit'), icon: 'receipt' });
+  let method = methods.some((m) => m.value === sale.method) ? sale.method : methods[0].value;
+
+  // What the customer paid for the goods coming back: their share of the invoice's
+  // discount and tax comes back with them, the same way the server works it out.
+  const refundOf = () => {
+    const subtotal = lines.reduce((s, l) => s + (l.qty > 0 ? (l.item.total * l.qty) / l.item.qty : 0), 0);
+    const ratio = sale.subtotal > 0 ? subtotal / sale.subtotal : 0;
+    return Math.round((subtotal - sale.discount * ratio + sale.tax * ratio) * 100) / 100;
+  };
+  const lineRefund = (l) => (l.qty > 0 ? ((l.item.total * l.qty) / l.item.qty) * (sale.subtotal > 0 ? sale.total / sale.subtotal : 1) : 0);
+
+  return modal({
+    title: t('ret.title', { doc: sale.doc_no }),
+    subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')} · ${methodText(sale.method)}`,
+    wide: true,
+    body: `
+      <div class="table-wrap"><table class="data ret-table">
+        <thead><tr><th>${esc(t('ret.item'))}</th><th class="right">${esc(t('ret.sold'))}</th><th class="right">${esc(t('ret.returning'))}</th>
+          <th>${esc(t('ret.shelf'))}</th><th class="right">${esc(t('ret.refund'))}</th></tr></thead>
+        <tbody>${lines
+          .map(
+            (l, i) => `<tr data-i="${i}" class="${l.left > 0 ? '' : 'muted'}">
+              <td><div class="cell-title">${esc(l.item.name)}</div>${
+                l.item.returned ? `<div class="cell-sub">${esc(t('ret.already', { q: qtyText(l.item.returned) }))}</div>` : ''
+              }</td>
+              <td class="right">${qtyText(l.item.qty)} ${esc(l.item.unit || '')}</td>
+              <td class="right"><input class="input ret-qty" type="number" min="0" max="${l.left}" step="any" value="0" data-qty
+                     ${l.left > 0 ? '' : 'disabled'} aria-label="${esc(t('ret.returning'))} · ${esc(l.item.name)}"/></td>
+              <td><span class="seg seg-sm" role="radiogroup" aria-label="${esc(t('ret.shelf'))}">
+                <button type="button" class="active" data-shelf="1" role="radio" aria-checked="true">${esc(t('ret.shelf_yes'))}</button>
+                <button type="button" data-shelf="0" role="radio" aria-checked="false">${esc(t('ret.damaged'))}</button></span></td>
+              <td class="right" data-refund>—</td>
+            </tr>`,
+          )
+          .join('')}</tbody>
+      </table></div>
+      <div class="ret-foot">
+        <div class="field">
+          <label>${esc(t('ret.refund_by'))}</label>
+          <div class="pay-methods ret-methods" id="ret-method" role="radiogroup">${methods
+            .map(
+              (m) => `<button type="button" role="radio" data-method="${esc(m.value)}" class="${m.value === method ? 'active' : ''}"
+                        aria-checked="${m.value === method}">${methodMark(m.icon)}<span>${esc(m.label)}</span></button>`,
+            )
+            .join('')}</div>
+        </div>
+        <div class="field">
+          <label for="ret-note">${esc(t('common.note'))}</label>
+          <input class="input" id="ret-note" autocomplete="off"/>
+        </div>
+      </div>`,
+    footer: `<button class="btn" data-close>${esc(t('common.cancel'))}</button>
+             ${atTill ? `<button class="btn" data-exchange>${icon('refresh')} ${esc(t('ret.and_sell'))}</button>` : ''}
+             <button class="btn btn-primary" data-save>${icon('check')} <span data-save-label></span></button>`,
+    setup: (root, close) => {
+      const label = root.querySelector('[data-save-label]');
+      const paint = () => {
+        root.querySelectorAll('tr[data-i]').forEach((tr) => {
+          const l = lines[Number(tr.dataset.i)];
+          tr.querySelector('[data-refund]').textContent = l.qty > 0 ? money(lineRefund(l)) : '—';
+        });
+        label.textContent = t(method === 'credit' ? 'ret.confirm_credit' : 'ret.confirm', { v: money(refundOf()) });
+      };
+      root.addEventListener('input', (e) => {
+        const input = e.target.closest('[data-qty]');
+        if (!input) return;
+        const l = lines[Number(input.closest('tr').dataset.i)];
+        l.qty = round3(Math.min(l.left, Math.max(0, Number(input.value) || 0)));
+        paint();
+      });
+      root.addEventListener('click', (e) => {
+        const shelf = e.target.closest('[data-shelf]');
+        if (shelf) {
+          const l = lines[Number(shelf.closest('tr').dataset.i)];
+          l.restock = shelf.dataset.shelf === '1';
+          shelf.parentElement.querySelectorAll('[data-shelf]').forEach((b) => {
+            b.classList.toggle('active', b === shelf);
+            b.setAttribute('aria-checked', String(b === shelf));
+          });
+        }
+        const m = e.target.closest('[data-method]');
+        if (m) {
+          method = m.dataset.method;
+          root.querySelectorAll('[data-method]').forEach((b) => {
+            b.classList.toggle('active', b === m);
+            b.setAttribute('aria-checked', String(b === m));
+          });
+          paint();
+        }
+      });
+      const save = async (exchange) => {
+        const items = lines.filter((l) => l.qty > 0).map((l) => ({ item_id: l.item.id, qty: l.qty, restock: l.restock }));
+        if (!items.length) return toast(t('ret.nothing'), 'warn');
+        try {
+          const saved = await api.returnSale(sale.id, { items, method, note: root.querySelector('#ret-note').value.trim() });
+          close({ ...saved, exchange });
+        } catch (err) {
+          toast(errorText(err), 'error');
+        }
+      };
+      root.querySelector('[data-save]').addEventListener('click', () => save(false));
+      root.querySelector('[data-exchange]')?.addEventListener('click', () => save(true));
+      paint();
+    },
+  });
 }
 
 /** One invoice, as a page: the receipt, what has been paid, and what to do next. */
@@ -273,11 +408,21 @@ async function renderSale(root, ctx, id) {
 
   const paint = () => {
     const owing = sale.balance > 0.004;
+    const isReturn = sale.kind === 'return';
+    const returnable = !isReturn && sale.items.some((i) => i.qty - (i.returned || 0) > 0.0005);
     const body = docPage(root, {
-      title: t('receipt.title', { doc: sale.doc_no }),
-      subtitle: [dateText(sale.date), sale.customer || t('common.walk_in'), sale.username].filter(Boolean).join(' · '),
-      badges: `<span class="badge accent">${money(sale.total)}</span> ${payStatus(sale)}`,
+      title: t(isReturn ? 'ret.doc_title' : 'receipt.title', { doc: sale.doc_no }),
+      subtitle: [
+        dateText(sale.date),
+        sale.original ? t('ret.for', { doc: sale.original.doc_no }) : '',
+        sale.customer || t('common.walk_in'),
+        sale.username,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      badges: `<span class="badge ${isReturn ? 'danger' : 'accent'}">${isReturn ? `${esc(t('ret.badge'))} · ` : ''}${money(sale.total)}</span> ${payStatus(sale)}`,
       actions: `${admin && sale.customer ? `<button class="btn" data-customer>${icon('users')} ${esc(t('party.open_customer'))}</button>` : ''}
+                ${returnable ? `<button class="btn" data-return>${icon('refresh')} ${esc(t('ret.button'))}</button>` : ''}
                 ${owing ? `<button class="btn btn-primary" data-pay>${icon('coins')} ${esc(t('pay.record'))}</button>` : ''}
                 <button class="btn ${owing ? '' : 'btn-primary'}" data-print>${icon('print')} ${esc(t('common.print'))}</button>
                 ${admin ? `<button class="btn btn-ghost" data-void title="${esc(t('sales.void_tip'))}" aria-label="${esc(t('sales.void_tip'))}">${icon('trash')}</button>` : ''}`,
@@ -313,12 +458,43 @@ async function renderSale(root, ctx, id) {
               }
             </div>
           </div>
+          ${
+            sale.returns?.length
+              ? `<div class="card">
+                  <div class="card-head"><div><h3>${esc(t('ret.returns'))}</h3></div></div>
+                  <div class="card-body flush"><div class="table-wrap"><table class="data"><tbody>${sale.returns
+                    .map(
+                      (r) => `<tr class="row-click" data-open-doc="${r.id}">
+                        <td><div class="cell-title mono">${esc(r.doc_no)}</div>
+                            <div class="cell-sub">${dateText(r.date)} · ${esc(methodText(r.method))}</div></td>
+                        <td class="right money-neg">${money(r.total)}</td>
+                      </tr>`,
+                    )
+                    .join('')}</tbody></table></div></div>
+                </div>`
+              : ''
+          }
+          ${
+            sale.original
+              ? `<div class="card"><div class="card-body">
+                   <button class="btn btn-block" data-open-doc="${sale.original.id}">${icon('receipt')} ${esc(t('receipt.title', { doc: sale.original.doc_no }))}</button>
+                 </div></div>`
+              : ''
+          }
           <div class="card">
             <div class="card-body">${paymentsHtml(sale)}</div>
           </div>
         </div>
       </div>`;
 
+    root.querySelectorAll('[data-open-doc]').forEach((el) => el.addEventListener('click', () => ctx.navigate(`sales/${el.dataset.openDoc}`)));
+    root.querySelector('[data-return]')?.addEventListener('click', async () => {
+      const saved = await returnDialog(sale);
+      if (!saved) return;
+      toast(t(saved.method === 'credit' ? 'ret.done_credit' : 'ret.done', { doc: saved.doc_no, v: money(Math.abs(saved.total)) }), 'success', 5000);
+      sale = await api.sale(sale.id);
+      paint();
+    });
     root.querySelector('[data-print]').addEventListener('click', () => window.print());
     root.querySelector('[data-pay]')?.addEventListener('click', async () => {
       const updated = await recordPayment(sale);
@@ -406,6 +582,8 @@ export async function render(root, ctx) {
         { value: 'paid', label: t('pay.status_paid') },
         { value: 'partial', label: t('pay.status_partial') },
         { value: 'unpaid', label: t('pay.status_unpaid') },
+        { value: 'sales', label: t('filter.invoices') },
+        { value: 'returns', label: t('filter.returns') },
       ],
       onChange: (v) => {
         state.status = v;
@@ -466,7 +644,9 @@ export async function render(root, ctx) {
       from: state.from,
       to: state.to,
       search: state.search,
-      status: state.status,
+      // Invoices or returns are a kind of document, not a payment status.
+      status: ['sales', 'returns'].includes(state.status) ? '' : state.status,
+      kind: state.status === 'returns' ? 'return' : state.status === 'sales' ? 'sale' : '',
       method: state.method,
       page: state.page,
       per: state.per,
@@ -505,7 +685,7 @@ export async function render(root, ctx) {
                   <tbody>${rows
                     .map(
                       (s) => `<tr class="row-click" data-open="${s.id}">
-                        <td class="mono nowrap">${esc(s.doc_no)}</td>
+                        <td class="mono nowrap">${esc(s.doc_no)}${s.kind === 'return' ? ` <span class="badge danger">${esc(t('ret.badge'))}</span>` : ''}</td>
                         <td class="nowrap">${dateText(s.date)}</td>
                         <td>${esc(s.customer || t('common.walk_in'))}</td>
                         <td class="right">${qtyText(s.total_qty)}</td>

@@ -35,6 +35,12 @@ export function shiftDays(iso, days) {
 }
 
 /** Normalise a YYYY-MM-DD input; falls back to today when blank/invalid. */
+/** EAN-13's last digit: weights of 1 and 3 over the first twelve, so a misread fails loudly. */
+export function ean13Check(digits12) {
+  const sum = [...String(digits12)].reduce((s, d, i) => s + Number(d) * (i % 2 ? 3 : 1), 0);
+  return String((10 - (sum % 10)) % 10);
+}
+
 export function isoDate(value) {
   const s = str(value);
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : today();

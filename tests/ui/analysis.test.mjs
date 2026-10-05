@@ -188,11 +188,11 @@ check('Export downloads the whole result', download.suggestedFilename().startsWi
 
 /* ------------------------------------------------------------ a customer's page */
 console.log('\n[a customer\'s page]');
-await page.goto(`${BASE}#/lists/customer`);
+await page.goto(`${BASE}#/customers`);
 await page.waitForSelector('[data-edit]');
 await page.click('tr[data-edit]:has-text("Karim Grocery")');
 await page.waitForSelector('.party-hero');
-check('clicking a customer opens their page', /#\/lists\/customer\/\d+$/.test(page.url()) && (await text('.party-hero h2')) === 'Karim Grocery');
+check('clicking a customer opens their page', /#\/customers\/\d+$/.test(page.url()) && (await text('.party-hero h2')) === 'Karim Grocery');
 const karimId = Number(page.url().match(/(\d+)$/)[1]);
 const summary = (await api(`/api/entities/customer/${karimId}/summary`)).summary;
 check('five tiles: balance, sales, paid, profit, last sale', (await page.$$('#party-stats .stat')).length === 5);
@@ -234,11 +234,11 @@ await page.goto(`${BASE}#/sales/${sale.id}`);
 await page.waitForSelector('[data-customer]');
 await page.click('[data-customer]');
 await page.waitForSelector('.party-hero');
-check('an invoice opens its customer\'s page', page.url().endsWith(`#/lists/customer/${karimId}`));
+check('an invoice opens its customer\'s page', page.url().endsWith(`#/customers/${karimId}`));
 
 /* ------------------------------------------------------------ a supplier's page */
 console.log('\n[a supplier\'s page]');
-await page.goto(`${BASE}#/lists/supplier`);
+await page.goto(`${BASE}#/suppliers`);
 await page.waitForSelector('[data-edit]');
 await page.click('tr[data-edit]:has-text("Wholesale Depot")');
 await page.waitForSelector('.party-statement tbody tr');
@@ -254,10 +254,10 @@ await page.click('#tab-body tbody tr[data-purchase]');
 await page.waitForSelector('[data-supplier]');
 await page.click('[data-supplier]');
 await page.waitForSelector('.party-hero');
-check('a purchase opens its supplier\'s page', /#\/lists\/supplier\/\d+$/.test(page.url()));
+check('a purchase opens its supplier\'s page', /#\/suppliers\/\d+$/.test(page.url()));
 
 await page.evaluate(() => localStorage.setItem('absoft-theme', 'dark'));
-await page.goto(`${BASE}#/lists/customer/${karimId}`);
+await page.goto(`${BASE}#/customers/${karimId}`);
 await page.reload();
 await page.waitForSelector('.party-statement tbody tr');
 await shot('177-customer-dark');

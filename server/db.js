@@ -145,6 +145,11 @@ export const appliedMigrations = runMigrations(db, { log: (line) => console.log(
 
 const DEFAULT_SETTINGS = {
   store_name: 'ABSoft Store',
+  // Labels from a weighing scale: off until the shop says which prefix its scale prints.
+  scale_enabled: '0',
+  scale_prefix: '21',
+  scale_item_digits: '5',
+  scale_mode: 'weight',
   currency: '$',
   tax_rate: '0',
   low_stock_alert: '1',

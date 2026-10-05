@@ -156,7 +156,7 @@ await page.waitForTimeout(1500);
 check('the purchase saves and returns to the list', page.url().endsWith('#/purchases'), page.url());
 check('it is listed', (await page.textContent('.page')).includes('Page Supplier'));
 
-await page.goto(`${BASE}#/lists/customer/new`);
+await page.goto(`${BASE}#/customers/new`);
 await page.waitForSelector('#page-form');
 await page.fill('input[name=name]', 'Page Customer');
 await page.fill('input[name=phone]', '01 234 567');
@@ -299,7 +299,7 @@ await call('/api/settings', 'PUT', { low_stock_alert: '1' });
 for (const p of raised) await call(`/api/products/${p.id}`, 'PUT', { min_stock: p.min_stock });
 
 /* ------------------------------------------------- a menu that fits 720 */
-console.log('\n[A sidebar that fits 1366×720]');
+console.log('\n[A sidebar that fits 1366×720, one section at a time]');
 // The worst case: the rate box (second currency) and Shifts (an extra row) both showing.
 await call('/api/settings', 'PUT', { currency2_enabled: '1', currency2_symbol: 'L.L', currency2_decimals: '0', pos_shifts: '1' });
 await call('/api/exchange-rate', 'PUT', { rate: 89500 });
@@ -307,12 +307,14 @@ await page.setViewportSize({ width: 1366, height: 720 });
 const fits = async () => page.evaluate(() => {
   const nav = document.querySelector('.nav');
   const all = [...document.querySelectorAll('.sidebar .nav-item, .sidebar .nav-gear, .sidebar .user-chip, #rate-box')];
-  const out = all.filter((el) => el.offsetParent !== null).filter((el) => {
+  const out = all.filter((el) => el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden').filter((el) => {
     const r = el.getBoundingClientRect();
     const n = nav.getBoundingClientRect();
     return r.bottom > innerHeight + 0.5 || (nav.contains(el) && r.bottom > n.bottom + 0.5);
   }).map((el) => el.dataset.route || el.id);
-  return { scrolls: nav.scrollHeight > nav.clientHeight + 1, out, rate: !document.getElementById('rate-box').hidden };
+  const rows = [...nav.querySelectorAll('.nav-item')].filter((el) => getComputedStyle(el).visibility !== 'hidden').map((el) => Math.round(el.getBoundingClientRect().height));
+  return { scrolls: nav.scrollHeight > nav.clientHeight + 1, out, rate: !document.getElementById('rate-box').hidden,
+    open: [...nav.querySelectorAll('.nav-fold.open')].map((x) => x.dataset.fold).join(), minRow: Math.min(...rows) };
 });
 for (const lang of ['en', 'ar']) {
   await page.evaluate((l) => localStorage.setItem('absoft-lang', l), lang);
@@ -321,17 +323,37 @@ for (const lang of ['en', 'ar']) {
   await page.waitForSelector('.nav-item');
   await page.waitForTimeout(700);
   const f = await fits();
-  check(`${lang}: every item, the rate and the user fit without scrolling`, f.rate && !f.scrolls && f.out.length === 0, JSON.stringify(f));
+  check(`${lang}: the menu, the rate and the user fit without scrolling`, f.rate && !f.scrolls && f.out.length === 0, JSON.stringify(f));
+  check(`${lang}: only the section you are in is open, and its rows keep their full height`, f.open === 'money' && f.minRow >= 36, JSON.stringify(f));
   await shot(`152-sidebar-1366x720-${lang}`);
 }
 await page.evaluate(() => localStorage.setItem('absoft-lang', 'en'));
 await page.reload();
 await page.waitForSelector('.nav-item');
 const menuRoutes = await page.$$eval('.nav [data-route]', (a) => a.map((x) => x.dataset.route));
-check('the menu: Dashboard, then Money, then Stock', menuRoutes.join() ===
-  'dashboard,sales,shifts,purchases,expenses,reports,products,stock-count,adjustments,lists', menuRoutes.join());
+check('the menu: Dashboard, then Selling, Buying, Stock and Money', menuRoutes.join() ===
+  'dashboard,sales,shifts,customers,purchases,suppliers,products,stock-count,adjustments,categories,units,expenses,expense-categories,reports', menuRoutes.join());
+check('Lists is no longer a screen of its own', !menuRoutes.includes('lists'));
 check('Users and Settings have left the menu', !menuRoutes.includes('users') && !menuRoutes.includes('settings'));
-check('one heading for Money, and Stock as its folding group', (await page.$$eval('.nav-label', (l) => l.map((x) => x.textContent.trim()))).join() === 'Money');
+check('four sections, all the same kind of heading: Sales, Purchases, Stock, Finance',
+  (await page.$$eval('.nav-fold > .nav-parent', (l) => l.map((x) => x.textContent.trim()))).join() === 'Sales,Purchases,Stock,Finance' &&
+  (await page.$$('.nav-label, .nav-child')).length === 0);
+const openNow = () => page.$$eval('.nav-fold.open', (x) => x.map((y) => y.dataset.fold).join());
+await page.click('[data-fold-toggle="stock"]');
+await page.waitForTimeout(350);
+check('opening another section closes the one that was open', (await openNow()) === 'stock' && await page.isVisible('.nav [data-route="units"]') &&
+  !(await page.isVisible('.nav [data-route="reports"]')), await openNow());
+check('…and a section folded with your screen inside it says so', await page.$eval('.nav-fold[data-fold="money"]', (x) => x.classList.contains('has-active')));
+check('folded rows are out of the tab order', await page.$eval('.nav [data-route="reports"]', (a) => getComputedStyle(a).visibility === 'hidden'));
+await page.click('.nav [data-route="units"]');
+await page.waitForSelector('#list-search');
+check('going to a screen keeps its section open', (await openNow()) === 'stock' && await page.$eval('.nav [data-route="units"]', (a) => a.classList.contains('active')));
+await page.setViewportSize({ width: 1920, height: 1080 });
+await page.waitForTimeout(500);
+check('on a screen tall enough for all of it, every section is open', (await openNow()) === 'selling,buying,stock,money' && !(await fits()).scrolls, await openNow());
+await page.setViewportSize({ width: 1366, height: 720 });
+await page.waitForTimeout(500);
+check('…and back on the short one, one again', (await openNow()) === 'stock' && !(await fits()).scrolls, await openNow());
 
 await page.click('.sidebar .nav-gear');
 await page.waitForTimeout(600);
@@ -350,6 +372,79 @@ await call('/api/settings', 'PUT', { currency2_enabled: '0', pos_shifts: '0' });
 await page.setViewportSize({ width: 1500, height: 980 });
 await page.reload();
 await page.waitForSelector('.nav-item');
+
+/* ------------------------------------------ each list beside its screen */
+console.log('\n[each list lives beside the screen it is used with]');
+const strip = () => page.$$eval('.tab-strip button', (b) => b.map((x) => (x.classList.contains('active') ? '*' : '') + x.textContent.trim()));
+const at = () => page.evaluate(() => location.hash);
+await page.goto(`${BASE}#/customers`);
+await page.waitForSelector('#list-search');
+check('Customers is a screen under Selling', (await page.textContent('#page-title')) === 'Customers' &&
+  await page.$eval('.nav [data-route="customers"]', (a) => a.classList.contains('active')));
+check('…with its own Add button, and no tabs for other lists', (await page.textContent('#new')).includes('Add customer') && (await strip()).length === 0);
+await page.click('#new');
+await page.waitForSelector('#page-form');
+check('adding one is a page at #/customers/new', (await at()) === '#/customers/new');
+await page.click('#page-form [data-cancel]');
+await page.waitForSelector('#list-search');
+check('…and Cancel comes back to Customers', (await at()) === '#/customers');
+await page.goto(`${BASE}#/suppliers`);
+await page.waitForSelector('#list-search');
+check('Suppliers is a screen under Buying', (await page.textContent('#page-title')) === 'Suppliers' && (await page.textContent('#new')).includes('Add supplier'));
+
+// Categories and units are rows of the Stock menu; expense categories sit beside Expenses.
+for (const [route, title, add, group] of [['categories', 'Product categories', 'Add category', 'stock'], ['units', 'Units', 'Add unit', 'stock'],
+  ['expense-categories', 'Expense categories', 'Add expense category', 'money']]) {
+  await page.click(`.nav [data-route="${route}"]`);
+  await page.waitForSelector('#list-search');
+  await page.waitForTimeout(400);
+  check(`${title} opens from the menu as a screen of its own`, (await at()) === `#/${route}` && (await page.textContent('#page-title')) === title &&
+    (await page.textContent('#new')).includes(add) && await page.$eval(`.nav [data-route="${route}"]`, (a) => a.classList.contains('active')), await at());
+  const inStock = await page.$eval(`.nav [data-route="${route}"]`, (a) => !!a.closest('.nav-fold[data-fold="stock"]'));
+  check(`…in the ${group === 'stock' ? 'Stock menu' : 'Money section, beside Expenses'}`, group === 'stock' ? inStock :
+    !inStock && await page.$eval(`.nav [data-route="${route}"]`, (a) => a.previousElementSibling?.dataset.route === 'expenses'));
+}
+check('the categories list has the catalogue\'s own', (await page.goto(`${BASE}#/categories`), await page.waitForSelector('table.data tbody tr'), (await page.$$('table.data tbody tr')).length > 0));
+await page.goto(`${BASE}#/products`);
+await page.waitForSelector('#stock-filter');
+check('Products is the catalogue alone, with no tabs', (await strip()).length === 0);
+await page.goto(`${BASE}#/expenses`);
+await page.waitForSelector('.sticky-bar');
+check('…and Expenses the same', (await strip()).length === 0);
+
+await page.goto(`${BASE}#/settings/payments`);
+await page.waitForSelector('#list-search');
+check('payment methods are a section of Settings', (await page.textContent('#set-nav .active')).trim() === 'Payment methods' &&
+  (await page.$$('table.data tbody tr')).length >= 2 && (await page.textContent('#new')).includes('Add payment method'));
+check('…with the Settings sections still in the header above the list', await page.isVisible('#set-nav') && await page.isVisible('#export'));
+// The header must not move or change when this section is chosen.
+const headerBox = () => page.evaluate(() => {
+  const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)].join(); };
+  const head = document.querySelector('#page-head');
+  return { head: box(head), title: box(head.querySelector('#page-title')), nav: box(document.querySelector('#set-nav')),
+    parent: head.parentElement.id || head.parentElement.className, text: head.querySelector('.page-head-title').textContent.trim() };
+});
+const onPayments = await headerBox();
+await page.click('#set-nav [data-section="store"]');
+await page.waitForSelector('#settings-form');
+await page.waitForTimeout(300);
+const onStore = await headerBox();
+check('the Settings header is the same on Payment methods as on Store: same place, same size, same words',
+  JSON.stringify(onPayments) === JSON.stringify(onStore), `${JSON.stringify(onPayments)} vs ${JSON.stringify(onStore)}`);
+await page.click('#set-nav [data-section="payments"]');
+await page.waitForSelector('#list-search');
+check('…and coming back to it', JSON.stringify(await headerBox()) === JSON.stringify(onStore), JSON.stringify(await headerBox()));
+await shot('154-settings-payments');
+
+for (const [old, now] of [['lists', 'customers'], ['lists/supplier', 'suppliers'], ['lists/category', 'categories'], ['lists/unit', 'units'],
+  ['lists/expense_category', 'expense-categories'], ['lists/payment_method', 'settings/payments'], ['lists/customer/new', 'customers/new']]) {
+  await page.goto(`${BASE}#/${old}`);
+  await page.waitForTimeout(700);
+  check(`an old link to #/${old} lands on #/${now}`, (await at()) === `#/${now}`, await at());
+}
+await page.goBack();
+await page.waitForTimeout(500);
+check('…without trapping the Back button', !(await at()).startsWith('#/lists'), await at());
 
 /* ------------------------------------------------------------- Arabic */
 console.log('\n[Arabic]');

@@ -137,7 +137,7 @@ function summarise(from, to) {
     .prepare(
       `SELECT COALESCE(SUM(total), 0) AS gross, COALESCE(SUM(tax), 0) AS tax,
               COALESCE(SUM(discount), 0) AS discount, COALESCE(SUM(cogs), 0) AS cogs,
-              COUNT(*) AS count
+              SUM(CASE WHEN kind = 'sale' THEN 1 ELSE 0 END) AS count
        FROM sales WHERE date BETWEEN ? AND ?`,
     )
     .get(from, to);
@@ -181,7 +181,7 @@ function dailySeries(from, to) {
       `SELECT date,
               ROUND(SUM(total - tax), 2) AS revenue,
               ROUND(SUM(total - tax - cogs), 2) AS gross_profit,
-              COUNT(*) AS sales
+              SUM(CASE WHEN kind = 'sale' THEN 1 ELSE 0 END) AS sales
        FROM sales WHERE date BETWEEN ? AND ? GROUP BY date`,
     )
     .all(from, to);
@@ -408,7 +408,7 @@ export function register(router) {
     return db
       .prepare(
         `SELECT COALESCE(u.username, 'unknown') AS username, COALESCE(u.full_name, '') AS full_name,
-                COUNT(*) AS sales, ROUND(SUM(s.total), 2) AS revenue,
+                SUM(CASE WHEN s.kind = 'sale' THEN 1 ELSE 0 END) AS sales, ROUND(SUM(s.total), 2) AS revenue,
                 ROUND(SUM(s.total - s.tax - s.cogs), 2) AS profit
          FROM sales s LEFT JOIN users u ON u.id = s.user_id
          WHERE s.date BETWEEN ? AND ?

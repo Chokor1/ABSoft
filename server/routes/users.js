@@ -4,6 +4,7 @@ import { badRequest, forbidden, notFound } from '../http.js';
 import { num, required, str } from '../util.js';
 import { mkdirSync, statSync } from 'node:fs';
 import { autoBackup } from '../autobackup.js';
+import { scalePrefixClashes } from './products.js';
 
 const ROLES = new Set(['admin', 'cashier']);
 
@@ -100,6 +101,7 @@ export function register(router) {
       'store_name', 'currency', 'tax_rate', 'low_stock_alert', 'receipt_footer',
       'currency2_enabled', 'currency2_symbol', 'currency2_decimals',
       'pos_shifts', 'search_min_chars', 'pos_page_size', 'store_logo', 'backup_dir2',
+      'scale_enabled', 'scale_prefix', 'scale_item_digits', 'scale_mode',
     ];
     const patch = {};
     for (const key of allowed) if (ctx.body[key] !== undefined) patch[key] = str(ctx.body[key]);
@@ -125,6 +127,23 @@ export function register(router) {
     // The rate goes through the same check and history as the sidebar's rate box.
     if (ctx.body.currency2_rate !== undefined && num(ctx.body.currency2_rate) !== num(getSettings().currency2_rate)) {
       recordRate(ctx.body.currency2_rate, patch.currency2_symbol ?? getSettings().currency2_symbol, ctx.user.id);
+    }
+    // Scale labels: a two-digit prefix, 4 to 6 item digits, weight or price. Switching
+    // them on is refused while any real 13-digit barcode starts with that prefix,
+    // because such a product would then ring up as a weight.
+    if (patch.scale_prefix !== undefined && !/^\d{2}$/.test(patch.scale_prefix)) {
+      throw badRequest('The scale prefix is two digits', 'SCALE_PREFIX_DIGITS');
+    }
+    if (patch.scale_item_digits !== undefined) {
+      patch.scale_item_digits = String(Math.min(6, Math.max(4, Math.round(num(patch.scale_item_digits, 5)) || 5)));
+    }
+    if (patch.scale_mode !== undefined) patch.scale_mode = patch.scale_mode === 'price' ? 'price' : 'weight';
+    if (patch.scale_enabled !== undefined) patch.scale_enabled = patch.scale_enabled === '1' ? '1' : '0';
+    const scaleOn = (patch.scale_enabled ?? getSettings().scale_enabled) === '1';
+    if (scaleOn && (patch.scale_enabled !== undefined || patch.scale_prefix !== undefined)) {
+      const prefix = patch.scale_prefix ?? getSettings().scale_prefix ?? '21';
+      const n = scalePrefixClashes(prefix);
+      if (n) throw badRequest(`${n} product barcodes already start with ${prefix}`, 'SCALE_PREFIX_TAKEN', { n, p: prefix });
     }
     // A second backup folder must exist, or be creatable, before it is kept.
     const hadDir2 = getSettings().backup_dir2 || '';

@@ -6,11 +6,12 @@
 import { db, transact } from '../db.js';
 
 transact(() => {
-  for (const table of ['sale_items', 'sales', 'purchase_items', 'purchases', 'stock_moves', 'expenses', 'products']) {
+  // Held sales first: they name products, and a cart of products that are gone is no use.
+  for (const table of ['held_sales', 'sale_items', 'sales', 'purchase_items', 'purchases', 'stock_moves', 'expenses', 'products']) {
     db.exec(`DELETE FROM ${table}`);
   }
   db.exec(`DELETE FROM sqlite_sequence WHERE name IN
-    ('sale_items','sales','purchase_items','purchases','stock_moves','expenses','products')`);
+    ('held_sales','sale_items','sales','purchase_items','purchases','stock_moves','expenses','products')`);
 });
 
 console.log('All products, sales, purchases, stock movements and expenses were deleted.');

@@ -253,6 +253,12 @@ check('the rows scroll in a section no taller than the window', narrow.inner > 0
 await page.setViewportSize({ width: 1366, height: 720 });
 
 console.log('\n[purchases and adjustments keep their totals in view too]');
+// The list opens on this month; the seed's deliveries may all be in the last one.
+await page.evaluate(async () => {
+  const p = (await (await fetch('/api/products?limit=1')).json())[0];
+  await fetch('/api/purchases', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ supplier: 'Month Start Supply', items: [{ product_id: p.id, qty: 1, unit_cost: p.cost || 1 }] }) });
+});
 await page.goto(`${BASE}#/purchases`);
 await page.waitForSelector('.table-scroll tfoot');
 check('purchases have a sticky totals row', (await page.$eval('.table-scroll tfoot td', (td) => getComputedStyle(td).position)) === 'sticky');

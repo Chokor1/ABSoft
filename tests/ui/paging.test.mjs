@@ -122,10 +122,8 @@ await shot('141-sales-filters');
 
 /* ------------------------------------------------- customers and suppliers */
 console.log('\n[customers and suppliers]');
-await page.goto(`${BASE}#/lists`);
-// Categories are the tab with rows in demo data; customers arrive with sales.
-await page.waitForSelector('[data-kind="category"]');
-await page.click('[data-kind="category"]');
+// Categories are the list with rows in demo data; customers arrive with sales.
+await page.goto(`${BASE}#/categories`);
 await page.waitForSelector('.table-scroll tbody tr');
 check('the names list pages as well', await page.isVisible('.pager'));
 const heads = await page.evaluate(() => {

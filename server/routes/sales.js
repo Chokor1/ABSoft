@@ -1,8 +1,9 @@
 ﻿import { db, getSettings, lastId, transact } from '../db.js';
 import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
+import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str, today } from '../util.js';
 import { secondCurrency, toBase, toSecond } from '../currency.js';
+import { applyAverageCost } from '../costing.js';
 import { openShift, shiftsEnabled } from './shifts.js';
 
 /**
@@ -64,16 +65,42 @@ const paymentsOf = (saleId) =>
     )
     .all(saleId);
 
+/** How much of each line of an invoice has already come back: { item id: quantity }. */
+function returnedSoFar(saleId) {
+  const rows = db
+    .prepare(
+      `SELECT return_of_item AS item_id, ROUND(-SUM(qty), 3) AS qty FROM sale_items
+       WHERE return_of_item IS NOT NULL AND sale_id IN (SELECT id FROM sales WHERE return_of = ?)
+       GROUP BY return_of_item`,
+    )
+    .all(saleId);
+  return Object.fromEntries(rows.map((r) => [r.item_id, num(r.qty)]));
+}
+
+/** RET-000001, RET-000002…: a sequence of its own, from the highest number used. */
+function nextReturnNo() {
+  const row = db.prepare(`SELECT MAX(CAST(substr(doc_no, 5) AS INTEGER)) AS n FROM sales WHERE kind = 'return'`).get();
+  return `RET-${String(num(row?.n) + 1).padStart(6, '0')}`;
+}
+
 export function loadSale(id) {
   const head = db.prepare(`${LIST_SQL} WHERE s.id = ?`).get(id);
   if (!head) return null;
+  const returned = head.kind === 'return' ? {} : returnedSoFar(id);
   const items = db
     .prepare(
       `SELECT i.*, p.name, p.barcode, p.unit FROM sale_items i
        JOIN products p ON p.id = i.product_id WHERE i.sale_id = ? ORDER BY i.id`,
     )
-    .all(id);
-  return { ...head, items, payments: paymentsOf(id) };
+    .all(id)
+    .map((i) => ({ ...i, returned: returned[i.id] || 0 }));
+  // An invoice carries its returns; a return carries the invoice it undoes.
+  const returns =
+    head.kind === 'return'
+      ? []
+      : db.prepare(`SELECT id, doc_no, date, total, paid, method FROM sales WHERE return_of = ? ORDER BY id`).all(id);
+  const original = head.return_of ? db.prepare(`SELECT id, doc_no, date FROM sales WHERE id = ?`).get(head.return_of) || null : null;
+  return { ...head, items, payments: paymentsOf(id), returns, original };
 }
 
 export function register(router) {
@@ -90,6 +117,8 @@ export function register(router) {
     if (status === 'partial') where.push('ROUND(s.total - s.paid, 2) > 0.005 AND s.paid > 0.005');
     if (status === 'unpaid') where.push('s.paid <= 0.005 AND s.total > 0.005');
     if (str(ctx.query.method)) (where.push('s.method = ?'), args.push(str(ctx.query.method)));
+    // Invoices, returns, or both (the default).
+    if (['sale', 'return'].includes(str(ctx.query.kind))) (where.push('s.kind = ?'), args.push(str(ctx.query.kind)));
     if (str(ctx.query.customer)) (where.push('s.customer = ? COLLATE NOCASE'), args.push(str(ctx.query.customer)));
     if (str(ctx.query.search)) {
       where.push('(s.doc_no LIKE ? OR s.customer LIKE ?)');
@@ -326,10 +355,101 @@ export function register(router) {
     });
   });
 
+  /**
+   * Part of an invoice comes back. The return is a sale document of its own —
+   * RET-000001, negative quantities and money, linked to the invoice — so revenue,
+   * profit, the day's chart, the customer's statement and the shift's drawer all
+   * net it out without a special case. A line going back on the shelf puts its
+   * stock and its cost back; a damaged one refunds the money and keeps the cost,
+   * which is what a loss is. The invoice's discount and tax come back in the same
+   * proportion as the goods. Cashiers may do this; only an administrator may void it.
+   */
+  router.post('/api/sales/:id/returns', (ctx) => {
+    const sale = loadSale(ctx.params.id);
+    if (!sale) throw notFound('Sale not found', 'SALE_NOT_FOUND');
+    if (sale.kind === 'return') throw badRequest('A return cannot itself be returned', 'RETURN_OF_RETURN');
+    const wanted = Array.isArray(ctx.body.items) ? ctx.body.items : [];
+    const lines = [];
+    for (const w of wanted) {
+      const item = sale.items.find((i) => i.id === num(w.item_id));
+      const quantity = qty(num(w.qty));
+      if (!item || quantity <= 0) continue;
+      const left = qty(item.qty - item.returned);
+      if (quantity > left + 1e-9) {
+        throw badRequest(`Only ${left} of "${item.name}" can still be returned`, 'RETURN_TOO_MANY', { name: item.name, left });
+      }
+      const share = quantity / item.qty;
+      const restock = !(w.restock === false || w.restock === 0 || w.restock === '0' || w.restock === 'damaged');
+      lines.push({ item, qty: quantity, restock, discount: money(item.discount * share), total: money(item.total * share) });
+    }
+    if (!lines.length) throw badRequest('Nothing to return', 'RETURN_EMPTY');
+
+    const subtotal = money(lines.reduce((s, l) => s + l.total, 0));
+    const ratio = sale.subtotal > 0 ? subtotal / sale.subtotal : 0;
+    const discount = money(sale.discount * ratio);
+    const tax = money(sale.tax * ratio);
+    const total = money(subtotal - discount + tax);
+    const cogs = money(lines.filter((l) => l.restock).reduce((s, l) => s + l.qty * l.item.unit_cost, 0));
+    const settings = getSettings();
+    const second = secondCurrency(settings);
+    const method = str(ctx.body.method) || 'cash';
+    const inSecond = ctx.body.currency === 'second';
+    if (inSecond && !second) throw badRequest('The second currency is not switched on', 'SECOND_CURRENCY_OFF');
+    const shift = openShift();
+    const date = today();
+    const stamp = `${date} ${new Date().toISOString().slice(11, 19)}`;
+
+    const doc = transact(() => {
+      const docNo = nextReturnNo();
+      const res = db
+        .prepare(
+          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2, shift_id, kind, return_of)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 'return', ?)`,
+        )
+        .run(
+          docNo, sale.customer, date, -subtotal, -discount, -tax, -total, -cogs,
+          method, str(ctx.body.note), ctx.user.id, second ? second.rate : null, shift?.id ?? null, sale.id,
+        );
+      const id = lastId(res);
+      const insertItem = db.prepare(
+        `INSERT INTO sale_items (sale_id, product_id, qty, unit_price, unit_cost, discount, total, restock, return_of_item)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      const insertMove = db.prepare(
+        `INSERT INTO stock_moves (product_id, qty, unit_cost, kind, ref_table, ref_id, note, user_id, created_at)
+         VALUES (?, ?, ?, 'return', 'sales', ?, ?, ?, ?)`,
+      );
+      for (const l of lines) {
+        insertItem.run(id, l.item.product_id, -l.qty, l.item.unit_price, l.item.unit_cost, -l.discount, -l.total, l.restock ? 1 : 0, l.item.id);
+        if (l.restock) {
+          // Back on the shelf at what it cost when it was sold, blended in like a delivery.
+          applyAverageCost(l.item.product_id, l.qty, l.item.unit_cost);
+          insertMove.run(l.item.product_id, l.qty, l.item.unit_cost, id, `${docNo} · ${sale.doc_no}`, ctx.user.id, stamp);
+        }
+      }
+      // The refund is a negative payment in the method it went out by — counted in
+      // the open shift's drawer. "credit" leaves it owed to the customer instead.
+      if (method !== 'credit' && total > 0) {
+        db.prepare(
+          `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id)
+           VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+        ).run(
+          id, -total, method, date, ctx.user.id,
+          inSecond ? 'second' : '', inSecond ? -toSecond(total, second) : null, inSecond ? second.rate : null, shift?.id ?? null,
+        );
+      }
+      recalcPaid(id);
+      return loadSale(id);
+    });
+    return { ...doc, settings };
+  });
+
   router.delete('/api/sales/:id', (ctx) => {
     const sale = loadSale(ctx.params.id);
     if (!sale) throw notFound('Sale not found', 'SALE_NOT_FOUND');
     if (ctx.user.role !== 'admin') throw badRequest('Only an administrator can void a sale', 'SALE_ADMIN_ONLY');
+    // The returns hang off the invoice; void them first, so nothing is left pointing at air.
+    if (sale.returns?.length) throw badRequest('This invoice has returns; void those first', 'SALE_HAS_RETURNS', { n: sale.returns.length });
     return transact(() => {
       db.prepare(`DELETE FROM stock_moves WHERE ref_table = 'sales' AND ref_id = ?`).run(sale.id);
       db.prepare(`DELETE FROM sales WHERE id = ?`).run(sale.id);

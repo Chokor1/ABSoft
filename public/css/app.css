@@ -194,7 +194,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .credit { font-size: 11.5px; color: var(--muted); }
-.sidebar-foot .credit { padding: 9px 10px 2px; text-align: center; }
 
 .lang-picker button { min-width: 40px; }
 .lang-short { display: none; }
@@ -212,12 +211,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sidebar {
   position: sticky; top: 0; align-self: start;
   height: 100vh; display: flex; flex-direction: column;
-  padding: 18px 14px;
+  padding: 16px 12px 12px;
   background: var(--surface);
   border-inline-end: 1px solid var(--border);
 }
 
-.brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 16px; min-width: 0; }
+/* The shop's name, set apart from the menu under it. */
+.brand {
+  display: flex; align-items: center; gap: 11px; min-width: 0;
+  padding: 4px 8px 14px; margin-bottom: 10px; border-bottom: 1px solid var(--border);
+}
 .brand-text { min-width: 0; flex: 1; }
 .brand strong, .brand small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .brand .mark {
@@ -239,23 +242,30 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--accent-soft); border-radius: 999px; font-variant-numeric: tabular-nums;
 }
 
-.nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
-.nav-label {
-  padding: 16px 10px 6px; font-size: 10.5px; font-weight: 700;
-  letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted);
+/* The menu: the dashboard, then sections that all look and fold alike. */
+.nav {
+  display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0;
+  overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
 }
 .nav-item {
+  position: relative;
   display: flex; align-items: center; gap: 11px;
-  padding: 9px 11px; border-radius: 10px;
-  color: var(--text-2); font-weight: 550; font-size: 13.5px;
+  min-height: 36px; padding: 7px 10px; border-radius: 9px;
+  color: var(--text-2); font-weight: 550; font-size: 13.5px; line-height: 1.3;
   text-decoration: none; cursor: pointer; border: 0; background: none;
-  width: 100%; text-align: left;
+  width: 100%; text-align: start;
   transition: background 0.14s ease, color 0.14s ease;
 }
-.nav-item svg { width: 17px; height: 17px; flex: none; opacity: 0.85; }
+.nav-item > span:first-of-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item svg { width: 17px; height: 17px; flex: none; opacity: 0.8; }
 .nav-item:hover { background: var(--surface-3); color: var(--text); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 650; }
 .nav-item.active svg { opacity: 1; }
+/* Where you are, marked at the edge as well as by colour. */
+.nav-item.active::before {
+  content: ''; position: absolute; inset-block: 9px; inset-inline-start: 0;
+  width: 3px; border-radius: 3px; background: var(--accent);
+}
 .nav-item .kbd { margin-inline-start: auto; }
 /* How many products need restocking: beside Products, or on the Stock header while it is folded. */
 .nav-badge {
@@ -268,11 +278,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav-fold:not(.open) .nav-badge.on-fold + .nav-chevron { margin-inline-start: 8px; }
 .nav-fold.open .nav-badge.on-fold, .nav-fold:not(.open) .nav-children .nav-badge { display: none; }
 
-.sidebar-foot { padding-top: 12px; border-top: 1px solid var(--border); margin-top: 10px; }
+/* The foot: the exchange rate when there is one, then who is signed in. */
+.sidebar-foot { padding-top: 10px; margin-top: 12px; border-top: 1px solid var(--border); }
+.sidebar-foot .credit { padding: 8px 10px 0; text-align: center; }
 .user-chip {
   display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 9px 10px; border-radius: 11px; border: 0; background: none;
-  cursor: pointer; text-align: left; transition: background 0.14s ease;
+  padding: 8px 10px; border-radius: 10px; border: 0; background: none;
+  cursor: pointer; text-align: start; transition: background 0.14s ease;
 }
 .user-chip:hover { background: var(--surface-3); }
 /* The user, and Settings one click away beside them: both left the menu to keep it short. */
@@ -545,6 +557,13 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .empty strong { display: block; color: var(--text-2); font-size: 14px; margin-bottom: 3px; }
 .empty p { font-size: 13px; }
 
+.badge[hidden] { display: none; }
+/* Sales put aside: the chip opens the list of them. */
+button.held-chip { border: 0; cursor: pointer; font-family: inherit; }
+button.held-chip:hover { background: var(--warn); color: var(--surface); }
+.held-table td { padding: 10px 12px; }
+.held-table .btn + .btn { margin-inline-start: 4px; }
+.cart-head { flex-wrap: wrap; row-gap: 6px; }
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 2.5px 9px; border-radius: 99px;
@@ -657,23 +676,6 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 .cart-lines { flex: 1; overflow-y: auto; padding: 0 8px 8px; min-height: 0; }
 .cart-lines > .empty { height: 100%; display: grid; place-content: center; }
 /* Shared by the column header and every line, so they stay aligned. */
-.cl-head,
-.cl-fields {
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1fr);
-  gap: 6px;
-}
-
-.cl-head {
-  position: sticky; top: 0; z-index: 1;
-  padding: 8px 8px 6px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
-  color: var(--muted);
-}
-.cl-head span:not(:first-child) { text-align: end; padding-inline-end: 7px; }
-
 .cart-line { padding: 6px 8px; }
 .cart-line + .cart-line { border-top: 1px solid var(--border); }
 .cart-line.flash { animation: line-in 1s ease-out; }
@@ -682,37 +684,45 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
   to { background: transparent; }
 }
 
-.cl-top { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.cl-top { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.cl-text { flex: 1; min-width: 0; }
 .cl-name {
-  flex: 1; min-width: 0;
+  min-width: 0;
   font-weight: 600; font-size: 12.5px; line-height: 1.3;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Under the name: "$1.00 each", or "−10% · saved $2.00" when a discount was given. */
+.cl-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.cl-saved { color: var(--success); font-weight: 600; }
 .cl-short {
   flex: none; padding: 0 6px; border-radius: 99px;
   font-size: 10px; font-weight: 700; line-height: 16px;
   background: var(--danger-soft); color: var(--danger);
 }
-.cl-total { flex: none; font-weight: 750; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.cl-total { flex: none; font-weight: 750; font-size: 14px; font-variant-numeric: tabular-nums; }
 
-.cl-fields { margin-top: 3px; align-items: center; }
 .cl-field { min-width: 0; }
 .cl-field .input {
   height: 26px; padding: 2px 7px; border-radius: 7px;
   text-align: end; font-size: 12.5px; font-variant-numeric: tabular-nums;
 }
 
-.qty-box { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; background: var(--surface); }
+/* The stepper is the one control every line needs, so it gets targets a thumb can hit. */
+.qty-box { display: flex; align-items: center; flex: none; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden; background: var(--surface); }
 .qty-box button {
-  width: 24px; height: 24px; flex: none; border: 0; background: var(--surface-2);
-  color: var(--text-2); cursor: pointer; font-size: 14px; line-height: 1;
+  width: 40px; height: 40px; flex: none; border: 0; background: var(--surface-2);
+  color: var(--text-2); cursor: pointer; font-size: 17px; line-height: 1;
   display: grid; place-items: center;
 }
 .qty-box button:hover { background: var(--surface-3); color: var(--text); }
 .qty-box input {
-  width: 100%; min-width: 0; height: 24px; border: 0; text-align: center;
-  background: var(--surface); font-size: 12.5px; font-variant-numeric: tabular-nums;
+  width: 46px; min-width: 0; height: 40px; border: 0; text-align: center;
+  background: var(--surface); font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums;
   outline: none; -moz-appearance: textfield;
+}
+@media (max-width: 560px) {
+  .qty-box button { width: 34px; }
+  .qty-box input { width: 38px; }
 }
 .qty-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .qty-box input::-webkit-outer-spin-button, .qty-box input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -1041,7 +1051,6 @@ td.right, th.right { text-align: end; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 420px) {
   /* Too narrow for three fields side by side: quantity gets its own row. */
-  .cl-head, .cl-fields { grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr); gap: 5px; }
   .scan-bar .btn { padding-inline: 10px; }
 }
 
@@ -1277,25 +1286,10 @@ table.data.compact td { padding: 8px 14px; }
 
 /* Second currency: the rate in the sidebar, and amounts shown beside the first currency */
 .rate-box {
-  margin: 10px 4px 0; padding: 10px 12px; border-radius: 12px;
+  margin: 12px 0 0; padding: 10px 12px; border-radius: 12px;
   background: var(--surface-2); border: 1px solid var(--border);
 }
 .rate-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
-/* A short till screen (1366×720, 1280×720…): the whole menu, the rate and the user still fit
-   without scrolling. Rows tighten a little and the rate drops its heading, since
-   "1 $ = 89,500 L.L" says what it is. */
-@media (min-width: 901px) and (max-height: 820px) {
-  .sidebar { padding-block: 12px; }
-  .brand { padding-bottom: 8px; }
-  .nav-item { padding-block: 7px; }
-  .nav-label { padding-block: 10px 4px; }
-  .nav-fold { margin-top: 4px; }
-  .sidebar .rate-box { margin-top: 6px; padding-block: 6px; }
-  .sidebar .rate-label { display: none; }
-  .sidebar .rate-row { margin-top: 0; }
-  .sidebar-foot { padding-top: 8px; margin-top: 6px; }
-  .sidebar-foot .credit { padding-top: 4px; }
-}
 .rate-label svg { width: 13px; height: 13px; }
 .rate-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .rate-value b { color: var(--money2); }
@@ -1332,6 +1326,13 @@ table.data.compact td { padding: 8px 14px; }
 
 /* The row of ways to pay. */
 .pay-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+/* The return dialog: what is coming back, and how the money goes out. */
+.ret-table td, .ret-table th { padding: 8px 10px; }
+.ret-table tr.muted td { color: var(--muted); }
+.ret-qty { width: 84px; height: 34px; text-align: end; font-variant-numeric: tabular-nums; }
+.ret-foot { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; align-items: start; }
+.ret-methods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .ret-foot { grid-template-columns: minmax(0, 1fr); } .ret-methods { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .pay-methods button {
   display: flex; align-items: center; justify-content: center; gap: 7px;
   height: 42px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
@@ -1415,23 +1416,32 @@ table.data.compact td { padding: 8px 14px; }
 .filter-select .select { height: 36px; padding: 0 28px 0 10px; font-size: 13px; }
 .filter-select .combo { min-width: 170px; }
 
-/* A menu item that folds open to show the screens inside it (Stock) */
-.nav-fold { margin-top: 10px; }
-.nav-parent { width: 100%; border: 0; background: none; cursor: pointer; font: inherit; text-align: start; }
-.nav-fold.has-active:not(.open) .nav-parent { color: var(--accent-text); font-weight: 650; }
+/* A section of the menu: a small heading that folds its screens away. */
+.nav-fold { margin-top: 14px; }
+.nav-parent {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 10px; border: 0; border-radius: 8px; background: none; cursor: pointer;
+  font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); text-align: start;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.nav-parent:hover { background: var(--surface-3); color: var(--text); }
+/* Arabic letters join, so they are never spaced apart. */
+[dir="rtl"] .nav-parent { letter-spacing: 0; font-size: 12px; }
+/* Folded away with the screen you are on inside it: the heading says so. */
+.nav-fold.has-active:not(.open) .nav-parent { color: var(--accent-text); }
 .nav-chevron {
-  margin-inline-start: auto; width: 7px; height: 7px;
+  margin-inline-start: auto; width: 6px; height: 6px; flex: none;
   border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor;
-  transform: rotate(-45deg); transition: transform 0.2s ease; opacity: 0.6;
+  transform: rotate(-45deg); transition: transform 0.2s ease; opacity: 0.7;
 }
 [dir="rtl"] .nav-chevron { transform: rotate(135deg); }
 .nav-fold.open .nav-chevron { transform: rotate(45deg); }
-/* Open and close smoothly, whatever the number of items */
-.nav-children { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
-.nav-fold.open .nav-children { grid-template-rows: 1fr; }
+/* Open and close smoothly, whatever the number of items; folded rows leave the tab order. */
+.nav-children { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 0.22s ease, visibility 0s 0.22s; }
+.nav-fold.open .nav-children { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows 0.22s ease, visibility 0s; }
 .nav-children > div { overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
-.nav-child { padding-inline-start: 30px; }
-.nav-child svg { width: 15px; height: 15px; }
+.nav-fold.open .nav-children > div { padding-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .nav-children, .nav-chevron { transition: none; } }
 
 /* Product import */

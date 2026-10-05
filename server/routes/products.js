@@ -1,7 +1,7 @@
-import { db, lastId, transact } from '../db.js';
+import { db, getSettings, lastId, transact } from '../db.js';
 import { canonicalName, listEntities, rememberAll } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { dateRange, money, num, pageParams, pageResult, qty, required, shiftDays, str, today } from '../util.js';
+import { dateRange, ean13Check, money, num, pageParams, pageResult, qty, required, shiftDays, str, today } from '../util.js';
 
 // After the browser has shrunk it; a phone photo straight off the camera is refused.
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
@@ -26,6 +26,63 @@ const shape = (row) => {
 };
 
 export const getProduct = (id) => shape(db.prepare(`${SELECT_PRODUCT} WHERE p.id = ?`).get(id));
+
+/* ------------------------------------------------------- scale barcodes -- */
+
+/** The shop's scale-label layout, from Settings → POS, or null while it is off. */
+export function scaleFormat(settings = getSettings()) {
+  if (settings.scale_enabled !== '1') return null;
+  const prefix = /^\d{2}$/.test(settings.scale_prefix || '') ? settings.scale_prefix : '21';
+  const itemDigits = Math.min(6, Math.max(4, Math.round(num(settings.scale_item_digits, 5)) || 5));
+  return { prefix, itemDigits, valueDigits: 10 - itemDigits, mode: settings.scale_mode === 'price' ? 'price' : 'weight' };
+}
+
+/**
+ * A label printed by the shop's own scale: a two-digit prefix that no real product
+ * uses (20–29 are set aside for in-store codes), the item's code, then the weight in
+ * grams or the price in cents, and a check digit. `21 00123 01234 c` is item 00123
+ * at 1.234 kg. The item's code is what the shop typed as its barcode, with or
+ * without the leading zeros. Returns the product with `scale: { qty, total? }`.
+ */
+export function scaleLookup(code, settings = getSettings()) {
+  const fmt = scaleFormat(settings);
+  if (!fmt || !/^\d{13}$/.test(code) || !code.startsWith(fmt.prefix)) return null;
+  if (ean13Check(code.slice(0, 12)) !== code[12]) return null;
+  const item = code.slice(2, 2 + fmt.itemDigits);
+  const value = Number(code.slice(2 + fmt.itemDigits, 12));
+  const n = Number(item);
+  if (!(n > 0)) return null;
+  // The item's code as the shop typed it: 00123, 0123 or 123 all mean item 123. Only
+  // short, all-digit barcodes are read as numbers, so a real EAN never matches by value.
+  const byCode = `(barcode = ? OR (length(barcode) <= 6 AND barcode NOT GLOB '*[^0-9]*' AND CAST(barcode AS INTEGER) = ?))`;
+  const product = shape(
+    db
+      .prepare(
+        `${SELECT_PRODUCT} WHERE p.active = 1 AND (${byCode.replaceAll('barcode', 'p.barcode')}
+           OR p.id IN (SELECT product_id FROM product_barcodes WHERE ${byCode}))`,
+      )
+      .get(item, n, item, n),
+  );
+  if (!product) return null;
+  if (fmt.mode === 'price') {
+    // The label carries what the customer pays; the weight follows from the price per unit.
+    const total = money(value / 100);
+    const qty = product.price > 0 ? Math.round((total / product.price) * 1000) / 1000 : 1;
+    return { ...product, scale: { code, qty: qty > 0 ? qty : 1, total } };
+  }
+  return { ...product, scale: { code, qty: Math.round(value) / 1000 } };
+}
+
+/** How many 13-digit product barcodes would be mistaken for scale labels under this prefix. */
+export const scalePrefixClashes = (prefix) =>
+  db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT barcode FROM products WHERE length(barcode) = 13 AND barcode LIKE ?
+         UNION ALL
+         SELECT barcode FROM product_barcodes WHERE length(barcode) = 13 AND barcode LIKE ?)`,
+    )
+    .get(`${prefix}%`, `${prefix}%`).n;
 
 /** The extra barcodes sent with a product: trimmed, without blanks, repeats or the main one. */
 function readBarcodes(value, main) {
@@ -179,8 +236,11 @@ export function register(router) {
         )
         .get(code, code) || db.prepare(`${SELECT_PRODUCT} WHERE p.name = ? COLLATE NOCASE AND p.active = 1`).get(code),
     );
-    if (!found) throw notFound(`No product matches "${code}"`, 'NO_PRODUCT_MATCH', { code });
-    return found;
+    if (found) return found;
+    // Not a product's own code: perhaps a label from the scale.
+    const weighed = scaleLookup(code);
+    if (weighed) return weighed;
+    throw notFound(`No product matches "${code}"`, 'NO_PRODUCT_MATCH', { code });
   });
 
   router.get('/api/products/:id', (ctx) => {

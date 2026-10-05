@@ -48,8 +48,8 @@ await page.waitForSelector('.shell');
 /* ------------------------------------------------------------ the menu */
 console.log('\n[no separate opening stock screen]');
 const stockItems = await page.$$eval('.nav-fold[data-fold="stock"] [data-route]', (a) => a.map((x) => x.dataset.route));
-check('Stock holds Products, Stock Count, Stock Adjustment and Lists — opening stock lives in adjustments',
-  stockItems.join() === 'products,stock-count,adjustments,lists', stockItems.join());
+check('Stock holds Products, Stock Count, Stock Adjustment, categories and units — opening stock lives in adjustments',
+  stockItems.join() === 'products,stock-count,adjustments,categories,units', stockItems.join());
 
 /* --------------------------------------------------- a new product's opening */
 console.log('\n[opening stock on a new product]');

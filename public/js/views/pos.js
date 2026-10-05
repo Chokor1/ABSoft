@@ -8,6 +8,8 @@ import {
   esc,
   forgetSuggestions,
   modal,
+  confirmDialog,
+  dateTimeText,
   methodMark,
   money,
   paymentMethods,
@@ -15,7 +17,7 @@ import {
   store,
   toast,
 } from '../ui.js';
-import { showReceipt } from './sales.js';
+import { returnDialog, showReceipt } from './sales.js';
 import { attachShifts } from './pos-shift.js';
 import { celebrateSale, playSaleChime, primeAudio, setTileImages, tileImagesEnabled } from '../feedback.js';
 import { money2, money2Html, onRateChange, second, toBase, toSecond } from '../currency.js';
@@ -78,6 +80,9 @@ export async function render(root, ctx) {
         <div class="cart-head">
           <h3>${esc(t('pos.current_sale'))}</h3>
           <span class="badge accent" id="cart-count"></span>
+          <span class="badge warn" id="exchange-chip" hidden></span>
+          <button type="button" class="badge warn held-chip" id="held-chip" hidden></button>
+          <button type="button" class="btn btn-sm" id="hold-cart" disabled title="${esc(t('pos.hold_tip'))}">${icon('pause')} ${esc(t('pos.hold'))}</button>
           <button class="btn btn-ghost btn-icon" id="clear-cart" title="${esc(t('pos.clear_cart'))}" aria-label="${esc(t('pos.clear_cart'))}">${icon(
             'trash',
           )}</button>
@@ -85,7 +90,8 @@ export async function render(root, ctx) {
         <div class="cart-lines" id="cart-lines"></div>
         <div class="cart-foot">
           <div id="totals" aria-live="polite" aria-atomic="true"></div>
-          <button class="btn btn-primary btn-lg btn-block" id="checkout" disabled aria-keyshortcuts="F9">
+          <button class="btn btn-primary btn-lg btn-block" id="checkout" disabled aria-keyshortcuts="F9 Control+Enter"
+                  title="${esc(t('pos.make_payment'))} (F9 · Ctrl+Enter)">
             ${icon('coins')} ${esc(t('pos.make_payment'))} <span class="kbd kbd-on-brand hide-mobile" aria-hidden="true">F9</span>
           </button>
         </div>
@@ -391,6 +397,11 @@ export async function render(root, ctx) {
     e.preventDefault();
     const code = scan.value.trim();
     if (!code) return;
+    // An invoice number brings that invoice back, to take a return from it.
+    if (/^INV-\d+$/i.test(code)) {
+      resetSearch();
+      return takeReturn(code.toUpperCase());
+    }
     // A barcode scanner types the code and presses Enter at once: match it
     // exactly first, on screen, then anywhere in the catalogue.
     const exact = state.products.find((p) => (p.barcode && p.barcode === code) || p.barcodes?.includes(code));
@@ -418,6 +429,34 @@ export async function render(root, ctx) {
     if (!visible.length) toast(errorText(notFound), 'error');
   });
   $('#clear-search').addEventListener('click', resetSearch);
+
+  /**
+   * A return at the till: the invoice's number, typed or scanned, opens the return
+   * dialog. "Refund and start a new sale" is an exchange — the refund goes out, a
+   * chip reminds the cashier which return the next sale follows, and that sale
+   * is rung up as usual, so the drawer moves by the difference.
+   */
+  async function takeReturn(docNo) {
+    try {
+      const hits = await api.sales({ search: docNo, page: 1, per: 5 });
+      const hit = (hits.rows || []).find((s) => s.doc_no === docNo && s.kind !== 'return');
+      if (!hit) return toast(t('ret.not_found', { doc: docNo }), 'warn');
+      const saved = await returnDialog(await api.sale(hit.id), { atTill: true });
+      scan.focus();
+      if (!saved) return;
+      const v = money(Math.abs(saved.total));
+      toast(t(saved.method === 'credit' ? 'ret.done_credit' : 'ret.done', { doc: saved.doc_no, v }), 'success', 5000);
+      state.exchange = saved.exchange ? { doc: saved.doc_no, v } : null;
+      paintExchange();
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+  }
+  function paintExchange() {
+    const chip = $('#exchange-chip');
+    chip.hidden = !state.exchange;
+    chip.textContent = state.exchange ? t('ret.exchange_chip', state.exchange) : '';
+  }
 
   /**
    * A scanner is a keyboard that types very fast, so a scan is lost whenever the
@@ -450,20 +489,25 @@ export async function render(root, ctx) {
 
   function addToCart(product) {
     if (!product) return;
+    // A label from the scale carries the weight (or the price, from which the weight follows).
+    const weighed = product.scale?.qty > 0 ? product.scale : null;
+    const qty = weighed ? Math.round(weighed.qty * 1000) / 1000 : 1;
+    const price = weighed?.total > 0 ? round2(weighed.total / qty) : Number(product.price) || 0;
     const existing = state.cart.find((l) => l.product_id === product.id);
     if (existing) {
       // Scanning the same item again adds one to its line rather than a second
       // line, and brings that line back to the top where the cashier is looking.
-      existing.qty = round2(existing.qty + 1);
+      existing.qty = Math.round((existing.qty + qty) * 1000) / 1000;
+      if (weighed) existing.unit_price = price;
       state.cart = [existing, ...state.cart.filter((l) => l !== existing)];
     } else {
       state.cart.unshift({
         product_id: product.id,
         name: product.name,
         unit: product.unit,
-        unit_price: Number(product.price) || 0,
+        unit_price: price,
         stock: Number(product.stock) || 0,
-        qty: 1,
+        qty,
         discountPct: 0,
       });
     }
@@ -492,45 +536,46 @@ export async function render(root, ctx) {
   }
 
   /**
-   * One compact line: name, total and remove on top; quantity, unit price and
-   * discount underneath. The column names are shown once, above the list, rather
-   * than repeated on every line. The chevron opens the line to sell it at a
-   * price: type what it should come to, and the discount is worked out.
+   * One calm line: the quantity stepper, the name with the unit price (or the
+   * discount given) under it, what the line comes to, and a chevron. Most lines
+   * need nothing more. The chevron opens the price, the discount % and the line
+   * total — type what the line should come to, and the discount is worked out.
    */
   function lineHtml(l) {
     return `<div class="cart-line ${l.open ? 'open' : ''}" data-line="${l.product_id}">
       <div class="cl-top">
-        <button class="cl-toggle" data-toggle title="${esc(t(l.open ? 'pos.line_close' : 'pos.line_open'))}" aria-label="${esc(t(l.open ? 'pos.line_close' : 'pos.line_open'))}"
-                aria-expanded="${l.open ? 'true' : 'false'}">${icon('chevron')}</button>
-        <div class="cl-name" title="${esc(l.name)}">${esc(l.name)}</div>
+        <div class="qty-box">
+          <button type="button" data-step="-1" title="${esc(t('pos.less'))}" aria-label="${esc(t('pos.less'))}">−</button>
+          <input type="number" step="any" min="0" value="${l.qty}" data-field="qty"
+                 aria-label="${esc(t('common.qty'))}"/>
+          <button type="button" data-step="1" title="${esc(t('pos.more'))}" aria-label="${esc(t('pos.more'))}">+</button>
+        </div>
+        <div class="cl-text">
+          <div class="cl-name" title="${esc(l.name)}">${esc(l.name)}</div>
+          <div class="cl-sub" data-sub>${lineSub(l)}</div>
+        </div>
         <span class="cl-short" data-stock ${l.qty > l.stock ? '' : 'hidden'}
               title="${esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }))}">${esc(t('pos.low_badge'))}</span>
         <span class="cl-totals"><span class="cl-total" data-total>${money(lineTotal(l))}</span>${money2Html(lineTotal(l), { cls: 'cl-total2' })}</span>
         <button class="cl-remove" data-remove title="${esc(t('pos.remove_line'))}" aria-label="${esc(t('pos.remove_line'))}">${icon('trash')}</button>
+        <button class="cl-toggle" data-toggle title="${esc(t(l.open ? 'pos.line_close' : 'pos.line_open'))}" aria-label="${esc(t(l.open ? 'pos.line_close' : 'pos.line_open'))}"
+                aria-expanded="${l.open ? 'true' : 'false'}">${icon('chevron')}</button>
       </div>
-      <div class="cl-fields">
-        <div class="cl-field">
-          <div class="qty-box">
-            <button type="button" data-step="-1" title="${esc(t('pos.less'))}">−</button>
-            <input type="number" step="any" min="0" value="${l.qty}" data-field="qty"
-                   aria-label="${esc(t('common.qty'))}"/>
-            <button type="button" data-step="1" title="${esc(t('pos.more'))}">+</button>
-          </div>
-        </div>
-        <div class="cl-field">
+      <div class="cl-detail">
+        <label class="cl-field">
+          <span>${esc(t('pos.unit_price'))}</span>
           <input class="input" type="number" step="0.01" min="0" value="${l.unit_price}" data-field="unit_price"
-                 aria-label="${esc(t('pos.unit_price'))}" title="${esc(t('pos.unit_price'))}"/>
-        </div>
-        <div class="cl-field">
+                 aria-label="${esc(t('pos.unit_price'))}"/>
+        </label>
+        <label class="cl-field">
+          <span>${esc(t('pos.discount_pct'))}</span>
           <div class="pct-box">
             <input class="input" type="number" step="any" min="0" max="100" value="${pctValue(l)}"
                    placeholder="${esc(t('pos.discount_pct'))}" data-field="discount"
-                   aria-label="${esc(t('pos.discount_pct'))}" title="${esc(t('pos.discount_pct'))}"/>
+                   aria-label="${esc(t('pos.discount_pct'))}"/>
             <span aria-hidden="true">%</span>
           </div>
-        </div>
-      </div>
-      <div class="cl-detail">
+        </label>
         <label class="cl-field">
           <span>${esc(t('pos.line_total'))}</span>
           <input class="input" type="number" step="0.01" min="0" value="${lineTotal(l)}" data-field="total"
@@ -546,18 +591,18 @@ export async function render(root, ctx) {
 
   // A percentage the cashier did not type reads better rounded: 33.33, not 33.333333.
   const pctValue = (l) => (l.discountPct ? Math.round(l.discountPct * 100) / 100 : '');
+  /** Under the name: the unit price, or the discount given, so a closed line still says why it comes to what it does. */
+  const lineSub = (l) =>
+    l.discountPct > 0
+      ? `<span class="cl-saved">−${qtyText(pctValue(l))}% · ${esc(t('pos.saved', { v: money(lineDiscount(l)) }))}</span>`
+      : esc(t('pos.each', { v: money(l.unit_price) }));
 
-  const linesHeader = () => `<div class="cl-head">
-      <span>${esc(t('common.qty'))}</span>
-      <span>${esc(t('pos.unit_price'))}</span>
-      <span>${esc(t('pos.discount_pct'))}</span>
-    </div>`;
 
   function drawCart(highlightId) {
     const count = state.cart.length;
     $('#cart-count').textContent = t('pos.item_count', { n: count });
     linesEl.innerHTML = count
-      ? linesHeader() + state.cart.map(lineHtml).join('')
+      ? state.cart.map(lineHtml).join('')
       : emptyState(t('pos.cart_empty'), t('pos.cart_empty_sub'), 'cart');
 
     if (highlightId) {
@@ -583,6 +628,7 @@ export async function render(root, ctx) {
     set('qty', line.qty);
     el.querySelector('[data-discount]').textContent = money(lineDiscount(line));
     el.querySelector('[data-total]').textContent = money(lineTotal(line));
+    el.querySelector('[data-sub]').innerHTML = lineSub(line);
     const total2 = el.querySelector('.cl-total2');
     if (total2) {
       total2.dataset.base = lineTotal(line);
@@ -628,6 +674,7 @@ export async function render(root, ctx) {
 
     const empty = state.cart.length === 0;
     $('#checkout').disabled = empty;
+    $('#hold-cart').disabled = empty;
     $('#bar-checkout').disabled = empty;
     $('#bar-total').innerHTML = `${esc(money(tot.total))} ${money2Html(tot.total)}`;
     $('#bar-count').textContent = t('pos.item_count', { n: state.cart.length });
@@ -702,6 +749,131 @@ export async function render(root, ctx) {
     drawCart();
     scan.focus();
   });
+
+  /* ------------------------------------------------------ hold and resume -- */
+
+  /**
+   * A customer who forgot something should not hold up the queue. Hold puts the sale
+   * aside on the server — its lines, prices and discounts, and what was typed in the
+   * payment dialog — and the till is free for the next customer. It comes back from
+   * the list behind the chip, at this till or another. Nothing is sold, and no stock
+   * moves, until it is paid.
+   */
+  async function refreshHeld() {
+    try {
+      state.held = await api.held();
+    } catch {
+      state.held = state.held || [];
+    }
+    const chip = $('#held-chip');
+    chip.hidden = !state.held.length;
+    chip.textContent = t('pos.held_n', { n: state.held.length });
+  }
+
+  async function holdCart({ quiet = false } = {}) {
+    if (!state.cart.length) return false;
+    try {
+      const held = await api.holdSale({
+        items: state.cart.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_price: l.unit_price, discount_pct: l.discountPct || 0 })),
+        draft: state.draft,
+      });
+      if (!quiet) toast(t('pos.held_done', { n: held.lines, v: money(held.total) }), 'success');
+      state.cart = [];
+      state.draft = freshDraft();
+      drawCart();
+      await refreshHeld();
+      scan.focus();
+      return true;
+    } catch (err) {
+      toast(errorText(err), 'error');
+      return false;
+    }
+  }
+
+  async function resumeHeld(id) {
+    // The sale in hand steps aside for the one coming back, rather than being lost or mixed in.
+    const swapped = state.cart.length > 0;
+    if (swapped && !(await holdCart({ quiet: true }))) return;
+    try {
+      const back = await api.resumeHeld(id);
+      state.cart = back.items.map((l) => ({
+        product_id: l.product_id,
+        name: l.name,
+        unit: l.unit,
+        unit_price: Number(l.unit_price) || 0,
+        stock: Number(l.stock) || 0,
+        qty: Number(l.qty) || 0,
+        discountPct: Number(l.discount_pct) || 0,
+      }));
+      state.draft = { ...freshDraft(), ...back.draft };
+      drawCart();
+      toast(t(swapped ? 'pos.resumed_swapped' : 'pos.resumed'), 'success');
+      if (back.dropped) toast(t('pos.resumed_dropped', { n: back.dropped }), 'warn', 6000);
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+    await refreshHeld();
+    scan.focus();
+  }
+
+  async function openHeld() {
+    await refreshHeld();
+    if (!state.held.length) return;
+    const mine = (h) => store.user.role === 'admin' || h.user_id === store.user.id;
+    const picked = await modal({
+      title: t('pos.held_title'),
+      subtitle: t(state.cart.length ? 'pos.held_sub_swap' : 'pos.held_sub'),
+      wide: true,
+      body: `<div class="table-wrap"><table class="data held-table"><tbody>${state.held
+        .map(
+          (h) => `<tr data-held="${h.id}">
+            <td><div class="cell-title">${esc(h.label || h.summary)}</div>
+                <div class="cell-sub">${h.label ? `${esc(h.summary)} · ` : ''}${esc(t('pos.held_by', { t: dateTimeText(h.created_at), u: h.username || '' }))}</div></td>
+            <td class="right nowrap"><div class="cell-title">${money(h.total)}</div>
+                <div class="cell-sub">${esc(t('pos.item_count', { n: h.lines }))}</div></td>
+            <td class="right nowrap">
+              <button type="button" class="btn btn-primary btn-sm" data-resume="${h.id}">${icon('refresh')} ${esc(t('pos.resume'))}</button>
+              ${
+                mine(h)
+                  ? `<button type="button" class="btn btn-ghost btn-sm" data-discard="${h.id}" title="${esc(t('pos.discard_held'))}"
+                       aria-label="${esc(t('pos.discard_held'))}">${icon('trash')}</button>`
+                  : ''
+              }
+            </td>
+          </tr>`,
+        )
+        .join('')}</tbody></table></div>`,
+      footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>`,
+      setup: (dialog, close) => {
+        dialog.addEventListener('click', async (e) => {
+          const resume = e.target.closest('[data-resume]');
+          if (resume) return close({ resume: Number(resume.dataset.resume) });
+          const discard = e.target.closest('[data-discard]');
+          if (!discard) return;
+          const ok = await confirmDialog({
+            title: t('pos.discard_title'),
+            message: t('pos.discard_msg'),
+            confirmLabel: t('pos.discard_held'),
+            danger: true,
+          });
+          if (!ok) return;
+          try {
+            await api.discardHeld(discard.dataset.discard);
+            discard.closest('tr').remove();
+            await refreshHeld();
+            if (!state.held.length) close(null);
+          } catch (err) {
+            toast(errorText(err), 'error');
+          }
+        });
+      },
+    });
+    if (picked?.resume) await resumeHeld(picked.resume);
+    else scan.focus();
+  }
+
+  $('#hold-cart').addEventListener('click', () => holdCart());
+  $('#held-chip').addEventListener('click', openHeld);
 
   /* -------------------------------------------------------------- payment -- */
 
@@ -915,7 +1087,8 @@ export async function render(root, ctx) {
           paint();
         });
         const confirmOnEnter = (e) => {
-          if (e.key === 'Enter') {
+          // Ctrl+Enter opened this dialog; it must not also confirm the sale.
+          if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             $d('#pay-confirm').click();
           }
@@ -1000,6 +1173,9 @@ export async function render(root, ctx) {
 
     // Then the document: print it, or close it and carry on selling.
     await showReceipt(sale, { change: sale.change, change2: sale.change2, afterSale: true });
+    // The exchange, if this sale was one, is done.
+    state.exchange = null;
+    paintExchange();
     scan.focus();
   }
 
@@ -1007,12 +1183,16 @@ export async function render(root, ctx) {
   $('#bar-checkout').addEventListener('click', openPayment);
   // F9 pays from anywhere on the till, so the keyboard never tabs past every card to reach the
   // button. Not Enter: Enter also confirms in the payment dialog, and a double press would sell.
+  // Ctrl+Enter does the same, for laptops whose top row sends media keys unless Fn is held;
+  // the dialog ignores Ctrl+Enter, so holding it down opens the dialog and stops there.
   const payKey = (e) => {
-    if (e.key !== 'F9' || document.querySelector('.modal-backdrop, .sale-done, #shift-gate:not([hidden])')) return;
+    const wanted = e.key === 'F9' || e.code === 'F9' || ((e.ctrlKey || e.metaKey) && e.key === 'Enter');
+    if (!wanted || document.querySelector('.modal-backdrop, .sale-done, #shift-gate:not([hidden])')) return;
     e.preventDefault();
+    e.stopPropagation(); // before the search box takes the Enter for a scan
     if (!$('#checkout').disabled) openPayment();
   };
-  document.addEventListener('keydown', payKey);
+  window.addEventListener('keydown', payKey, true);
 
   // Shifts (when switched on): the till opens one before selling and closes it by
   // counting the drawer.
@@ -1030,6 +1210,7 @@ export async function render(root, ctx) {
 
   await loadProducts();
   drawCart();
+  refreshHeld();
   scan.focus();
 
   // Switching the second currency on or off redraws the prices; a new rate
@@ -1044,7 +1225,7 @@ export async function render(root, ctx) {
   return () => {
     window.removeEventListener('scroll', onScroll);
     document.removeEventListener('keydown', toScanBox);
-    document.removeEventListener('keydown', payKey);
+    window.removeEventListener('keydown', payKey, true);
     narrow.removeEventListener('change', placeholder);
     stopWatching();
     shifts.destroy();

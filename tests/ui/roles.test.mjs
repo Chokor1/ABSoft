@@ -196,6 +196,19 @@ await till.keyboard.press('F4');
 await till.waitForTimeout(400);
 check('the Buy shortcut does nothing', till.url().endsWith('#/pos'), till.url());
 check('the till shows no cost anywhere', !(await till.textContent('.pos')).match(/cost/i));
+// A cashier puts a sale aside and takes it back.
+await till.click('.tile');
+await till.waitForTimeout(300);
+await till.click('#hold-cart');
+await till.waitForTimeout(700);
+check('a cashier can hold a sale', (await till.$$('.cart-line')).length === 0 && (await till.textContent('#held-chip')) === '1 held');
+await till.click('#held-chip');
+await till.waitForSelector('.held-table [data-resume]');
+check('…may discard what they held themselves', (await till.$$('.held-table [data-discard]')).length === 1);
+await till.click('.held-table [data-resume]');
+await till.waitForTimeout(900);
+check('…and take it back', (await till.$$('.cart-line')).length === 1 && !(await till.isVisible('#held-chip')));
+await till.click('#clear-cart');
 
 await till.click('.tile');
 await till.click('#checkout');

@@ -26,6 +26,7 @@ import { register as registerSystem } from './routes/system.js';
 import { register as registerEntities } from './routes/entities.js';
 import { register as registerAdjustments } from './routes/adjustments.js';
 import { register as registerShifts } from './routes/shifts.js';
+import { register as registerHeld } from './routes/held.js';
 import { startAutoBackups } from './autobackup.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -70,6 +71,7 @@ registerSystem(router);
 registerEntities(router);
 registerAdjustments(router);
 registerShifts(router);
+registerHeld(router);
 
 /* -------------------------------------------------------------- server ---- */
 
@@ -90,6 +92,13 @@ const CASHIER_ROUTES = new Set([
   'POST /api/sales',
   'DELETE /api/sales/:id',
   'POST /api/sales/:id/payments',
+  // A return is taken at the till; only an administrator may void it (the handler says so).
+  'POST /api/sales/:id/returns',
+  // A sale put aside while the next customer is served, and taken back at any till.
+  'GET /api/held',
+  'POST /api/held',
+  'POST /api/held/:id/resume',
+  'DELETE /api/held/:id',
   'DELETE /api/payments/:id',
   'GET /api/entities/:kind',
   'GET /api/settings',

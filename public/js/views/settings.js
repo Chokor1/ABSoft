@@ -3,6 +3,7 @@ import { playSaleChime, setSoundEnabled, setTileImages, soundEnabled, tileImages
 import { icon } from '../icons.js';
 import { LANGUAGES, errorText, lang, t } from '../i18n.js';
 import { dateTimeText, esc, money, number, shrinkImage, store, toast } from '../ui.js';
+import { renderKind } from './lists.js';
 import { applySettings, money2 } from '../currency.js';
 
 const kb = (bytes) =>
@@ -20,6 +21,8 @@ const SECTIONS = [
   { key: 'pos', icon: 'pos' },
   { key: 'search', icon: 'search', admin: true },
   { key: 'currency', icon: 'coins' },
+  // How people pay: the list the till's payment dialog offers.
+  { key: 'payments', icon: 'card', admin: true },
   { key: 'language', icon: 'globe' },
   { key: 'backup', icon: 'database', admin: true },
   { key: 'about', icon: 'info' },
@@ -27,6 +30,10 @@ const SECTIONS = [
 
 export async function render(root, ctx) {
   const isAdmin = store.user.role === 'admin';
+  // Adding or editing a payment method is a page of its own: #/settings/payments/new, …/<id>/edit.
+  if (isAdmin && ctx.params[0] === 'payments' && ctx.params.length > 1) {
+    return renderKind(root, ctx, 'payment_method', ctx.params.slice(1));
+  }
   const sections = SECTIONS.filter((s) => isAdmin || !s.admin);
   const wanted = ctx.params[0];
   const active = sections.some((s) => s.key === wanted) ? wanted : 'store';
@@ -103,6 +110,43 @@ export async function render(root, ctx) {
                   <input type="checkbox" name="pos_shifts" ${cfg.pos_shifts === '1' ? 'checked' : ''}/>
                   <span><b>${esc(t('set.shifts_enable'))}</b><small>${esc(t('set.shifts_help'))}</small></span>
                 </label>
+              </div>
+              ${saveBar()}
+            </form>`
+          : ''
+      }
+      ${
+        isAdmin
+          ? `<form class="card" id="scale-form">
+              <div class="card-head"><div><h3>${esc(t('set.scale'))}</h3>
+                <div class="sub">${esc(t('set.scale_sub'))}</div></div></div>
+              <div class="card-body" style="display:grid;gap:14px">
+                <label class="set-switch">
+                  <input type="checkbox" name="scale_enabled" ${cfg.scale_enabled === '1' ? 'checked' : ''}/>
+                  <span><b>${esc(t('set.scale_enable'))}</b><small>${esc(t('set.scale_help'))}</small></span>
+                </label>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="scale-prefix">${esc(t('set.scale_prefix'))}</label>
+                    <input class="input" id="scale-prefix" name="scale_prefix" value="${esc(cfg.scale_prefix || '21')}"
+                           inputmode="numeric" pattern="[0-9]{2}" maxlength="2" dir="ltr" autocomplete="off"/>
+                    <div class="help">${esc(t('set.scale_prefix_help'))}</div>
+                  </div>
+                  <div class="field">
+                    <label for="scale-item-digits">${esc(t('set.scale_item_digits'))}</label>
+                    <select class="select" id="scale-item-digits" name="scale_item_digits">${[4, 5, 6]
+                      .map((n) => `<option value="${n}" ${String(n) === String(cfg.scale_item_digits || 5) ? 'selected' : ''}>${n}</option>`)
+                      .join('')}</select>
+                  </div>
+                  <div class="field span-2">
+                    <label for="scale-mode">${esc(t('set.scale_mode'))}</label>
+                    <select class="select" id="scale-mode" name="scale_mode">
+                      <option value="weight" ${cfg.scale_mode !== 'price' ? 'selected' : ''}>${esc(t('set.scale_mode_weight'))}</option>
+                      <option value="price" ${cfg.scale_mode === 'price' ? 'selected' : ''}>${esc(t('set.scale_mode_price'))}</option>
+                    </select>
+                    <div class="help" id="scale-example"></div>
+                  </div>
+                </div>
               </div>
               ${saveBar()}
             </form>`
@@ -237,6 +281,9 @@ export async function render(root, ctx) {
         ${saveBar()}
       </form>`,
 
+    // Filled in below by the same list that customers and suppliers use.
+    payments: () => `<div id="payments-list"></div>`,
+
     about: () => `
       <div class="card">
         <div class="card-head"><div><h3>${esc(t('set.about'))}</h3></div></div>
@@ -285,6 +332,10 @@ export async function render(root, ctx) {
     if (btn && btn.dataset.section !== active) ctx.navigate(`settings/${btn.dataset.section}`);
   });
   root.innerHTML = `<div class="set-panel" id="set-panel">${panels[active]()}</div>`;
+  if (active === 'payments') {
+    await renderKind(root.querySelector('#payments-list'), ctx, 'payment_method', [], { actions: 'inline' });
+    return;
+  }
 
   /* ------------------------------------------------------------- wiring -- */
 
@@ -341,6 +392,36 @@ export async function render(root, ctx) {
     e.preventDefault();
     await save({ pos_shifts: e.target.pos_shifts.checked ? '1' : '0' });
   });
+
+  // Scale labels: the example under the fields follows what is typed, so the layout
+  // can be checked against a real label before it is saved.
+  const scaleForm = $('#scale-form');
+  if (scaleForm) {
+    const example = () => {
+      const prefix = /^\d{2}$/.test(scaleForm.scale_prefix.value) ? scaleForm.scale_prefix.value : '21';
+      const digits = Number(scaleForm.scale_item_digits.value) || 5;
+      const price = scaleForm.scale_mode.value === 'price';
+      const item = '123'.padStart(digits, '0');
+      const body = `${prefix}${item}${(price ? '475' : '1234').padStart(10 - digits, '0')}`;
+      const sum = [...body].reduce((s, d, i) => s + Number(d) * (i % 2 ? 3 : 1), 0);
+      $('#scale-example').textContent = t('set.scale_example', {
+        code: `${body}${(10 - (sum % 10)) % 10}`,
+        item: Number(item),
+        value: price ? money(4.75) : '1.234 kg',
+      });
+    };
+    example();
+    scaleForm.addEventListener('input', example);
+    scaleForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await save({
+        scale_enabled: scaleForm.scale_enabled.checked ? '1' : '0',
+        scale_prefix: scaleForm.scale_prefix.value.trim(),
+        scale_item_digits: scaleForm.scale_item_digits.value,
+        scale_mode: scaleForm.scale_mode.value,
+      });
+    });
+  }
 
   $('#search-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();

@@ -95,15 +95,15 @@ async function listPage(route, label, { mustOverflow = false, before: prepare } 
 }
 
 await listPage('products', 'Products', { mustOverflow: true });
-// The demo catalogue fills the categories tab; customers may be empty on a fresh seed.
-await listPage('lists', 'Lists', {
-  before: async () => {
-    await page.waitForSelector('[data-kind="category"]');
-    await page.click('[data-kind="category"]');
-    await page.waitForTimeout(600);
-  },
-});
+// The demo catalogue fills the categories; customers may be empty on a fresh seed.
+await listPage('categories', 'Product categories');
 await listPage('sales', 'Sales history');
+// The list opens on this month; the seed's deliveries may all be in the last one.
+await page.evaluate(async () => {
+  const p = (await (await fetch('/api/products?limit=1')).json())[0];
+  await fetch('/api/purchases', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ supplier: 'Month Start Supply', items: [{ product_id: p.id, qty: 1, unit_cost: p.cost || 1 }] }) });
+});
 await listPage('purchases', 'Purchases');
 await listPage('expenses', 'Expenses');
 await listPage('users', 'Users');

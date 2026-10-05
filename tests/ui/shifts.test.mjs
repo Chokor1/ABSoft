@@ -54,7 +54,7 @@ await page.goto(`${BASE}#/settings`);
 await page.waitForSelector('#set-nav');
 check('the sections sit in the page header', !!(await page.$('.page-head #set-nav')));
 const sections = await page.$$eval('.set-nav-item', (as) => as.map((a) => a.dataset.section));
-check('the sections are listed down the side', sections.join() === 'store,pos,search,currency,language,backup,about', sections.join());
+check('the sections are listed down the side', sections.join() === 'store,pos,search,currency,payments,language,backup,about', sections.join());
 check('the first section opens by default', !!(await page.$('#settings-form')) && !(await page.$('#pos-form')));
 await page.click('.set-nav-item[data-section=pos]');
 await page.waitForSelector('#pos-form');
@@ -125,8 +125,15 @@ await page.waitForSelector('.receipt', { timeout: 8000 });
 await page.click('.modal-head [data-close]');
 
 console.log('\n[closing]');
+// A sale put aside and forgotten would be left behind by the shift.
+await page.click('.tile');
+await page.waitForTimeout(300);
+await page.click('#hold-cart');
+await page.waitForTimeout(700);
 await page.click('#shift-chip');
 await page.waitForSelector('#counted-cash');
+check('closing warns that a held sale is still waiting',
+  await page.isVisible('#shift-held') && (await page.textContent('#shift-held')).includes('1 held sale is still waiting'), await page.textContent('#shift-held').catch(() => 'none'));
 const expected = await page.inputValue('#counted-cash');
 check('the count starts at what the drawer should hold', Math.abs(Number(expected) - 118) < 0.01, expected);
 check('which balances', (await page.textContent('#shift-diff')).length > 0 && (await page.getAttribute('#shift-diff', 'class')).includes('settled'));

@@ -27,7 +27,7 @@ const localNow = () => {
 function shiftTotals(shift) {
   const sales = db
     .prepare(
-      `SELECT COUNT(*) AS n, ROUND(COALESCE(SUM(total), 0), 2) AS total,
+      `SELECT SUM(CASE WHEN kind = 'sale' THEN 1 ELSE 0 END) AS n, ROUND(COALESCE(SUM(total), 0), 2) AS total,
               ROUND(COALESCE(SUM(total - paid), 0), 2) AS owed
        FROM sales WHERE shift_id = ?`,
     )

@@ -156,12 +156,20 @@ export async function attachShifts(pos, { scanBar, navigate, onChange = () => {}
         foot ? `<small class="money2">${esc(foot)}</small>` : ''
       }</div>`;
 
+    // Sales put aside and not taken back would be left behind by the shift that rang them up.
+    const held = await api.held().catch(() => []);
     const closed = await modal({
       title: t('shift.close_title', { doc: shift.doc_no }),
       subtitle: t('shift.close_sub', { t: time(shift.opened_at), u: shift.opened_by_name || '' }),
       wide: true,
       body: `
         <div class="shift-close-v2">
+          ${
+            held.length
+              ? `<div class="pay-result owing" id="shift-held"><span>${icon('alert')} ${esc(t('shift.held_warn', { n: held.length }))}</span>
+                   <span class="amount">${money(held.reduce((s, h) => s + h.total, 0))}</span></div>`
+              : ''
+          }
           <div class="shift-stats">
             ${tile(t('shift.sales_n', { n: shift.sales }), money(shift.sales_total))}
             ${tile(t('shift.taken_total'), money(shift.taken), '', cur && shift.taken2 ? formatSecond(shift.taken2) : '')}

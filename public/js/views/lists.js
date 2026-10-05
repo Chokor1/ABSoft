@@ -41,64 +41,80 @@ const KINDS = [
   { kind: 'payment_method', contact: false, icon: true },
 ];
 
-/** #/lists, #/lists/<kind>, #/lists/<kind>/new, #/lists/<kind>/<id>[/<tab>], #/lists/<kind>/<id>/edit */
+/**
+ * Where each list lives: beside the screen it is used with. Customers with selling,
+ * suppliers with buying, product categories and units in the Stock menu, expense
+ * categories beside Expenses, payment methods in Settings.
+ */
+export const HOMES = {
+  customer: 'customers',
+  supplier: 'suppliers',
+  category: 'categories',
+  unit: 'units',
+  expense_category: 'expense-categories',
+  payment_method: 'settings/payments',
+};
+const home = (kind) => HOMES[kind] || HOMES.customer;
+
+/** #/lists… is where these lists were once kept together; an old link lands where its list lives now. */
 export async function render(root, ctx) {
-  const [kind, second, third] = ctx.params;
-  const known = KINDS.some((k) => k.kind === kind);
-  if (known && second === 'new') return renderForm(root, ctx, kind, null);
-  if (known && third === 'edit') return renderForm(root, ctx, kind, Number(second));
-  if (PARTY_TABS[kind] && /^\d+$/.test(second || '')) return renderParty(root, ctx, kind, Number(second), third);
-  return renderList(root, ctx, known ? kind : 'customer');
+  const [kind, ...rest] = ctx.params;
+  location.replace(`#/${[home(kind), ...rest].join('/')}`);
+}
+
+/**
+ * One list, where it lives: <home>, <home>/new, <home>/<id>[/<tab>], <home>/<id>/edit.
+ * `rest` is what follows the home in the address, and `actions` is where Export and
+ * Add go: the page header, or 'inline' when the list sits inside another screen (Settings),
+ * whose header must stay as it is.
+ */
+export async function renderKind(root, ctx, kind, rest = [], { actions = ctx.actions } = {}) {
+  const [first, second] = rest;
+  if (first === 'new') return renderForm(root, ctx, kind, null);
+  if (second === 'edit') return renderForm(root, ctx, kind, Number(first));
+  if (PARTY_TABS[kind] && /^\d+$/.test(first || '')) return renderParty(root, ctx, kind, Number(first), second);
+  return renderList(root, ctx, kind, { actions });
 }
 
 /** Open a customer's or supplier's page from a name on a document. */
 export async function openParty(ctx, kind, name) {
   const rows = await api.entities(kind, { search: name, all: '1' });
   const hit = rows.find((r) => r.name.toLowerCase() === String(name).toLowerCase());
-  if (hit) ctx.navigate(`lists/${kind}/${hit.id}`);
+  if (hit) ctx.navigate(`${home(kind)}/${hit.id}`);
   else toast(t('party.not_listed', { name }), 'warn');
 }
 
-async function renderList(root, ctx, startKind) {
-  const state = { kind: startKind, search: '', rows: [], page: 1, per: 50 };
+async function renderList(root, ctx, kind, { actions = ctx.actions } = {}) {
+  const state = { kind, search: '', rows: [], page: 1, per: 50 };
   const isAdmin = store.user.role === 'admin';
   const meta = () => KINDS.find((k) => k.kind === state.kind);
   const one = () => t(`lists.one.${state.kind}`);
 
-  ctx.actions.innerHTML = `
-    <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
-    <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('lists.add', { one: one() }))}</button>`;
-
   const tabs = document.createElement('div');
-  tabs.className = 'toolbar sticky-bar';
+  // The page header moves into a screen's sticky bar. Inside Settings the list is a guest:
+  // its toolbar is a plain one, so the Settings header stays where every section has it.
+  tabs.className = actions === 'inline' ? 'toolbar' : 'toolbar sticky-bar';
   tabs.innerHTML = `
-    <div class="seg">${KINDS.map((k) => `<button data-kind="${k.kind}">${esc(t(`lists.tab.${k.kind}`))}</button>`).join(
-      '',
-    )}</div>
     <div class="input-icon" style="min-width:230px">${icon('search')}
       <input class="input" data-search id="list-search" placeholder="${esc(t('lists.search'))}"/>
     </div>
-    <div class="spacer"></div>`;
+    <div class="spacer"></div>
+    ${actions === 'inline' ? '<div class="page-actions" data-inline-actions></div>' : ''}`;
+  // Inside another screen (Settings) the buttons sit at the end of the list's own toolbar.
+  if (actions === 'inline') actions = tabs.querySelector('[data-inline-actions]');
+  actions.innerHTML = `
+    <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
+    <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('lists.add', { one: one() }))}</button>`;
 
   const body = document.createElement('div');
   root.innerHTML = '';
   root.append(tabs, body);
 
-  // A new tab or a new search starts again at the first page.
+  // A new search starts again at the first page.
   const refilter = () => {
     state.page = 1;
     load();
   };
-  tabs.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-kind]');
-    if (!btn) return;
-    state.kind = btn.dataset.kind;
-    state.search = '';
-    state.page = 1;
-    tabs.querySelector('#list-search').value = '';
-    ctx.actions.querySelector('#new').innerHTML = `${icon('plus')} ${esc(t('lists.add', { one: one() }))}`;
-    load();
-  });
   tabs.querySelector('#list-search').addEventListener(
     'input',
     debounce((e) => {
@@ -107,8 +123,8 @@ async function renderList(root, ctx, startKind) {
     }, 220),
   );
 
-  ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate(`lists/${state.kind}/new`));
-  ctx.actions.querySelector('#export').addEventListener('click', () =>
+  actions.querySelector('#new').addEventListener('click', () => ctx.navigate(`${home(kind)}/new`));
+  actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       `absoft-${state.kind}.csv`,
       state.rows.map((r) => ({
@@ -126,7 +142,6 @@ async function renderList(root, ctx, startKind) {
   );
 
   async function load() {
-    tabs.querySelectorAll('[data-kind]').forEach((b) => b.classList.toggle('active', b.dataset.kind === state.kind));
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;
@@ -223,7 +238,7 @@ async function renderList(root, ctx, startKind) {
       tr.addEventListener('click', (e) => {
         if (e.target.closest('[data-del]')) return;
         const page = PARTY_TABS[state.kind] && !e.target.closest('[data-open]');
-        ctx.navigate(`lists/${state.kind}/${tr.dataset.edit}${page ? '' : '/edit'}`);
+        ctx.navigate(`${home(kind)}/${tr.dataset.edit}${page ? '' : '/edit'}`);
       }),
     );
     body.querySelectorAll('[data-del]').forEach((b) =>
@@ -265,8 +280,8 @@ async function renderForm(root, ctx, kind, id) {
   const showIcon = KINDS.find((k) => k.kind === kind)?.icon;
   const one = t(`lists.one.${kind}`);
   // Editing a customer or supplier returns to their page.
-  const back = () => ctx.navigate(entry && PARTY_TABS[kind] ? `lists/${kind}/${entry.id}` : `lists/${kind}`);
-  if (id && !entry) return ctx.navigate(`lists/${kind}`);
+  const back = () => ctx.navigate(entry && PARTY_TABS[kind] ? `${home(kind)}/${entry.id}` : `${home(kind)}`);
+  if (id && !entry) return ctx.navigate(`${home(kind)}`);
 
   const form = formPage(root, {
     title: isNew ? t('lists.add', { one }) : t('lists.edit', { one }),
@@ -390,7 +405,7 @@ async function renderParty(root, ctx, kind, id, initialTab) {
     party = await api.partySummary(kind, id);
   } catch (err) {
     toast(errorText(err), 'error');
-    return ctx.navigate(`lists/${kind}`);
+    return ctx.navigate(`${home(kind)}`);
   }
   const { entity } = party;
   const tabs = PARTY_TABS[kind];
@@ -401,7 +416,7 @@ async function renderParty(root, ctx, kind, id, initialTab) {
   ctx.actions.innerHTML = `
     ${kind === 'customer' ? `<button class="btn" id="to-analysis">${icon('chart')} ${esc(t('party.open_analysis'))}</button>` : ''}
     <button class="btn" id="edit">${icon('edit')} ${esc(t('common.edit'))}</button>`;
-  ctx.actions.querySelector('#edit').addEventListener('click', () => ctx.navigate(`lists/${kind}/${id}/edit`));
+  ctx.actions.querySelector('#edit').addEventListener('click', () => ctx.navigate(`${home(kind)}/${id}/edit`));
   ctx.actions.querySelector('#to-analysis')?.addEventListener('click', () =>
     ctx.navigate(`reports/analysis/customer/${encodeURIComponent(entity.name)}/from/${state.from}/to/${state.to}/group/item`),
   );
@@ -432,13 +447,13 @@ async function renderParty(root, ctx, kind, id, initialTab) {
       <div class="spacer"></div>
       <div class="seg" id="tabs">${tabs.map((k) => `<button data-tab="${k}">${esc(t(`party.tab.${k}`))}</button>`).join('')}</div>
     </div>`;
-  hero.querySelector('#back').addEventListener('click', () => ctx.navigate(`lists/${kind}`));
+  hero.querySelector('#back').addEventListener('click', () => ctx.navigate(`${home(kind)}`));
   hero.querySelector('#tabs').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-tab]');
     if (!btn) return;
     state.tab = btn.dataset.tab;
     state.page = 1;
-    history.replaceState(null, '', `#/lists/${kind}/${id}/${state.tab}`);
+    history.replaceState(null, '', `#/${home(kind)}/${id}/${state.tab}`);
     toTop();
     showTab();
   });

@@ -193,7 +193,7 @@ await page.waitForTimeout(300);
 
 /* ------------------------------------------------------- ways to pay */
 console.log('\n[the ways to pay the shop keeps]');
-await page.goto(`${BASE}#/lists/payment_method`);
+await page.goto(`${BASE}#/settings/payments`);
 await page.waitForSelector('tbody tr');
 const listed = await page.$$eval('tbody tr .cell-title', (n) => n.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
 check('the list starts with Cash and On account, marked built in',
@@ -217,7 +217,7 @@ await scan('5449000000996');
 await page.click('#checkout');
 await page.waitForSelector('.pay-methods');
 const buttons = await page.$$eval('.pay-methods button', (b) => b.map((x) => x.textContent.trim()));
-check('a method added in Lists is offered at the till', buttons.includes('Bank cheque'), buttons.join(' | '));
+check('a method added in Settings is offered at the till', buttons.includes('Bank cheque'), buttons.join(' | '));
 check('with an icon on every button', (await page.$$('.pay-methods button svg')).length === buttons.length);
 await page.click('.pay-methods button:has-text("Whish")');
 await page.waitForTimeout(200);
@@ -295,8 +295,8 @@ order = await names();
 check('scanning an item already in the cart does not add a second line', order.length === 3, order.join(' | '));
 check('its line comes back to the top', order[0].includes('Bottled Water'), order.join(' | '));
 check('with its quantity increased',
-  (await page.inputValue('.cl-head + .cart-line [data-field="qty"]')) === '2',
-  await page.inputValue('.cl-head + .cart-line [data-field="qty"]'));
+  (await page.inputValue('#cart-lines .cart-line:first-child [data-field="qty"]')) === '2',
+  await page.inputValue('#cart-lines .cart-line:first-child [data-field="qty"]'));
 check('the total is 2×1.00 + 2.50 + 18.00 = 22.50', (await text('#totals')).includes('$22.50'), await text('#totals'));
 await shot('90-till-cart');
 // Every name starts at the card's left edge, whichever script it is written in: an
@@ -332,13 +332,13 @@ const sizes = await page.evaluate(() => ({
 check('each line is compact', sizes.line <= 64, JSON.stringify(sizes));
 check('the height does not change as items are added', Math.abs(sizes.cart - emptyCart.cart) <= 1, JSON.stringify(sizes));
 check('the total stays pinned to the bottom of the cart', Math.abs(sizes.foot - sizes.cartBottom) <= 2, JSON.stringify(sizes));
-check('column names appear once, above the lines', (await page.$$('.cl-head')).length === 1);
+check('no column header: each line explains itself', (await page.$$('.cl-head')).length === 0);
 
 /* ------------------------------------------------------ edit where it sits */
 console.log('\n[lines are edited in place]');
 check('there is no edit button to open', (await page.$$('.cart-line [data-edit]')).length === 0);
 check('each line has quantity, unit price, discount and (once opened) its total',
-  (await page.$$('.cl-head + .cart-line [data-field]')).length === 4);
+  (await page.$$('#cart-lines .cart-line:first-child [data-field]')).length === 4);
 
 const espresso = '.cart-line:has-text("Espresso")';
 await page.fill(`${espresso} [data-field="qty"]`, '3');
@@ -348,6 +348,14 @@ check('changing the quantity updates the line total at once',
 check('and the cart total', (await text('#totals')).includes('$58.50'), await text('#totals'));
 check('without a dialog', (await page.$$('.modal-backdrop')).length === 0);
 
+check('a closed line shows the quantity, the name with its unit price, and the total — no other boxes',
+  (await page.isVisible(`${espresso} [data-field="qty"]`)) && !(await page.isVisible(`${espresso} [data-field="unit_price"]`)) &&
+    !(await page.isVisible(`${espresso} [data-field="discount"]`)) && (await text(`${espresso} [data-sub]`)) === '$18.00 each',
+  await text(`${espresso} [data-sub]`));
+const stepper = await page.$eval(`${espresso} [data-step="1"]`, (b) => { const r = b.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; });
+check('the + and − buttons are big enough for a thumb (40px)', stepper.w >= 40 && stepper.h >= 40, JSON.stringify(stepper));
+await page.click(`${espresso} [data-toggle]`);
+await page.waitForTimeout(250);
 await page.fill(`${espresso} [data-field="unit_price"]`, '16');
 await page.waitForTimeout(150);
 check('changing the unit price updates the line (3 × 16 = 48)',
@@ -355,7 +363,7 @@ check('changing the unit price updates the line (3 × 16 = 48)',
 
 check('the line discount is a percentage, and says so',
   (await page.getAttribute(`${espresso} [data-field="discount"]`, 'placeholder')) === 'Discount %' &&
-    (await text('.cl-head')).includes('Discount %'), await page.getAttribute(`${espresso} [data-field="discount"]`, 'placeholder'));
+    (await text(`${espresso} .cl-detail`)).includes('Discount %'), await page.getAttribute(`${espresso} [data-field="discount"]`, 'placeholder'));
 await page.fill(`${espresso} [data-field="discount"]`, '25');
 await page.waitForTimeout(150);
 check('25% comes off that line (48 − 12 = 36)',
@@ -364,6 +372,9 @@ check('the cart total follows (2 + 2.50 + 36 = 40.50)', (await text('#totals')).
 check('and shows the discount given in money', (await text('#totals')).includes('$12.00'), await text('#totals'));
 check('typing never threw focus out of the field',
   await page.evaluate(() => document.activeElement?.dataset?.field === 'discount'));
+check('under the name, the line says what it saved', (await text(`${espresso} [data-sub]`)) === '−25% · saved $12.00', await text(`${espresso} [data-sub]`));
+await page.click(`${espresso} [data-toggle]`);
+await page.waitForTimeout(250);
 
 /* --------------------------------------------- selling a line at a price */
 console.log('\n[a line opens, and takes the total you want]');
@@ -401,13 +412,13 @@ await page.waitForTimeout(200);
 check('a discount typed as a percentage still updates the total field',
   (await page.inputValue(`${espresso} [data-field="total"]`)) === '45', await page.inputValue(`${espresso} [data-field="total"]`));
 await shot('89-till-line-open');
-await page.click(`${espresso} [data-toggle]`);
-await page.waitForTimeout(250);
-check('the chevron closes it again', !(await detailShown()));
 // Back to where the rest of the test expects it: 3 × 16 with 25% off.
 await page.fill(`${espresso} [data-field="unit_price"]`, '16');
 await page.waitForTimeout(200);
 check('the line is 3 × 16 less 25% again', (await text(`${espresso} [data-total]`)).includes('$36.00'), await text(`${espresso} [data-total]`));
+await page.click(`${espresso} [data-toggle]`);
+await page.waitForTimeout(250);
+check('the chevron closes it again', !(await detailShown()));
 
 const muffin = '.cart-line:has-text("Muffin")';
 await page.click(`${muffin} [data-step="1"]`);
@@ -573,7 +584,7 @@ for (const [w, h, label] of [[1024, 800, 'tablet'], [390, 844, 'phone']]) {
     const tiles = box('#tiles');
     const scanBar = box('.scan-bar');
     // Only the fields on show: a closed line's extra fields have no box at all.
-    const fields = [...document.querySelectorAll('.cl-head + .cart-line .cl-field')]
+    const fields = [...document.querySelectorAll('#cart-lines .cart-line:first-child .cl-field')]
       .map((f) => f.getBoundingClientRect())
       .filter((f) => f.width > 0);
     return {
@@ -642,6 +653,98 @@ for (const [w, h, label] of [[1024, 800, 'tablet'], [390, 844, 'phone']]) {
   await page.click('#clear-cart');
 }
 await page.setViewportSize({ width: 1500, height: 980 });
+
+/* ------------------------------------------------------- hold and resume */
+console.log('\n[hold and resume]');
+const toastsNow = () => page.$$eval('#toasts .toast', (n) => n.map((x) => x.textContent.trim()));
+const soldSoFar = async () => (await page.evaluate(async () => (await (await fetch('/api/sales?page=1&per=1')).json()).total));
+await page.goto(`${BASE}#/pos`);
+await page.reload();
+await page.waitForSelector('.tile');
+await page.waitForTimeout(400);
+check('Hold is off while the cart is empty, and nothing is held', (await page.$eval('#hold-cart', (b) => b.disabled)) && !(await page.isVisible('#held-chip')));
+await scan('5449000000996');
+await scan('5449000000996');
+await scan('5901234123457');
+const held1 = '.cart-line:has-text("Espresso")';
+await page.click(`${held1} [data-toggle]`);
+await page.fill(`${held1} [data-field="discount"]`, '25');
+await page.waitForTimeout(200);
+check('a sale in hand: 2 water and espresso at 25% off, 15.50', (await text('#totals')).includes('$15.50'), await text('#totals'));
+const salesBeforeHold = await soldSoFar();
+await page.click('#hold-cart');
+await page.waitForTimeout(700);
+check('Hold empties the cart and frees the till', (await page.$$('.cart-line')).length === 0 &&
+  await page.evaluate(() => document.activeElement?.id === 'scan'));
+check('it says what was held', (await toastsNow()).some((s) => s.includes('Sale held · 2 lines · $15.50')), JSON.stringify(await toastsNow()));
+check('a chip counts the held sales', await page.isVisible('#held-chip') && (await text('#held-chip')) === '1 held', await text('#held-chip'));
+check('nothing was sold by holding', (await soldSoFar()) === salesBeforeHold);
+
+await scan('7622210992796'); // the next customer's muffin
+await page.click('#held-chip');
+await page.waitForSelector('.held-table');
+const heldRow = (await text('.held-table tbody tr')).replace(/\s+/g, ' ');
+check('the list says what is in the held sale and what it comes to',
+  heldRow.includes('Bottled Water 500ml × 2') && heldRow.includes('Espresso Beans 1kg × 1') && heldRow.includes('$15.50') && heldRow.includes('2 items'), heldRow);
+check('…and that the sale in hand will step aside', (await text('.modal .sub')).includes('will be held'), await text('.modal .sub'));
+await page.waitForTimeout(400); // the dialog fades in
+await shot('97-till-held-list');
+await page.click('.held-table [data-resume]');
+await page.waitForTimeout(1000);
+check('Resume brings the lines back as they were', (await names()).join(' | ') === 'Espresso Beans 1kg | Bottled Water 500ml' &&
+  (await page.inputValue('.cart-line:has-text("Bottled Water") [data-field="qty"]')) === '2' &&
+  (await text(`${held1} [data-sub]`)) === '−25% · saved $4.50' && (await text('#totals')).includes('$15.50'), (await names()).join(' | '));
+check('the sale that was in hand is held in its place', (await text('#held-chip')) === '1 held' &&
+  (await toastsNow()).some((s) => s.includes('the one in hand was held')), JSON.stringify(await toastsNow()));
+await shot('98-till-resumed');
+
+await page.click('#checkout');
+await page.waitForSelector('#pay-confirm');
+await page.click('#pay-confirm');
+await page.waitForSelector('.receipt', { timeout: 8000 });
+await page.click('.modal-head [data-close]');
+await page.waitForTimeout(600);
+check('the resumed sale is paid like any other', (await soldSoFar()) === salesBeforeHold + 1);
+await page.click('#held-chip');
+await page.waitForSelector('.held-table');
+check('with an empty cart, nothing needs to step aside', (await text('.modal .sub')).includes('waiting to be finished'));
+await page.click('.held-table [data-resume]');
+await page.waitForTimeout(900);
+check('the muffin comes back, and nothing is left held', (await names()).join() === 'Chocolate Muffin' && !(await page.isVisible('#held-chip')), (await names()).join());
+
+await page.click('#hold-cart');
+await page.waitForTimeout(600);
+await page.click('#held-chip');
+await page.waitForSelector('.held-table [data-discard]');
+await page.click('.held-table [data-discard]');
+await page.waitForSelector('.modal [data-confirm]');
+check('discarding asks first', (await page.$$('.modal-backdrop')).length === 2);
+await page.click('.modal [data-confirm]');
+await page.waitForTimeout(800);
+check('then the held sale and its chip are gone', !(await page.isVisible('#held-chip')) && (await page.$$('.modal-backdrop')).length === 0 &&
+  (await page.evaluate(async () => (await (await fetch('/api/held')).json()).length)) === 0);
+
+/* ------------------------------------------------------- a label from the scale */
+console.log('\n[a label from the scale]');
+const send = (method, path, body) => page.evaluate(async ([m, p, b]) =>
+  (await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json(), [method, path, body]);
+await send('POST', '/api/products', { name: 'Akkawi by weight', barcode: '00123', unit: 'kg', cost: 6, price: 9.5, opening_stock: 20 });
+await send('PUT', '/api/settings', { scale_enabled: '1', scale_prefix: '21' });
+await page.goto(`${BASE}#/pos`);
+await page.reload();
+await page.waitForSelector('.tile');
+await page.waitForTimeout(400);
+const ean = (body) => body + String((10 - ([...body].reduce((s, d, i) => s + Number(d) * (i % 2 ? 3 : 1), 0) % 10)) % 10);
+await scan(ean('210012301234'));
+const weighed = '.cart-line:has-text("Akkawi by weight")';
+check('scanning a scale label rings the item up at its weight', (await page.inputValue(`${weighed} [data-field="qty"]`)) === '1.234',
+  await page.inputValue(`${weighed} [data-field="qty"]`).catch(() => 'no line'));
+check("…at the product's price per kilo: 1.234 × 9.50 = 11.72", (await text(`${weighed} [data-total]`)).includes('$11.72'), await text(`${weighed} [data-total]`));
+await scan(ean('210012300500'));
+check('a second label adds its weight to the same line (1.734 kg)',
+  (await page.inputValue(`${weighed} [data-field="qty"]`)) === '1.734' && (await page.$$('.cart-line')).length === 1);
+await page.click('#clear-cart');
+await send('PUT', '/api/settings', { scale_enabled: '0' });
 
 /* ------------------------------------------------------------------ Arabic */
 console.log('\n[Arabic]');

@@ -58,15 +58,27 @@ invoice loses a line.
 | **Stock Count** | Count the shelf — all items, one category or a few — and correct the stock in one go. |
 | **Stock Adjustment** | Counts, damage, expiry and write-offs as numbered documents covering many products at once. Scan or search products (or add a whole category), then type what you counted or how much changed. |
 | **Expenses** (`F5`) | Rent, salaries, utilities — anything that is not stock. These are what turn gross profit into net profit. |
+| **Expense categories** | What expenses are filed under — rent, salaries, utilities — listed beside Expenses in the menu. |
 | **Products** (`F3`) | Define what you sell: name, optional description, barcode (and any other barcodes), category, cost, default price, unit, low-stock level. Click a row to open the product's own page (see below). |
-| **Lists** | Customers, suppliers, product categories, units, expense categories and **payment methods** — the names you reuse. A customer or supplier opens on their own page, with their balance and statement. |
+| **Product categories**, **Units** | What products are filed under, and what they are counted in (pcs, kg, box). Both sit in the Stock menu, after the stock screens. |
+| **Customers** | Who buys from you. Each opens on their own page, with their balance, their statement and what they bought. |
+| **Suppliers** | Who you buy from, the same way: balance, statement, purchases and what you bought from them. |
 | **Reports** | Profit & loss for any date range, **Sales analysis**, product performance, stock valuation, the movement ledger and per-cashier totals. The report menu, the dates and the buttons share one line, so the report itself gets the screen. |
 | **Users** | Add cashiers and administrators. A cashier only gets **POS**, **Sell** (without cost or profit) and their own settings. |
-| **Settings** | In sections: Store (logo, name, currency, tax, receipt footer), POS (shifts, sound, picture cards), Search, Currency, Language, Backup & data (including the automatic backups), About. |
+| **Settings** | In sections: Store (logo, name, currency, tax, receipt footer), POS (shifts, scale barcodes, sound, picture cards), Search, Currency, **Payment methods**, Language, Backup & data (including the automatic backups), About. |
 
-The menu is short enough for a 1366×720 till screen: **Dashboard**, then **Money** (Sell, Shifts
-when they are on, Buy, Expenses, Reports), then **Stock** (Products, Stock Count, Stock Adjustment,
-Lists). **Users** and **Settings** open from the user menu at the foot of the sidebar, and the gear
+**Each list of names sits beside the screen it is used with**, not in a drawer of its own:
+customers with selling, suppliers with buying, product categories and units in the Stock menu,
+expense categories beside Expenses, payment methods as a section of Settings (whose header stays
+the same on every section). A link to the old `#/lists/…` addresses still lands in the right place.
+
+The menu is the **Dashboard** and four sections that all look and fold alike: **Sales** (Sell,
+Shifts when they are on, Customers), **Purchases** (Buy, Suppliers), **Stock** (Products, Stock
+Count, Stock Adjustment, Product categories, Units) and **Finance** (Expenses, Expense categories,
+Reports). Click a section's heading to fold it away. Where the whole menu fits the window, every
+section stays as you left it; where it would not — a 1366×720 till, most laptops — one section is
+open at a time, the one you are in, so rows keep their size instead of being squeezed or scrolled.
+**Users** and **Settings** open from the user menu at the foot of the sidebar, and the gear
 beside your name opens Settings. **Products** carries the number of products at or below their
 minimum (switch it off under Settings → Store); click it for exactly that list.
 
@@ -108,8 +120,9 @@ how you work: the field is still an ordinary text box, an unfamiliar name is sim
 and none of it is ever required. A name that is not saved yet appears first as **Use “…”**, so
 pressing Enter always keeps exactly what you typed.
 
-The **Lists** screen is where those names live, with a tab each for customers, suppliers,
-product categories, units and expense categories. Open any entry to add detail — phone, email,
+Those names live beside the screens that use them, each a row of the menu: **Customers** under
+Selling, **Suppliers** under Buying, **Product categories** and **Units** under Stock, **Expense
+categories** beside Expenses. Open any entry to add detail — phone, email,
 address, tax number, a note — all optional, added whenever you feel like it and never before.
 You can also add an entry by hand, so a customer can be suggested before their first sale.
 
@@ -194,7 +207,7 @@ instead of deleted, so past reports never change. Voiding a sale or deleting a p
 
 ## Customer and supplier pages
 
-In **Lists**, click a customer or a supplier (the pencil still edits). Their page has their name
+In **Customers** or **Suppliers**, click a row (the pencil still edits). Their page has their name
 and contact details at the top, where they stand as tiles, and three tabs:
 
 - **Statement** — the balance brought forward, then every invoice and every payment in the order
@@ -219,7 +232,7 @@ the lists do.
 
 ## How people pay
 
-**Lists → Payment methods** is the shop's own list. **Cash** and **On account** are built in: they
+**Settings → Payment methods** is the shop's own list. **Cash** and **On account** are built in: they
 can be switched off, but never renamed or removed, because every past invoice and report carries
 them. Everything else is yours to add, rename, switch off or delete — **Whish** and **OMT** come
 ready to use, and a card machine or a bank cheque takes a minute to add.
@@ -442,12 +455,37 @@ under **Settings → POS**.
 On a phone the search, the cart and the products stack in that order, and a bar at the bottom
 keeps the total and **Make payment** in reach while you scroll.
 
+**Hold and resume.** A customer who forgot something should not hold up the queue. **Hold**, in the
+cart's header, puts the sale aside — its lines, prices and discounts, and whatever was typed in
+the payment dialog — and the till is free for the next customer. A chip beside it counts the held
+sales and opens the list: what is in each, what it comes to, who held it and when. **Resume**
+brings one back exactly as it was, at this till or another; if a sale is in hand, that one is
+held in its place rather than lost or mixed in. A held sale keeps the prices it was quoted at,
+moves no stock and appears in no report until it is paid. Whoever held a sale can discard it, and
+so can an administrator. Closing a shift warns when held sales are still waiting.
+
 **The whole sale works from the keyboard.** `F2` opens the till with the cursor in the search
-box; a scan or a typed name adds a line; **`F9`** opens Make payment from anywhere on the till
-(Tab and Shift+Tab stay inside the dialog, Escape closes it and puts the cursor back where it
-was); Enter confirms. The receipt then holds the focus itself rather than its Print button, so a
+box; a scan or a typed name adds a line; **`F9`** — or **`Ctrl+Enter`** — opens Make payment from
+anywhere on the till (Tab and Shift+Tab stay inside the dialog, Escape closes it and puts the
+cursor back where it was); Enter confirms. On a laptop whose top row sends media keys, the
+function keys (`F2`–`F5`, `F9`) need `Fn` held, or Fn Lock switched on (often `Fn+Esc`);
+`Ctrl+Enter` needs neither, and pressing it again inside the dialog does not confirm the sale. The receipt then holds the focus itself rather than its Print button, so a
 scanner's Enter after the next barcode never prints a second copy. Wherever the keyboard lands
 there is a visible ring, and every button that is only an icon has a name a screen reader can say.
+
+### Labels from a weighing scale
+
+Cheese, meat and vegetables are weighed at the counter, and the scale prints a 13-digit barcode:
+a two-digit **prefix**, the item's code, the **weight in grams** (or the **price in cents**) and a
+check digit. Switch this on under **Settings → POS → Scale barcodes**, say which prefix the scale
+uses (21 is usual; 20–29 are reserved for in-store codes), how many digits the item code has, and
+whether the label carries the weight or the price. Give each weighed product its scale code as its
+barcode — `00123`, or just `123` — and scanning `21 00123 01234 c` rings up product 123 at
+1.234 kg; a price label rings up the weight that price buys. Scanning it again adds to the same
+line. A label with a wrong check digit is refused, never guessed.
+
+Switching it on is refused while any real 13-digit product barcode starts with that prefix, since
+such a product would then ring up as a weight; the message says how many, so you can change either.
 
 ### Shifts (opening and closing)
 
@@ -471,6 +509,33 @@ only inside an open shift:
   expected and counted cash; each opens as a document with its figures and its sales.
 
 Cashiers open and close shifts; only an administrator can switch shifts on or off.
+
+---
+
+## Returns and exchanges
+
+Something comes back. Open the invoice (from **Sell**, or at the till type its number — `INV-000269`
+— into the search box) and press **Return items**. Say how many of each line are coming back and
+whether each goes **back on the shelf** or was **damaged**, choose how the money goes out — cash,
+card, Whish, or **on account**, which leaves it owed to the customer — and confirm. The refund is
+what the customer paid for those goods: their share of the invoice's discount and tax comes back
+with them.
+
+The return is a document of its own, `RET-000001`, `RET-000002`…, linked to its invoice: the
+invoice lists its returns, the return leads back to the invoice, both print, and **Sell** shows
+returns beside invoices with a filter for either. Underneath, a return is a sale with negative
+quantities and money, which is why every figure nets it out without a special case — today's
+sales and profit, the 30-day chart, the customer's statement, the product's history, the shift's
+drawer (the refund is counted in the shift that gave it). A line that went back on the shelf puts
+its stock and its cost back; a damaged one refunds the money and keeps the cost, which is what a
+loss is. The movement ledger records it as **Returned**.
+
+An **exchange** is a return followed by a sale: at the till, the dialog's **Refund and start a new
+sale** saves the return and leaves a chip on the cart naming it; ring up the new items as usual, and
+the drawer moves by the difference.
+
+A cashier can take a return; only an administrator can void one (like any sale), and an invoice
+with returns cannot be voided until they are.
 
 ---
 

@@ -366,6 +366,41 @@ const MIGRATIONS = [
       addColumn(db, 'shifts', 'counted_methods', "TEXT NOT NULL DEFAULT '{}'");
     },
   },
+  {
+    // A return is a sale document with negative quantities and money, linked to the
+    // invoice it undoes, so every figure that sums sales nets it out by itself. Each
+    // line says whether the goods went back on the shelf; a damaged one refunds the
+    // money but keeps the cost on the books, which is what a loss is.
+    name: 'returns',
+    up: (db) => {
+      addColumn(db, 'sales', 'kind', "TEXT NOT NULL DEFAULT 'sale'");
+      addColumn(db, 'sales', 'return_of', 'INTEGER');
+      addColumn(db, 'sale_items', 'restock', 'INTEGER NOT NULL DEFAULT 1');
+      addColumn(db, 'sale_items', 'return_of_item', 'INTEGER');
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_sales_return_of ON sales(return_of);
+               CREATE INDEX IF NOT EXISTS idx_sale_items_return_of ON sale_items(return_of_item);`);
+    },
+  },
+  {
+    // Sales put aside at the till while the next customer is served. The cart is
+    // kept whole, as JSON: it is not a sale yet, so it touches no sale, stock or
+    // payment table.
+    name: 'held-sales',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS held_sales (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          label      TEXT    NOT NULL DEFAULT '',
+          summary    TEXT    NOT NULL DEFAULT '',
+          cart       TEXT    NOT NULL,
+          lines      INTEGER NOT NULL DEFAULT 0,
+          total      REAL    NOT NULL DEFAULT 0,
+          created_at TEXT    NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

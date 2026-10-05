@@ -50,7 +50,8 @@ await page.waitForSelector('.shell');
 
 console.log('\n[the menu]');
 const menu = await page.$$eval('.nav [data-route]', (a) => a.map((x) => x.dataset.route));
-check('Sell and Buy sit together, POS is in the top bar', menu.slice(menu.indexOf('sales'), menu.indexOf('sales') + 2).join() === 'sales,purchases' &&
+check('Sell leads Selling and Buy leads Buying, POS is in the top bar', menu.indexOf('sales') === 1 && menu.indexOf('sales') < menu.indexOf('customers') &&
+  menu.indexOf('customers') < menu.indexOf('purchases') && menu[menu.indexOf('purchases') + 1] === 'suppliers' &&
   !menu.includes('pos') && (await page.isVisible('#go-pos')), menu.join());
 check('Sell is labelled Sell and Buy is labelled Buy',
   (await page.textContent('.nav [data-route="sales"]')).trim() === 'Sell' &&

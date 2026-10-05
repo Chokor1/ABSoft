@@ -66,7 +66,7 @@ check('F2 opens the till with the cursor in the search box', (await active()).id
 check('every icon-only button on the till has a name', (await unnamedButtons()).length === 0, JSON.stringify(await unnamedButtons()));
 check('the total is announced as it changes', (await page.getAttribute('#totals', 'aria-live')) === 'polite' &&
   (await page.getAttribute('#totals', 'aria-atomic')) === 'true');
-check('Make payment says F9', (await page.getAttribute('#checkout', 'aria-keyshortcuts')) === 'F9' &&
+check('Make payment says F9', (await page.getAttribute('#checkout', 'aria-keyshortcuts')).startsWith('F9') &&
   (await page.textContent('#checkout')).includes('F9'));
 
 await key('F9');
@@ -125,13 +125,38 @@ await page.waitForTimeout(300);
 check('Escape closes it', (await page.$$('.modal-backdrop')).length === 0);
 check('…and the cursor goes back where it was', (await active()).id === 'scan', JSON.stringify(await active()));
 
+// A laptop whose top row sends media keys has no F9 without Fn: Ctrl+Enter does the same.
+const salesBefore = (await page.evaluate(async () => (await (await fetch('/api/sales?page=1&per=1')).json()))).total;
+await key('Control+Enter');
+await page.waitForTimeout(400);
+check('Ctrl+Enter opens the payment dialog too', (await page.$$('.modal-backdrop #pay-amount')).length === 1);
+await key('Control+Enter');
+await key('Control+Enter');
+await page.waitForTimeout(600);
+const salesAfter = (await page.evaluate(async () => (await (await fetch('/api/sales?page=1&per=1')).json()))).total;
+check('…and pressing it again does not confirm the sale', (await page.$$('.modal-backdrop #pay-amount')).length === 1 && salesAfter === salesBefore,
+  `${salesBefore} → ${salesAfter}`);
+await key('Escape');
+await page.waitForTimeout(300);
+await page.fill('#scan', 'muffin');
+await key('Control+Enter');
+await page.waitForTimeout(400);
+check('with text in the search box, Ctrl+Enter still pays rather than scans', (await page.$$('.modal-backdrop #pay-amount')).length === 1 &&
+  (await page.$$('.cart-line')).length === 2);
+await key('Escape');
+await page.waitForTimeout(300);
+await page.fill('#scan', '');
+check('the button says both shortcuts', (await page.getAttribute('#checkout', 'title')).includes('Ctrl+Enter') &&
+  (await page.getAttribute('#checkout', 'aria-keyshortcuts')) === 'F9 Control+Enter');
+
 await key('F9');
 await page.waitForSelector('.modal-backdrop');
 await page.waitForTimeout(300);
 await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
 await page.keyboard.type('50');
 await key('Enter');
-await page.waitForSelector('.modal-backdrop .modal', { timeout: 8000 });
+// The payment dialog closes, the sale-done mark plays, then the receipt opens: wait for the receipt itself.
+await page.waitForSelector('#receipt-print', { timeout: 10000 });
 await wait(async () => (await page.$$('.sale-done')).length === 0, 6000);
 await page.waitForTimeout(400);
 const receipt = await active();
@@ -169,7 +194,7 @@ check('a second Escape closes the other', (await page.$$('.modal-backdrop')).len
 
 /* -------------------------------------------------------------- other screens */
 console.log('\n[Names on other screens]');
-for (const route of ['dashboard', 'products', 'purchases/new', 'expenses', 'lists', 'users', 'sales']) {
+for (const route of ['dashboard', 'products', 'categories', 'units', 'purchases/new', 'expenses', 'expense-categories', 'customers', 'suppliers', 'settings/payments', 'users', 'sales']) {
   await page.goto(`${BASE}#/${route}`);
   await page.waitForTimeout(900);
   const missing = await unnamedButtons();

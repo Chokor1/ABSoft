@@ -27,16 +27,24 @@ import * as shifts from './views/shifts.js';
 const VIEWS = {
   dashboard: { key: 'dashboard', icon: 'dashboard', mod: dashboard, group: 'home' },
   // Not in the menu: the POS button in the top bar (or F2) opens it.
-  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'money', cashier: true, hidden: true },
-  sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'money', cashier: true },
+  pos: { key: 'pos', icon: 'pos', mod: pos, group: 'selling', cashier: true, hidden: true },
+  sales: { key: 'sales', icon: 'receipt', mod: salesView, group: 'selling', cashier: true },
   // The till's shifts, listed only once shifts are switched on in Settings.
-  shifts: { key: 'shifts', icon: 'history', mod: shifts, group: 'money', cashier: true, when: () => store.settings.pos_shifts === '1' },
-  purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'money' },
+  shifts: { key: 'shifts', icon: 'history', mod: shifts, group: 'selling', cashier: true, when: () => store.settings.pos_shifts === '1' },
+  // Each list sits beside the screen it is used with: who buys, with selling…
+  customers: { key: 'customers', icon: 'users', group: 'selling', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'customer', ctx.params) } },
+  purchases: { key: 'purchases', icon: 'truck', mod: purchases, group: 'buying' },
+  // …and who is bought from, with buying.
+  suppliers: { key: 'suppliers', icon: 'package', group: 'buying', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'supplier', ctx.params) } },
   expenses: { key: 'expenses', icon: 'wallet', mod: expenses, group: 'money' },
+  // What expenses are filed under, beside the expenses themselves.
+  'expense-categories': { key: 'expcategories', icon: 'list', group: 'money', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'expense_category', ctx.params) } },
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
   'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
   adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
-  lists: { key: 'lists', icon: 'users', mod: lists, group: 'stock' },
+  // What products are filed under, and what they are counted in.
+  categories: { key: 'categories', icon: 'list', group: 'stock', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'category', ctx.params) } },
+  units: { key: 'units', icon: 'sliders', group: 'stock', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'unit', ctx.params) } },
   // Sales Analysis lives in Reports now; old links still land there.
   analysis: {
     key: 'reports',
@@ -53,6 +61,8 @@ const VIEWS = {
   // Reports put their menu, dates and buttons on one line of their own, so the
   // screen header would only repeat what the menu already says.
   reports: { key: 'reports', icon: 'chart', mod: reports, group: 'money', bare: true },
+  // Where the lists were once kept together. Not in the menu; an old link lands where its list lives now.
+  lists: { key: 'lists', icon: 'list', mod: lists, group: 'money', hidden: true },
   // Not in the menu: the user menu at the foot of the sidebar opens these (Settings also has its gear there).
   users: { key: 'users', icon: 'users', mod: users, group: 'account', hidden: true },
   settings: { key: 'settings', icon: 'settings', mod: settings, group: 'account', cashier: true, hidden: true },
@@ -62,9 +72,8 @@ const isAdmin = () => store.user?.role === 'admin';
 const canSee = (view) => isAdmin() || !!view.cashier;
 const homeRoute = () => (isAdmin() ? 'dashboard' : 'pos');
 
-// Dashboard on its own, then money in and out, then what is on the shelf. Short enough
-// to fit a 1366×720 till screen without scrolling.
-const GROUPS = ['home', 'money', 'stock'];
+// Dashboard on its own, then four sections: Sales, Purchases, Stock and Finance.
+const GROUPS = ['home', 'selling', 'buying', 'stock', 'money'];
 const SHORTCUTS = { pos: 'F2', products: 'F3', purchases: 'F4', expenses: 'F5' };
 
 const app = document.getElementById('app');
@@ -187,8 +196,29 @@ function renderLogin(message = '') {
 /* ------------------------------------------------------------------ shell -- */
 
 /** Groups shown as one item that opens to reveal its screens, rather than a heading. */
-const FOLDING = { stock: 'box' };
+/**
+ * Every section of the menu folds, and all of them look and behave alike. Where the
+ * whole menu fits, each section stays as it was left on this device. Where it would
+ * not (a 1366×720 till, a laptop), only one is open at a time — the one you are in —
+ * so the rows keep their height and spacing instead of being squeezed or scrolled.
+ * Which of the two applies is measured, not guessed from the window's height: the
+ * exchange rate box and the Shifts row come and go with the shop's settings.
+ */
 const FOLD_KEY = (group) => `absoft-nav-${group}`;
+let oneAtATime = false;
+let shortOpen = 'selling';
+const sectionOf = (route) => {
+  const view = VIEWS[route];
+  return view && !view.hidden && view.group !== 'home' && GROUPS.includes(view.group) ? view.group : null;
+};
+function foldOpen(group) {
+  if (oneAtATime) return group === (sectionOf(currentRoute) || shortOpen);
+  try {
+    return localStorage.getItem(FOLD_KEY(group)) !== '0';
+  } catch {
+    return true; // storage blocked: open
+  }
+}
 
 /**
  * The letterhead every printed page carries: the shop's logo and name at the
@@ -253,32 +283,57 @@ function navHtml() {
   return GROUPS.map((group) => {
     const items = Object.entries(VIEWS).filter(([, v]) => v.group === group && canSee(v) && !v.hidden && (!v.when || v.when()));
     if (!items.length) return '';
-    if (FOLDING[group]) {
-      // Open unless it was folded away on this device.
-      let open = true;
-      try {
-        open = localStorage.getItem(FOLD_KEY(group)) !== '0';
-      } catch {
-        /* storage blocked: open */
-      }
-      return `<div class="nav-fold ${open ? 'open' : ''}" data-fold="${group}">
-        <button type="button" class="nav-item nav-parent" aria-expanded="${open}" data-fold-toggle="${group}">
-          ${icon(FOLDING[group])}<span>${esc(t(`nav.group.${group}`))}</span>
-          <span class="nav-chevron" aria-hidden="true"></span>
-        </button>
-        <div class="nav-children"><div>${items.map((item) => link(item, 'nav-child')).join('')}</div></div>
-      </div>`;
-    }
-    // The dashboard needs no heading of its own above it.
-    const label = group === 'home' ? '' : `<div class="nav-label">${esc(t(`nav.group.${group}`))}</div>`;
-    return `${label}${items.map((item) => link(item)).join('')}`;
+    const links = items.map((item) => link(item)).join('');
+    // The dashboard stands alone, above the sections.
+    if (group === 'home') return links;
+    const open = foldOpen(group);
+    return `<div class="nav-fold ${open ? 'open' : ''}" data-fold="${group}">
+      <button type="button" class="nav-parent" aria-expanded="${open}" data-fold-toggle="${group}">
+        <span>${esc(t(`nav.group.${group}`))}</span>
+        <span class="nav-chevron" aria-hidden="true"></span>
+      </button>
+      <div class="nav-children"><div>${links}</div></div>
+    </div>`;
   }).join('');
 }
 
-/** Fold or unfold a menu group, and remember it on this device. */
+/**
+ * Draw the menu to fit. First with every section as it was left; if that does not fit
+ * the sidebar, again with one section open at a time. A phone's menu is a drawer that
+ * scrolls, so it keeps every section as it was left.
+ */
+function layoutNav() {
+  const nav = document.querySelector('nav.nav');
+  if (!nav) return;
+  const draw = () => {
+    nav.innerHTML = navHtml();
+    nav.querySelectorAll('[data-route]').forEach((a) => a.classList.toggle('active', a.dataset.route === currentRoute));
+    nav.querySelectorAll('.nav-fold').forEach((f) => f.classList.toggle('has-active', !!f.querySelector(`[data-route="${currentRoute}"]`)));
+  };
+  oneAtATime = false;
+  draw();
+  if (window.innerWidth > 900 && nav.scrollHeight > nav.clientHeight + 1) {
+    oneAtATime = true;
+    draw();
+  }
+  nav.classList.toggle('one-at-a-time', oneAtATime);
+  paintRestockBadge();
+}
+
+/** Fold or unfold a section. Remembered on this device; on a short screen, one at a time instead. */
 function setFold(fold, open) {
-  fold.classList.toggle('open', open);
-  fold.querySelector('[data-fold-toggle]').setAttribute('aria-expanded', String(open));
+  const apply = (f, on) => {
+    f.classList.toggle('open', on);
+    f.querySelector('[data-fold-toggle]').setAttribute('aria-expanded', String(on));
+  };
+  apply(fold, open);
+  if (oneAtATime) {
+    if (open) {
+      shortOpen = fold.dataset.fold;
+      document.querySelectorAll('.nav-fold').forEach((f) => f !== fold && apply(f, false));
+    }
+    return;
+  }
   try {
     localStorage.setItem(FOLD_KEY(fold.dataset.fold), open ? '1' : '0');
   } catch {
@@ -396,12 +451,18 @@ function renderShell() {
       setFold(fold, !fold.classList.contains('open'));
     }
   });
-  // A setting can add or remove a screen (shifts), so the menu is drawn again.
+  layoutNav();
+  // The window's size decides whether every section fits open.
+  let resizing = 0;
+  window.onresize = () => {
+    clearTimeout(resizing);
+    resizing = setTimeout(layoutNav, 120);
+  };
+  // A setting can add or remove a screen (shifts) or the rate box, so the menu is drawn again.
   window.addEventListener('absoft:settings', () => {
     paintPrintFrame();
-    nav.innerHTML = navHtml();
-    nav.querySelectorAll('[data-route]').forEach((a) => a.classList.toggle('active', a.dataset.route === currentRoute));
-    paintRestockBadge();
+    paintRateBox();
+    layoutNav();
   });
 }
 
@@ -634,7 +695,11 @@ function paintRateBox(editing = false) {
 
 // Keep the box in step with rate changes made anywhere (settings page, another till).
 onRateChange(() => {
-  if (!document.querySelector('#rate-form')) paintRateBox(false);
+  if (document.querySelector('#rate-form')) return;
+  const shown = !document.getElementById('rate-box')?.hidden;
+  paintRateBox(false);
+  // The box coming or going changes how much room the menu has.
+  if (shown !== !document.getElementById('rate-box')?.hidden) layoutNav();
 });
 
 function startApp() {
