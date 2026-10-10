@@ -262,9 +262,22 @@ export function readFields(root, fields) {
       data[f.name] = barcodeValues(el.closest('.barcodes-field'));
       continue;
     }
+    if (f.type === 'prices') {
+      data[f.name] = priceValues(el.closest('.prices-field'));
+      continue;
+    }
     data[f.name] = f.type === 'checkbox' ? el.checked : f.type === 'number' ? Number(el.value) : el.value.trim();
   }
   return data;
+}
+
+/** What was typed against each price list: { listId: price }, blanks included. */
+export function priceValues(field) {
+  const out = {};
+  field?.querySelectorAll('[data-price-list]').forEach((input) => {
+    out[input.dataset.priceList] = input.value.trim();
+  });
+  return out;
 }
 
 export const renderFields = (fields) => fields.map(fieldHtml).join('');
@@ -329,6 +342,28 @@ function fieldHtml(f) {
         </div>
       </div>
       <input type="hidden" name="${f.name}" value="${esc(JSON.stringify(codes))}"/>
+      ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
+    </div>`;
+  }
+  if (f.type === 'prices') {
+    // One row per price list the shop keeps. An empty box means this product is
+    // sold on that list at its own price.
+    const lists = f.lists || [];
+    const values = f.value && typeof f.value === 'object' ? f.value : {};
+    return `<div class="field ${span} prices-field">
+      <label>${esc(f.label)}</label>
+      <div class="prices-box"><table class="data prices-table"><tbody>
+        ${lists
+          .map(
+            (l) => `<tr>
+              <td><div class="cell-title">${esc(l.name)}</div>${l.sub ? `<div class="cell-sub">${esc(l.sub)}</div>` : ''}</td>
+              <td class="right"><input class="input" type="number" step="0.01" min="0" data-price-list="${l.id}"
+                value="${values[l.id] ?? ''}" placeholder="${esc(f.placeholder || '')}" aria-label="${esc(l.name)}"/></td>
+            </tr>`,
+          )
+          .join('')}
+      </tbody></table></div>
+      <input type="hidden" name="${f.name}" value=""/>
       ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
     </div>`;
   }

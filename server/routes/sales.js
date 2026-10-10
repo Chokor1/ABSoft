@@ -5,6 +5,7 @@ import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str, today
 import { secondCurrency, toBase, toSecond } from '../currency.js';
 import { applyAverageCost } from '../costing.js';
 import { openShift, shiftsEnabled } from './shifts.js';
+import { priceListId } from './price-lists.js';
 
 /**
  * What was handed over, as { currency: '' | 'second', amount, amount2, base } entries.
@@ -215,8 +216,8 @@ export function register(router) {
       const docNo = str(ctx.body.doc_no) || nextDocNo(db, 'sales', 'INV');
       const res = db
         .prepare(
-          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2, shift_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2, shift_id, price_list_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           docNo,
@@ -233,6 +234,7 @@ export function register(router) {
           ctx.user.id,
           second ? second.rate : null,
           shift?.id ?? null,
+          priceListId(ctx.body.price_list_id),
         );
       const saleId = lastId(res);
 

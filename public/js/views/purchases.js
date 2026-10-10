@@ -357,6 +357,11 @@ async function renderForm(root, ctx, editId = null) {
     }
   }
 
+  // The prices this purchase can be made at: the shop's own costs, or a
+  // supplier's agreed list. One list only, and the field never appears.
+  const priceLists = await api.priceLists({ use: 'buy' }).catch(() => []);
+  const hasLists = priceLists.length > 1;
+
   // Only a count, to refuse an empty catalogue. Lines are searched, not preloaded.
   if (!(await api.products({ limit: 1 })).length) {
     toast(t('buy.need_product'), 'warn');
@@ -411,11 +416,23 @@ async function renderForm(root, ctx, editId = null) {
           <div class="sub">${esc(editing ? t('buy.edit_sub') : t('buy.sub'))}</div></div>
       </div>
       <div class="card-body">
-        <div class="form-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="form-grid" style="grid-template-columns:repeat(${hasLists ? 4 : 3},minmax(0,1fr))">
           <div class="field"><label>${esc(t('common.supplier'))}</label>
             <div class="combo"><input class="input" name="supplier" data-names="supplier" placeholder="${esc(
               t('buy.supplier_placeholder'),
             )}" value="${esc(editing?.supplier || '')}" autocomplete="off"/></div></div>
+          ${
+            hasLists
+              ? `<div class="field"><label>${esc(t('price.list'))}</label>
+                  <select class="select" name="price_list_id">${priceLists
+                    .map(
+                      (l) => `<option value="${l.is_default ? '' : l.id}" ${
+                        editing?.price_list_id === l.id ? 'selected' : ''
+                      }>${esc(l.name)}</option>`,
+                    )
+                    .join('')}</select></div>`
+              : ''
+          }
           <div class="field"><label>${esc(t('common.date'))}</label>
             <input class="input" type="date" name="date" value="${editing?.date || todayISO()}"/></div>
           <div class="field"><label>${esc(t('buy.ref'))}</label>
@@ -443,7 +460,40 @@ async function renderForm(root, ctx, editId = null) {
     </form>`;
 
   const form = root.querySelector('#purchase-form');
+  const listField = form.price_list_id || null;
   const dropSupplier = wireNamePickers(form);
+
+  /** What a product costs on the chosen list, or what it last cost. */
+  const costOf = (p) => (p.list_price === null || p.list_price === undefined ? Number(p.cost) || 0 : Number(p.list_price));
+
+  if (listField) {
+    // Changing the list re-costs every line the buyer has not typed over.
+    listField.addEventListener('change', async () => {
+      const untouched = lines.filter((l) => l.product_id && !l.touchedCost);
+      if (!untouched.length) return; // nothing typed in yet: leave the form alone
+      const rows = await api
+        .products({ ids: untouched.map((l) => l.product_id).join(','), price_list: listField.value || '' })
+        .catch(() => []);
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      for (const line of untouched) {
+        const row = byId.get(line.product_id);
+        if (row) line.unit_cost = costOf(row);
+      }
+      redraw();
+    });
+    // A supplier who sells at a list of their own brings it with them.
+    form.supplier.addEventListener('change', async () => {
+      const name = form.supplier.value.trim();
+      if (!name) return;
+      const rows = await api.entities('supplier', { search: name, all: '1' }).catch(() => []);
+      const party = (rows.rows || rows).find?.((e) => e.name.toLowerCase() === name.toLowerCase());
+      if (!party?.price_list_id || Number(listField.value) === party.price_list_id) return;
+      if (![...listField.options].some((o) => o.value === String(party.price_list_id))) return;
+      listField.value = String(party.price_list_id);
+      listField.dispatchEvent(new Event('change'));
+      toast(t('price.party_picked', { name: listField.selectedOptions[0].textContent }), 'info');
+    });
+  }
   const linesEl = root.querySelector('#lines');
 
   // The line table is re-rendered on every add, remove and pick, so the pickers
@@ -478,15 +528,16 @@ async function renderForm(root, ctx, editId = null) {
       const line = lines[+input.dataset.product];
       pickers.push(
         attachPicker(input, {
-          search: (q) => api.products({ search: q, limit: 25 }),
+          search: (q) => api.products({ search: q, limit: 25, price_list: listField?.value || '' }),
           render: productOption,
           emptyText: t('buy.no_product_match'),
           onPick: (p) => {
             line.product_id = p.id;
             line.name = p.name;
             line.barcode = p.barcode || '';
-            // Default to what it last cost, unless the buyer already typed a price.
-            if (!line.touchedCost) line.unit_cost = Number(p.cost) || 0;
+            // What this supplier's list charges, or what it last cost, unless the
+            // buyer has already typed a price of their own.
+            if (!line.touchedCost) line.unit_cost = costOf(p);
             redraw();
             // Keep the flow moving: land on the quantity for the line just filled.
             linesEl.querySelector(`[data-qty="${input.dataset.product}"]`)?.focus();
@@ -532,6 +583,7 @@ async function renderForm(root, ctx, editId = null) {
       supplier: form.supplier.value.trim(),
       date: form.date.value,
       note: form.note.value.trim(),
+      price_list_id: listField?.value ? Number(listField.value) : null,
       items: valid.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_cost: l.unit_cost })),
     };
     try {

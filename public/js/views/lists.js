@@ -278,6 +278,13 @@ async function renderForm(root, ctx, kind, id) {
   const isNew = !entry;
   const showContact = KINDS.find((k) => k.kind === kind)?.contact;
   const showIcon = KINDS.find((k) => k.kind === kind)?.icon;
+  // A customer is served, and a supplier sells, at a price list of their own.
+  const lists = showContact
+    ? await api
+        .priceLists({ use: kind === 'supplier' ? 'buy' : 'sell' })
+        .then((rows) => rows.filter((l) => l.active))
+        .catch(() => [])
+    : [];
   const one = t(`lists.one.${kind}`);
   // Editing a customer or supplier returns to their page.
   const back = () => ctx.navigate(entry && PARTY_TABS[kind] ? `${home(kind)}/${entry.id}` : `${home(kind)}`);
@@ -321,6 +328,23 @@ async function renderForm(root, ctx, kind, id) {
                   <input type="hidden" name="icon" value="${esc(entry?.icon || 'coins')}"/>
                 </div>
                 <div class="help">${esc(t('lists.logo_help'))}</div>`,
+            },
+          ]
+        : []),
+      ...(showContact && lists.length > 1
+        ? [
+            {
+              name: 'price_list_id',
+              label: t('price.party_list'),
+              type: 'select',
+              span: 2,
+              value: entry?.price_list_id ?? '',
+              // An empty choice is the shop's own prices.
+              options: [
+                { value: '', label: t('price.party_default') },
+                ...lists.filter((l) => !l.is_default).map((l) => ({ value: l.id, label: l.name })),
+              ],
+              help: t('price.party_help'),
             },
           ]
         : []),

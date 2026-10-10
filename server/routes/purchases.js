@@ -3,6 +3,7 @@ import { db, lastId, transact } from '../db.js';
 import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
 import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
+import { priceListId } from './price-lists.js';
 
 const LIST_SQL = `
   SELECT pu.*, u.username,
@@ -191,9 +192,10 @@ export function register(router) {
       const docNo = str(ctx.body.doc_no) || nextDocNo(db, 'purchases', 'PO');
       const res = db
         .prepare(
-          `INSERT INTO purchases (doc_no, supplier, date, total, note, user_id) VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO purchases (doc_no, supplier, date, total, note, user_id, price_list_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(docNo, supplier, date, total, str(ctx.body.note), ctx.user.id);
+        .run(docNo, supplier, date, total, str(ctx.body.note), ctx.user.id, priceListId(ctx.body.price_list_id));
       const purchaseId = lastId(res);
       receiveLines(purchaseId, docNo, supplier, date, nowTime(), prepared, ctx.user.id);
       writeLog({ id: purchaseId, doc_no: docNo }, 'created', { total, lines: prepared.length }, '', ctx.user.id);

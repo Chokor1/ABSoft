@@ -51,8 +51,10 @@ export async function render(root, ctx) {
 }
 
 /** The editable fields of a product, shared by the new-product page and the details tab. */
-function productFields(product) {
+function productFields(product, lists = []) {
   const isNew = !product;
+  // What this product is already priced at on each list, by list id.
+  const priced = Object.fromEntries((product?.prices || []).map((p) => [p.list_id, p.price]));
   return [
     { name: 'name', label: t('prod.name'), required: true, span: 2, value: product?.name, autofocus: isNew },
     {
@@ -76,12 +78,42 @@ function productFields(product) {
     },
     { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
     { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
+    ...(lists.length
+      ? [
+          {
+            name: 'prices',
+            label: t('prod.other_prices'),
+            type: 'prices',
+            span: 2,
+            lists,
+            value: priced,
+            placeholder: t('prod.price_same'),
+            help: t('prod.other_prices_help'),
+          },
+        ]
+      : []),
     { name: 'unit', label: t('common.unit'), value: product?.unit || 'pcs', placeholder: t('prod.unit_placeholder'), names: 'unit' },
     { name: 'min_stock', label: t('prod.min_stock'), type: 'number', step: 'any', min: 0, value: product?.min_stock ?? 0 },
     ...(isNew
       ? [{ name: 'opening_stock', label: t('prod.opening'), type: 'number', step: 'any', min: 0, value: 0, span: 2, help: t('prod.opening_help') }]
       : [{ name: 'active', label: t('prod.active'), type: 'checkbox', value: !!product.active, span: 2 }]),
   ];
+}
+
+/**
+ * The lists a product can carry a price for: every list the shop keeps except
+ * the default, whose price is the product's own. A shop with no second list
+ * never sees the table at all.
+ */
+async function otherLists() {
+  try {
+    const lists = await api.priceLists();
+    return lists
+      .filter((l) => !l.is_default && l.active)
+      .map((l) => ({ id: l.id, name: l.name, sub: t(`price.use.${l.use_for}`) }));
+  } catch {
+    return [];
+  }
 }
 
 /** The main barcode and the others, as the server takes them. */
@@ -369,11 +401,12 @@ async function renderList(root, ctx, { stock = '' } = {}) {
 
 async function renderForm(root, ctx) {
   const back = () => ctx.navigate('products');
+  const lists = await otherLists();
   formPage(root, {
     title: t('prod.new'),
     subtitle: t('prod.new_sub'),
     submitLabel: t('prod.create'),
-    fields: productFields(null),
+    fields: productFields(null, lists),
     onCancel: back,
     onSubmit: async (data) => {
       try {
@@ -403,6 +436,8 @@ async function renderDetail(root, ctx, id, initialTab) {
     toast(errorText(err), 'error');
     return ctx.navigate('products');
   }
+  // The shop's other price lists, so this product can be priced on them.
+  const lists = await otherLists();
   const state = { tab: TABS.includes(initialTab) ? initialTab : 'details', from: shiftDays(todayISO(), -29), to: todayISO() };
   let dropPickers = () => {};
 
@@ -475,7 +510,7 @@ async function renderDetail(root, ctx, id, initialTab) {
   function tabDetails() {
     // Laid out to fill the grid: the editable fields, what the product holds
     // (read only), then the active switch.
-    const fields = productFields(product).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
+    const fields = productFields(product, lists).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
     const editable = fields.filter((f) => f.name !== 'active');
     const active = fields.filter((f) => f.name === 'active');
     const readOnly = (label, value) =>

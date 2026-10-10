@@ -6,6 +6,7 @@ import { dateRange, ean13Check, money, num, pageParams, pageResult, qty, require
 // After the browser has shrunk it; a phone photo straight off the camera is refused.
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 import { createAdjustment, writeAdjustment } from './adjustments.js';
+import { getList, pricesOf, setPrices } from './price-lists.js';
 
 
 const SELECT_PRODUCT = `
@@ -24,6 +25,29 @@ const shape = (row) => {
   const { barcodes_json, ...rest } = row;
   return { ...rest, barcodes: JSON.parse(barcodes_json || '[]') };
 };
+
+/**
+ * `?price_list=<id>` adds `list_price` to each row: what this product costs on
+ * that list, or null where the list does not name it (the caller then falls back
+ * to the product's own price or cost). The default list names nothing, because
+ * its prices are the products' own.
+ */
+function withListPrice(rows, listId) {
+  const list = listId ? getList(listId) : null;
+  if (!list || list.is_default) return rows;
+  const ids = rows.map((r) => r.id).filter(Boolean);
+  if (!ids.length) return rows;
+  const priced = new Map(
+    db
+      .prepare(
+        `SELECT product_id, price FROM product_prices
+         WHERE list_id = ? AND product_id IN (${ids.map(() => '?').join(',')})`,
+      )
+      .all(list.id, ...ids)
+      .map((r) => [r.product_id, num(r.price)]),
+  );
+  return rows.map((r) => ({ ...r, list_price: priced.has(r.id) ? priced.get(r.id) : null }));
+}
 
 export const getProduct = (id) => shape(db.prepare(`${SELECT_PRODUCT} WHERE p.id = ?`).get(id));
 
@@ -158,6 +182,14 @@ export function register(router) {
       args.push(like, like, like, like, like);
     }
     if (lowStock) where.push('COALESCE(s.stock, 0) <= p.min_stock');
+    // A document re-pricing its lines asks for exactly those products.
+    const ids = str(ctx.query.ids)
+      .split(',')
+      .map((v) => Number(v))
+      .filter((v) => Number.isInteger(v) && v > 0)
+      .slice(0, 200);
+    if (ids.length) where.push(`p.id IN (${ids.map(() => '?').join(',')})`);
+    if (ids.length) args.push(...ids);
     if (str(ctx.query.category)) (where.push('p.category = ? COLLATE NOCASE'), args.push(str(ctx.query.category)));
     // What is on the shelf: running low, none left, or some in hand.
     const stock = str(ctx.query.stock);
@@ -183,10 +215,13 @@ export function register(router) {
       const total = db
         .prepare(`SELECT COUNT(*) AS n FROM products p LEFT JOIN product_stock s ON s.product_id = p.id ${clause}`)
         .get(...args).n;
-      const rows = db
-        .prepare(`${SELECT_PRODUCT} ${clause} ${order} LIMIT ? OFFSET ?`)
-        .all(...args, ...orderArgs, paging.per, paging.offset)
-        .map(shape);
+      const rows = withListPrice(
+        db
+          .prepare(`${SELECT_PRODUCT} ${clause} ${order} LIMIT ? OFFSET ?`)
+          .all(...args, ...orderArgs, paging.per, paging.offset)
+          .map(shape),
+        str(ctx.query.price_list),
+      );
       // The figure above the list covers everything that matches, not this page.
       const sums = db
         .prepare(
@@ -204,7 +239,7 @@ export function register(router) {
     const limitSql = limit > 0 ? `LIMIT ${Math.min(200, limit)}${offset ? ` OFFSET ${offset}` : ''}` : '';
     // The till opens on what sells: most sold over the last 30 days first.
     if (ctx.query.sort === 'popular') {
-      return db
+      const popular = db
         .prepare(
           `${SELECT_PRODUCT}
            LEFT JOIN (SELECT i.product_id, SUM(i.qty) AS sold FROM sale_items i JOIN sales sx ON sx.id = i.sale_id
@@ -213,11 +248,13 @@ export function register(router) {
         )
         .all(shiftDays(today(), -29), ...args)
         .map(shape);
+      return withListPrice(popular, str(ctx.query.price_list));
     }
-    return db
+    const rows = db
       .prepare(`${SELECT_PRODUCT} ${clause} ${order} ${limitSql}`)
       .all(...args, ...orderArgs)
       .map(shape);
+    return withListPrice(rows, str(ctx.query.price_list));
   });
 
   // Barcode scanner endpoint.
@@ -236,7 +273,7 @@ export function register(router) {
         )
         .get(code, code) || db.prepare(`${SELECT_PRODUCT} WHERE p.name = ? COLLATE NOCASE AND p.active = 1`).get(code),
     );
-    if (found) return found;
+    if (found) return withListPrice([found], str(ctx.query.price_list))[0];
     // Not a product's own code: perhaps a label from the scale.
     const weighed = scaleLookup(code);
     if (weighed) return weighed;
@@ -260,7 +297,7 @@ export function register(router) {
          WHERE i.product_id = ? AND s.date >= ?`,
       )
       .get(product.id, shiftDays(today(), -29));
-    return { ...product, sold_30: qty(recent.qty), revenue_30: money(recent.revenue), history };
+    return { ...product, prices: pricesOf(product.id), sold_30: qty(recent.qty), revenue_30: money(recent.revenue), history };
   });
 
   /** How a product sold over a period: totals, a day-by-day series and every line. */
@@ -381,6 +418,7 @@ export function register(router) {
         );
       const id = lastId(res);
       setBarcodes(id, extra);
+      setPrices(id, ctx.body.prices);
 
       // Stock already on hand is recorded as an opening stock adjustment.
       if (opening > 0) {
@@ -514,6 +552,7 @@ export function register(router) {
         existing.id,
       );
       setBarcodes(existing.id, extra);
+      if (ctx.body.prices !== undefined) setPrices(existing.id, ctx.body.prices);
     });
     rememberAll([
       ['category', merged.category],
@@ -569,6 +608,10 @@ export function register(router) {
       for (const table of ['sale_items', 'purchase_items', 'adjustment_items', 'stock_moves']) {
         db.prepare(`UPDATE ${table} SET product_id = ? WHERE product_id = ?`).run(into.id, from.id);
       }
+      // A price the merged product carried on a list goes with it, but never over
+      // a price the surviving product already has on that list.
+      db.prepare(`UPDATE OR IGNORE product_prices SET product_id = ? WHERE product_id = ?`).run(into.id, from.id);
+      db.prepare(`DELETE FROM product_prices WHERE product_id = ?`).run(from.id);
       // Its codes keep scanning, now ringing up the product they were merged into:
       // the extra ones simply change hands, and its main code joins them.
       db.prepare(`UPDATE OR IGNORE product_barcodes SET product_id = ? WHERE product_id = ?`).run(into.id, from.id);

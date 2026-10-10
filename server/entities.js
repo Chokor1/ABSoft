@@ -141,6 +141,8 @@ function readPayload(body) {
     email: str(body.email),
     address: str(body.address),
     tax_id: str(body.tax_id),
+    // The price list this customer is served at, or this supplier sells at.
+    price_list_id: body.price_list_id === '' || body.price_list_id === null ? null : Number(body.price_list_id) || null,
     note: str(body.note),
     active: body.active === false ? 0 : 1,
   };
@@ -153,10 +155,10 @@ export function createEntity(kind, body) {
   if (clash) throw badRequest(`"${data.name}" is already in this list`, 'ENTITY_EXISTS', { name: data.name });
   const res = db
     .prepare(
-      `INSERT INTO entities (kind, name, phone, email, address, tax_id, note, active, icon)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO entities (kind, name, phone, email, address, tax_id, note, active, icon, price_list_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(kind, data.name, data.phone, data.email, data.address, data.tax_id, data.note, data.active, data.icon);
+    .run(kind, data.name, data.phone, data.email, data.address, data.tax_id, data.note, data.active, data.icon, data.price_list_id);
   return getEntity(lastId(res));
 }
 
@@ -186,9 +188,9 @@ export function updateEntity(id, body) {
   }
 
   db.prepare(
-    `UPDATE entities SET name = ?, phone = ?, email = ?, address = ?, tax_id = ?, note = ?, active = ?, icon = ?
+    `UPDATE entities SET name = ?, phone = ?, email = ?, address = ?, tax_id = ?, note = ?, active = ?, icon = ?, price_list_id = ?
      WHERE id = ?`,
-  ).run(data.name, data.phone, data.email, data.address, data.tax_id, data.note, data.active, data.icon, existing.id);
+  ).run(data.name, data.phone, data.email, data.address, data.tax_id, data.note, data.active, data.icon, data.price_list_id, existing.id);
   return getEntity(existing.id);
 }
 

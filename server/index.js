@@ -26,6 +26,7 @@ import { register as registerSystem } from './routes/system.js';
 import { register as registerEntities } from './routes/entities.js';
 import { register as registerAdjustments } from './routes/adjustments.js';
 import { register as registerShifts } from './routes/shifts.js';
+import { register as registerPriceLists } from './routes/price-lists.js';
 import { register as registerHeld } from './routes/held.js';
 import { startAutoBackups } from './autobackup.js';
 
@@ -71,6 +72,7 @@ registerSystem(router);
 registerEntities(router);
 registerAdjustments(router);
 registerShifts(router);
+registerPriceLists(router);
 registerHeld(router);
 
 /* -------------------------------------------------------------- server ---- */
@@ -105,6 +107,8 @@ const CASHIER_ROUTES = new Set([
   'GET /api/system',
   'POST /api/me/password',
   // A cashier opens and closes the shift they work.
+  // The till shows prices, so it must be able to read the lists.
+  'GET /api/price-lists',
   'GET /api/shifts/current',
   'POST /api/shifts/open',
   'POST /api/shifts/:id/close',

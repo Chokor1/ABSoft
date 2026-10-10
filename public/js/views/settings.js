@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { playSaleChime, setSoundEnabled, setTileImages, soundEnabled, tileImagesEnabled } from '../feedback.js';
 import { icon } from '../icons.js';
 import { LANGUAGES, errorText, lang, t } from '../i18n.js';
-import { dateTimeText, esc, money, number, shrinkImage, store, toast } from '../ui.js';
+import { confirmDialog, dateTimeText, esc, formModal, money, number, shrinkImage, store, toast } from '../ui.js';
 import { renderKind } from './lists.js';
 import { applySettings, money2 } from '../currency.js';
 
@@ -23,6 +23,8 @@ const SECTIONS = [
   { key: 'currency', icon: 'coins' },
   // How people pay: the list the till's payment dialog offers.
   { key: 'payments', icon: 'card', admin: true },
+  // The prices the shop sells and buys at: retail, جملة, a supplier's own.
+  { key: 'prices', icon: 'tag', admin: true },
   { key: 'language', icon: 'globe' },
   { key: 'backup', icon: 'database', admin: true },
   { key: 'about', icon: 'info' },
@@ -284,6 +286,16 @@ export async function render(root, ctx) {
     // Filled in below by the same list that customers and suppliers use.
     payments: () => `<div id="payments-list"></div>`,
 
+    prices: () => `
+      <div class="card">
+        <div class="card-head">
+          <div><h3>${esc(t('price.title'))}</h3><div class="sub">${esc(t('price.sub'))}</div></div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary btn-sm" id="list-new">${icon('plus')} ${esc(t('price.new'))}</button>
+        </div>
+        <div class="card-body flush"><div id="price-lists"></div></div>
+      </div>`,
+
     about: () => `
       <div class="card">
         <div class="card-head"><div><h3>${esc(t('set.about'))}</h3></div></div>
@@ -332,6 +344,100 @@ export async function render(root, ctx) {
     if (btn && btn.dataset.section !== active) ctx.navigate(`settings/${btn.dataset.section}`);
   });
   root.innerHTML = `<div class="set-panel" id="set-panel">${panels[active]()}</div>`;
+  if (active === 'prices') {
+    const box = root.querySelector('#price-lists');
+    /** Every list the shop keeps, the default first. */
+    const load = async () => {
+      const lists = await api.priceLists();
+      box.innerHTML = `<div class="table-wrap"><table class="data" id="price-list-table">
+        <thead><tr><th>${esc(t('price.name'))}</th><th>${esc(t('price.used_for'))}</th>
+          <th class="right">${esc(t('price.priced'))}</th><th></th></tr></thead>
+        <tbody>${lists
+          .map(
+            (l) => `<tr data-list="${l.id}" class="${l.active ? '' : 'row-off'}">
+              <td><div class="cell-title">${esc(l.name)}</div>
+                ${l.is_default ? `<div class="cell-sub">${esc(t('price.default_sub'))}</div>` : ''}
+                ${l.note ? `<div class="cell-sub">${esc(l.note)}</div>` : ''}</td>
+              <td>${esc(t(`price.use.${l.use_for}`))}${
+                l.active ? '' : ` · <span class="muted">${esc(t('price.not_in_use'))}</span>`
+              }</td>
+              <td class="right">${l.is_default ? '<span class="muted">—</span>' : esc(t('price.priced_n', { n: l.priced }))}</td>
+              <td class="right">
+                <button class="btn btn-ghost btn-icon btn-sm" data-edit title="${esc(t('common.edit'))}">${icon('edit')}</button>
+                ${
+                  l.is_default
+                    ? ''
+                    : `<button class="btn btn-ghost btn-icon btn-sm" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>`
+                }
+              </td>
+            </tr>`,
+          )
+          .join('')}</tbody>
+      </table></div>`;
+      box.querySelectorAll('[data-edit]').forEach((b) =>
+        b.addEventListener('click', () => editList(lists.find((l) => l.id === Number(b.closest('[data-list]').dataset.list)))),
+      );
+      box.querySelectorAll('[data-del]').forEach((b) =>
+        b.addEventListener('click', () => removeList(lists.find((l) => l.id === Number(b.closest('[data-list]').dataset.list)))),
+      );
+    };
+
+    /** Make a list, or change one. The default list keeps its name only. */
+    async function editList(list) {
+      const isNew = !list;
+      const data = await formModal({
+        title: isNew ? t('price.new') : t('price.edit', { name: list.name }),
+        subtitle: list?.is_default ? t('price.default_sub') : t('price.form_sub'),
+        submitLabel: t('common.save'),
+        fields: [
+          { name: 'name', label: t('price.name'), required: true, span: 2, value: list?.name || '', autofocus: true },
+          ...(list?.is_default
+            ? []
+            : [
+                {
+                  name: 'use_for',
+                  label: t('price.used_for'),
+                  type: 'select',
+                  value: list?.use_for || 'sell',
+                  options: ['sell', 'buy', 'both'].map((v) => ({ value: v, label: t(`price.use.${v}`) })),
+                },
+                { name: 'active', label: t('price.in_use'), type: 'checkbox', value: list ? !!list.active : true },
+              ]),
+          { name: 'note', label: t('common.note'), span: 2, value: list?.note || '' },
+        ],
+      });
+      if (!data) return;
+      try {
+        await api.savePriceList({ ...data, id: list?.id });
+        toast(isNew ? t('price.created') : t('price.saved'), 'success');
+        load();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    }
+
+    async function removeList(list) {
+      const ok = await confirmDialog({
+        title: t('price.delete_title', { name: list.name }),
+        message: t('price.delete_msg', { n: list.priced }),
+        confirmLabel: t('common.delete'),
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await api.deletePriceList(list.id);
+        toast(t('price.deleted'), 'success');
+        load();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    }
+
+    root.querySelector('#list-new').addEventListener('click', () => editList(null));
+    await load();
+    return;
+  }
+
   if (active === 'payments') {
     await renderKind(root.querySelector('#payments-list'), ctx, 'payment_method', [], { actions: 'inline' });
     return;

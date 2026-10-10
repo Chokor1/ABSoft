@@ -230,6 +230,31 @@ the lists do.
 
 ---
 
+## Price lists (retail, جملة, a supplier's own)
+
+Every shop starts with one list, **Retail**, and it is not a table you fill in: its selling price
+*is* each product's price and its buying price *is* each product's cost. A shop that never makes a
+second list sees nothing new anywhere — no extra field on a sale, none on a product.
+
+Make another under **Settings → Price lists**: give it a name (جملة, *Fares cost*…) and say whether
+it is used for **selling**, for **buying**, or for both.
+
+- **Pricing items.** Open a product: under its own price there is now a row per list. Type what
+  this item costs on that list, or leave the box empty — an empty box means the item is sold, or
+  bought, at its own price above. Nothing has to be filled in; a list can price three items out of
+  three thousand.
+- **Selling on a list.** The Sell form gains a **Price list** field beside the customer. Each line
+  takes its price from the chosen list as the item is added, and a price you type over is left
+  alone when the list changes. The sale is kept with the list it was priced at.
+- **Buying on a list.** The Buy form gains the same field, offering the lists marked for buying, and
+  fills each line's cost from the list instead of what the item last cost.
+- **A customer's own list.** A customer (and a supplier) can carry a list: choose it on their page
+  and a new document picks it up as soon as their name is typed. It can still be changed there.
+- Removing a list takes its prices with it. Documents already made keep the prices they were made
+  at — a past invoice never changes.
+
+---
+
 ## How people pay
 
 **Settings → Payment methods** is the shop's own list. **Cash** and **On account** are built in: they

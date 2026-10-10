@@ -401,6 +401,43 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Price lists: the same product sold or bought at more than one price. Every
+    // shop starts with one list, the default, whose prices are the products' own
+    // — so a shop that never makes a second list works exactly as before.
+    name: 'price-lists',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS price_lists (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          name       TEXT    NOT NULL COLLATE NOCASE UNIQUE,
+          use_for    TEXT    NOT NULL DEFAULT 'sell',
+          is_default INTEGER NOT NULL DEFAULT 0,
+          active     INTEGER NOT NULL DEFAULT 1,
+          note       TEXT    NOT NULL DEFAULT '',
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS product_prices (
+          product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          list_id    INTEGER NOT NULL REFERENCES price_lists(id) ON DELETE CASCADE,
+          price      REAL    NOT NULL DEFAULT 0,
+          PRIMARY KEY (product_id, list_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_product_prices_list ON product_prices(list_id);
+      `);
+      // The list every shop already sells at, whether it knows it or not.
+      db.prepare(
+        `INSERT INTO price_lists (name, use_for, is_default, active, note)
+         SELECT 'Retail', 'both', 1, 1, ''
+         WHERE NOT EXISTS (SELECT 1 FROM price_lists WHERE is_default = 1)`,
+      ).run();
+      // A customer or supplier can be served at a list of their own.
+      addColumn(db, 'entities', 'price_list_id', 'INTEGER');
+      // What a document was priced at, kept with it.
+      addColumn(db, 'sales', 'price_list_id', 'INTEGER');
+      addColumn(db, 'purchases', 'price_list_id', 'INTEGER');
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

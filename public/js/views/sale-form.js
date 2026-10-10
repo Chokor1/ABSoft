@@ -67,6 +67,11 @@ export async function renderSaleForm(root, ctx) {
         </table>`
       : emptyState(t('buy.no_lines'), t('sell.no_lines_sub'), 'cart');
 
+  // The prices this sale can be made at. A shop that keeps only the default list
+  // never sees the field.
+  const priceLists = await api.priceLists({ use: 'sell' }).catch(() => []);
+  const hasLists = priceLists.length > 1;
+
   root.innerHTML = `
     <form id="sale-form" class="card form-page" novalidate>
       <div class="card-head">
@@ -74,10 +79,18 @@ export async function renderSaleForm(root, ctx) {
         <div><h3>${esc(t('sell.title'))}</h3><div class="sub">${esc(t('sell.sub'))}</div></div>
       </div>
       <div class="card-body">
-        <div class="form-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="form-grid" style="grid-template-columns:repeat(${hasLists ? 4 : 3},minmax(0,1fr))">
           <div class="field"><label>${esc(t('common.customer'))}</label>
             <div class="combo"><input class="input" name="customer" data-names="customer"
               placeholder="${esc(t('common.walk_in'))}" autocomplete="off"/></div></div>
+          ${
+            hasLists
+              ? `<div class="field"><label>${esc(t('price.list'))}</label>
+                  <select class="select" name="price_list_id">${priceLists
+                    .map((l) => `<option value="${l.is_default ? '' : l.id}">${esc(l.name)}</option>`)
+                    .join('')}</select></div>`
+              : ''
+          }
           <div class="field"><label>${esc(t('common.date'))}</label>
             <input class="input" type="date" name="date" value="${todayISO()}"/></div>
           <div class="field"><label>${esc(t('common.note'))}</label>
@@ -113,7 +126,41 @@ export async function renderSaleForm(root, ctx) {
     </form>`;
 
   const form = root.querySelector('#sale-form');
+  const listField = form.price_list_id || null;
+  const listId = () => (listField?.value ? Number(listField.value) : null);
   const dropCustomer = wireNamePickers(form);
+
+  /** A product's price on the chosen list, or its own where the list is silent. */
+  const priceOf = (p) => (p.list_price === null || p.list_price === undefined ? Number(p.price) || 0 : Number(p.list_price));
+
+  if (listField) {
+    // Changing the list re-prices every line the salesperson has not typed over.
+    listField.addEventListener('change', async () => {
+      const priced = lines.filter((l) => l.product_id && !l.touchedPrice);
+      if (!priced.length) return; // nothing typed in yet: leave the form alone
+      const rows = await api
+        .products({ ids: priced.map((l) => l.product_id).join(','), price_list: listField.value || '' })
+        .catch(() => []);
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      for (const line of priced) {
+        const row = byId.get(line.product_id);
+        if (row) line.unit_price = priceOf(row);
+      }
+      redraw();
+    });
+    // A customer served at a list of their own brings it with them.
+    form.customer.addEventListener('change', async () => {
+      const name = form.customer.value.trim();
+      if (!name) return;
+      const rows = await api.entities('customer', { search: name, all: '1' }).catch(() => []);
+      const party = (rows.rows || rows).find?.((e) => e.name.toLowerCase() === name.toLowerCase());
+      if (!party?.price_list_id || Number(listField.value) === party.price_list_id) return;
+      if (![...listField.options].some((o) => o.value === String(party.price_list_id))) return;
+      listField.value = String(party.price_list_id);
+      listField.dispatchEvent(new Event('change'));
+      toast(t('price.party_picked', { name: listField.selectedOptions[0].textContent }), 'info');
+    });
+  }
   const linesEl = root.querySelector('#lines');
   const sumsEl = root.querySelector('#sums');
 
@@ -177,12 +224,12 @@ export async function renderSaleForm(root, ctx) {
       const line = lines[+input.dataset.product];
       pickers.push(
         attachPicker(input, {
-          search: (q) => api.products({ search: q, limit: 25 }),
+          search: (q) => api.products({ search: q, limit: 25, price_list: listField?.value || '' }),
           render: productOption,
           emptyText: t('buy.no_product_match'),
           onPick: (p) => {
             Object.assign(line, { product_id: p.id, name: p.name, unit: p.unit, stock: Number(p.stock) });
-            if (!line.touchedPrice) line.unit_price = Number(p.price) || 0;
+            if (!line.touchedPrice) line.unit_price = priceOf(p);
             redraw();
             linesEl.querySelector(`[data-qty="${input.dataset.product}"]`)?.focus();
           },
@@ -247,6 +294,7 @@ export async function renderSaleForm(root, ctx) {
         date: form.date.value,
         note: form.note.value.trim(),
         discount: s.discount,
+        price_list_id: listId(),
         method: form.method.value,
         paid: s.paid,
         items: valid.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_price: l.unit_price, discount: l.discount })),

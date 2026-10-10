@@ -1934,3 +1934,11 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
   }
   .receipt .r-rule { border-top: 1px dashed #96a0b0; }
 }
+
+/* A product's price on each of the shop's other price lists. */
+.prices-box { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); overflow: hidden; }
+.prices-table { background: var(--surface); }
+.prices-table td { padding: 7px 12px; font-size: 13px; vertical-align: middle; }
+.prices-table tr:last-child td { border-bottom: 0; }
+.prices-table .input { height: 34px; width: 130px; text-align: end; font-variant-numeric: tabular-nums; }
+.row-off td { opacity: 0.6; }

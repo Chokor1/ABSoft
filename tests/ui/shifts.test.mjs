@@ -54,7 +54,7 @@ await page.goto(`${BASE}#/settings`);
 await page.waitForSelector('#set-nav');
 check('the sections sit in the page header', !!(await page.$('.page-head #set-nav')));
 const sections = await page.$$eval('.set-nav-item', (as) => as.map((a) => a.dataset.section));
-check('the sections are listed down the side', sections.join() === 'store,pos,search,currency,payments,language,backup,about', sections.join());
+check('the sections are listed in the header', sections.join() === 'store,pos,search,currency,payments,prices,language,backup,about', sections.join());
 check('the first section opens by default', !!(await page.$('#settings-form')) && !(await page.$('#pos-form')));
 await page.click('.set-nav-item[data-section=pos]');
 await page.waitForSelector('#pos-form');
