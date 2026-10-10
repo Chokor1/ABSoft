@@ -123,11 +123,42 @@ check('every product is listed with its price on the list', sheet.length === 2 &
   JSON.stringify(sheet.map((p) => [p.name, p.list_price])));
 check('a list counts what it prices', (await get('/api/price-lists')).find((l) => l.id === whole.id).priced === 1);
 
+console.log('\n[what a product costs on every list, and what it used to]');
+let pricing = await get(`/api/products/${tea.id}/prices`);
+const retailRow = pricing.rows.find((r) => r.is_default);
+const wholeRow = pricing.rows.find((r) => r.id === whole.id);
+check('every list is listed, the main one first', pricing.rows[0].is_default === true && pricing.rows.length === 3,
+  JSON.stringify(pricing.rows.map((r) => r.name)));
+const live = await get(`/api/products/${tea.id}`);
+check('the main list is the product price itself, and its cost', near(retailRow.price, live.price) && near(pricing.cost, live.cost),
+  JSON.stringify({ price: retailRow.price, cost: pricing.cost, live: [live.price, live.cost] }));
+check('a list that prices it shows that price', near(wholeRow.price, 8) && wholeRow.falls_back === false);
+check('a list that does not falls back to the main price',
+  pricing.rows.find((r) => r.id === supplierList.id).falls_back === false); // this one was priced above
+
+await call('PUT', `/api/products/${tea.id}`, { prices: { [whole.id]: 7.5 } });
+await call('PUT', `/api/products/${tea.id}`, { price: 11 });
+pricing = await get(`/api/products/${tea.id}/prices`);
+check('a price change is kept: what it was and what it became',
+  pricing.history.some((h) => h.list_id === whole.id && near(h.old_price, 8) && near(h.new_price, 7.5)),
+  JSON.stringify(pricing.history.map((h) => [h.list_name, h.old_price, h.new_price])));
+check('the product\'s own price is a change on the main list',
+  pricing.history.some((h) => h.list_id === null && h.field === 'price' && near(h.old_price, 10) && near(h.new_price, 11)));
+check('and each change says who made it, newest first',
+  pricing.history[0].username === 'admin' && pricing.history[0].changed_at >= pricing.history[1].changed_at,
+  JSON.stringify(pricing.history.slice(0, 2)));
+check('first pricing a product reads as coming from nothing',
+  pricing.history.some((h) => h.list_id === whole.id && h.old_price === null && near(h.new_price, 8)));
+
 console.log('\n[taking a price back off a list]');
 await call('PUT', `/api/products/${tea.id}`, { prices: { [whole.id]: '' } });
 one = await get(`/api/products/${tea.id}`);
 check('an empty price removes it, so the product falls back to its own',
   one.prices.every((p) => p.list_id !== whole.id), JSON.stringify(one.prices));
+pricing = await get(`/api/products/${tea.id}/prices`);
+check('and the history says the price was taken off',
+  pricing.history.some((h) => h.list_id === whole.id && near(h.old_price, 7.5) && h.new_price === null));
+check('that list now falls back to the main price', pricing.rows.find((r) => r.id === whole.id).falls_back === true);
 
 console.log('\n[removing a list]');
 await call('PUT', `/api/products/${jam.id}`, { prices: { [whole.id]: 5 } });

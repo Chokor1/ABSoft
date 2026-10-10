@@ -51,10 +51,8 @@ export async function render(root, ctx) {
 }
 
 /** The editable fields of a product, shared by the new-product page and the details tab. */
-function productFields(product, lists = []) {
+function productFields(product) {
   const isNew = !product;
-  // What this product is already priced at on each list, by list id.
-  const priced = Object.fromEntries((product?.prices || []).map((p) => [p.list_id, p.price]));
   return [
     { name: 'name', label: t('prod.name'), required: true, span: 2, value: product?.name, autofocus: isNew },
     {
@@ -78,20 +76,6 @@ function productFields(product, lists = []) {
     },
     { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
     { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
-    ...(lists.length
-      ? [
-          {
-            name: 'prices',
-            label: t('prod.other_prices'),
-            type: 'prices',
-            span: 2,
-            lists,
-            value: priced,
-            placeholder: t('prod.price_same'),
-            help: t('prod.other_prices_help'),
-          },
-        ]
-      : []),
     { name: 'unit', label: t('common.unit'), value: product?.unit || 'pcs', placeholder: t('prod.unit_placeholder'), names: 'unit' },
     { name: 'min_stock', label: t('prod.min_stock'), type: 'number', step: 'any', min: 0, value: product?.min_stock ?? 0 },
     ...(isNew
@@ -100,21 +84,7 @@ function productFields(product, lists = []) {
   ];
 }
 
-/**
- * The lists a product can carry a price for: every list the shop keeps except
- * the default, whose price is the product's own. A shop with no second list
- * never sees the table at all.
- */
-async function otherLists() {
-  try {
-    const lists = await api.priceLists();
-    return lists
-      .filter((l) => !l.is_default && l.active)
-      .map((l) => ({ id: l.id, name: l.name, sub: t(`price.use.${l.use_for}`) }));
-  } catch {
-    return [];
-  }
-}
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /** The main barcode and the others, as the server takes them. */
 const withBarcodes = (data) => {
@@ -401,12 +371,11 @@ async function renderList(root, ctx, { stock = '' } = {}) {
 
 async function renderForm(root, ctx) {
   const back = () => ctx.navigate('products');
-  const lists = await otherLists();
   formPage(root, {
     title: t('prod.new'),
     subtitle: t('prod.new_sub'),
     submitLabel: t('prod.create'),
-    fields: productFields(null, lists),
+    fields: productFields(null),
     onCancel: back,
     onSubmit: async (data) => {
       try {
@@ -425,7 +394,7 @@ async function renderForm(root, ctx) {
 
 /* ----------------------------------------------------------- detail page -- */
 
-const TABS = ['details', 'overview', 'movements', 'sales', 'purchases'];
+const TABS = ['details', 'pricing', 'overview', 'movements', 'sales', 'purchases'];
 
 async function renderDetail(root, ctx, id, initialTab) {
   const admin = store.user?.role === 'admin';
@@ -436,8 +405,6 @@ async function renderDetail(root, ctx, id, initialTab) {
     toast(errorText(err), 'error');
     return ctx.navigate('products');
   }
-  // The shop's other price lists, so this product can be priced on them.
-  const lists = await otherLists();
   const state = { tab: TABS.includes(initialTab) ? initialTab : 'details', from: shiftDays(todayISO(), -29), to: todayISO() };
   let dropPickers = () => {};
 
@@ -503,14 +470,16 @@ async function renderDetail(root, ctx, id, initialTab) {
     dropPickers = () => {};
     hero.querySelectorAll('#tabs [data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(t('common.loading'))}</p></div></div></div>`;
-    ({ details: tabDetails, overview: tabOverview, movements: tabMovements, sales: tabSales, purchases: tabPurchases })[state.tab]();
+    ({ details: tabDetails, pricing: tabPricing, overview: tabOverview, movements: tabMovements, sales: tabSales, purchases: tabPurchases })[
+      state.tab
+    ]();
   }
 
   /* Details: the picture, with the product's properties beside and under it. */
   function tabDetails() {
     // Laid out to fill the grid: the editable fields, what the product holds
     // (read only), then the active switch.
-    const fields = productFields(product, lists).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
+    const fields = productFields(product).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
     const editable = fields.filter((f) => f.name !== 'active');
     const active = fields.filter((f) => f.name === 'active');
     const readOnly = (label, value) =>
@@ -598,6 +567,116 @@ async function renderDetail(root, ctx, id, initialTab) {
       toast(t('prod.image_removed'), 'success');
       paintHero();
       tabDetails();
+    });
+  }
+
+  /**
+   * Pricing: what this product sells and is bought for on every list the shop
+   * keeps, and every change those prices have been through.
+   */
+  async function tabPricing() {
+    const data = await api.productPrices(id).catch(() => null);
+    if (state.tab !== 'pricing') return;
+    if (!data) {
+      body.innerHTML = `<div class="card"><div class="card-body">${emptyState(t('common.page_error'), '', 'tag')}</div></div>`;
+      return;
+    }
+    const buys = (l) => l.use_for === 'buy';
+    const row = (l) => `
+      <tr data-row="${l.id}">
+        <td>
+          <div class="cell-title"><span class="pl-name">${esc(l.name)}</span>${
+            l.is_default ? ` <span class="badge">${esc(t('price.main'))}</span>` : ''
+          }${l.active ? '' : ` <span class="badge">${esc(t('price.not_in_use'))}</span>`}</div>
+          <div class="cell-sub">${esc(t(`price.use.${l.use_for}`))}</div>
+        </td>
+        <td class="right">
+          <input class="input price-input" type="number" step="0.01" min="0" data-price-list="${l.id}"
+                 value="${l.price === null ? '' : l.price}" placeholder="${esc(
+                   l.is_default ? '' : buys(l) ? money(data.cost) : money(product.price),
+                 )}" aria-label="${esc(l.name)}" ${admin ? '' : 'disabled'}/>
+        </td>
+        <td class="right prices-foot">${
+          l.falls_back
+            ? `<span class="muted">${esc(buys(l) ? t('price.falls_back_cost') : t('price.falls_back'))}</span>`
+            : second()
+              ? money2Html(l.price)
+              : ''
+        }</td>
+      </tr>`;
+
+    body.innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div><h3>${esc(t('price.on_lists'))}</h3><div class="sub">${esc(t('price.on_lists_sub'))}</div></div>
+        </div>
+        <div class="card-body flush">
+          <div class="table-wrap"><table class="data" id="pricing-table">
+            <thead><tr><th>${esc(t('price.list'))}</th><th class="right">${esc(t('common.price'))}</th><th></th></tr></thead>
+            <tbody>${data.rows.map(row).join('')}</tbody>
+          </table></div>
+        </div>
+        ${
+          admin
+            ? `<div class="card-head set-foot"><div class="help">${esc(t('price.tab_help'))}</div><div class="spacer"></div>
+                 <button class="btn btn-primary" id="save-prices">${icon('check')} ${esc(t('common.save'))}</button></div>`
+            : ''
+        }
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h3>${esc(t('price.history'))}</h3>
+          <div class="sub">${esc(t('price.history_sub'))}</div></div></div>
+        <div class="card-body flush">${
+          data.history.length
+            ? `<div class="table-wrap table-scroll"><table class="data" id="price-history">
+                <thead><tr><th>${esc(t('common.date'))}</th><th>${esc(t('price.list'))}</th>
+                  <th class="right">${esc(t('price.from'))}</th><th class="right">${esc(t('price.to'))}</th>
+                  <th class="right">${esc(t('price.change'))}</th><th>${esc(t('common.by'))}</th></tr></thead>
+                <tbody>${data.history
+                  .map((h) => {
+                    const was = h.old_price;
+                    const now = h.new_price;
+                    const diff = was === null || now === null ? null : round2(now - was);
+                    return `<tr>
+                      <td>${esc(dateTimeText(h.changed_at))}</td>
+                      <td>${esc(h.list_name || t('price.main'))}${
+                        h.field === 'cost' ? ` · <span class="muted">${esc(t('common.cost'))}</span>` : ''
+                      }</td>
+                      <td class="right">${was === null ? `<span class="muted">${esc(t('price.unpriced'))}</span>` : money(was)}</td>
+                      <td class="right"><b>${
+                        now === null ? `<span class="muted">${esc(t('price.unpriced'))}</span>` : money(now)
+                      }</b></td>
+                      <td class="right ${diff === null ? 'muted' : signClass(diff)}">${
+                        diff === null ? '—' : money(diff, { sign: true })
+                      }</td>
+                      <td>${esc(h.username || '')}</td>
+                    </tr>`;
+                  })
+                  .join('')}</tbody>
+              </table></div>`
+            : `<div class="empty"><p>${esc(t('price.no_history'))}</p></div>`
+        }</div>
+      </div>`;
+
+    body.querySelector('#save-prices')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      // The main list is the product's own price; the others are its list prices.
+      const prices = {};
+      let own = product.price;
+      body.querySelectorAll('[data-price-list]').forEach((input) => {
+        const list = data.rows.find((l) => String(l.id) === input.dataset.priceList);
+        if (list?.is_default) own = Number(input.value) || 0;
+        else prices[input.dataset.priceList] = input.value.trim();
+      });
+      try {
+        product = await api.saveProduct({ id, price: own, prices });
+        toast(t('price.saved_prices'), 'success');
+        showTab();
+      } catch (err) {
+        toast(errorText(err), 'error');
+        btn.disabled = false;
+      }
     });
   }
 

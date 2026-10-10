@@ -56,13 +56,42 @@ export function priceOn(listId, productId, { use = 'sell' } = {}) {
 export const pricesOf = (productId) =>
   db.prepare(`SELECT list_id, price FROM product_prices WHERE product_id = ? ORDER BY list_id`).all(productId);
 
+/** Keep what a price was and what it became, so a shop can see it later. */
+export function recordPriceChange(productId, listId, field, oldPrice, newPrice, userId) {
+  if (money(num(oldPrice)) === money(num(newPrice))) return;
+  db.prepare(
+    `INSERT INTO price_changes (product_id, list_id, field, old_price, new_price, changed_at, user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(productId, listId, field, oldPrice === null ? null : money(num(oldPrice)), newPrice === null ? null : money(num(newPrice)), localNow(), userId ?? null);
+}
+
+/** The shop's own clock, so a change made at 09:00 reads 09:00. */
+const localNow = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ');
+};
+
+/** Every price this product has carried, newest first. */
+export const priceHistory = (productId) =>
+  db
+    .prepare(
+      `SELECT c.*, l.name AS list_name, u.username
+       FROM price_changes c
+       LEFT JOIN price_lists l ON l.id = c.list_id
+       LEFT JOIN users u ON u.id = c.user_id
+       WHERE c.product_id = ? ORDER BY c.id DESC LIMIT 200`,
+    )
+    .all(productId);
+
 /**
  * Write a product's prices. `prices` is { [listId]: price }; an empty value, or
  * anything at or below zero, removes that list's price so the product falls
- * back to its own. The default list is never stored here.
+ * back to its own. The default list is never stored here, and every change is
+ * written to the product's price history.
  */
-export function setPrices(productId, prices) {
+export function setPrices(productId, prices, userId = null) {
   if (!prices || typeof prices !== 'object') return;
+  const before = new Map(pricesOf(productId).map((r) => [r.list_id, num(r.price)]));
   const del = db.prepare(`DELETE FROM product_prices WHERE product_id = ? AND list_id = ?`);
   const put = db.prepare(
     `INSERT INTO product_prices (product_id, list_id, price) VALUES (?, ?, ?)
@@ -72,8 +101,16 @@ export function setPrices(productId, prices) {
     const list = getList(Number(key));
     if (!list || list.is_default) continue;
     const price = money(num(value));
-    if (value === '' || value === null || value === undefined || price <= 0) del.run(productId, list.id);
-    else put.run(productId, list.id, price);
+    const had = before.has(list.id) ? before.get(list.id) : null;
+    if (value === '' || value === null || value === undefined || price <= 0) {
+      if (had === null) continue;
+      del.run(productId, list.id);
+      recordPriceChange(productId, list.id, 'price', had, null, userId);
+    } else {
+      if (had === price) continue;
+      put.run(productId, list.id, price);
+      recordPriceChange(productId, list.id, 'price', had, price, userId);
+    }
   }
 }
 
@@ -148,6 +185,30 @@ export function register(router) {
       db.prepare(`DELETE FROM price_lists WHERE id = ?`).run(list.id);
       return { ok: true };
     });
+  });
+
+  /**
+   * What one product costs on every list the shop keeps, and every change its
+   * prices have been through. This is the product's Pricing tab.
+   */
+  router.get('/api/products/:id/prices', (ctx) => {
+    const product = db.prepare(`SELECT id, price, cost FROM products WHERE id = ?`).get(ctx.params.id);
+    if (!product) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    const own = new Map(pricesOf(product.id).map((r) => [r.list_id, num(r.price)]));
+    const rows = db
+      .prepare(`SELECT * FROM price_lists ORDER BY is_default DESC, name`)
+      .all()
+      .map((l) => ({
+        id: l.id,
+        name: l.name,
+        use_for: l.use_for,
+        is_default: !!l.is_default,
+        active: !!l.active,
+        // The main list is the product's own price; another list only where it says so.
+        price: l.is_default ? num(product.price) : own.has(l.id) ? own.get(l.id) : null,
+        falls_back: l.is_default ? false : !own.has(l.id),
+      }));
+    return { cost: num(product.cost), rows, history: priceHistory(product.id) };
   });
 
   /** Every product with its price on this list, for filling a list in one place. */

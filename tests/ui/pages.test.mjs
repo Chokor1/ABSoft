@@ -58,7 +58,7 @@ await page.waitForSelector('.product-hero');
 check('clicking a row opens the product page', /#\/products\/\d+$/.test(page.url()) && (await noDialog()), page.url());
 check('with the product name', (await page.textContent('.product-hero h2')).includes(name), name);
 const tabs = await page.$$eval('#tabs [data-tab]', (b) => b.map((x) => x.dataset.tab));
-check('its menu is at the top: details, overview, movements, sales, purchases', tabs.join() === 'details,overview,movements,sales,purchases', tabs.join());
+check('its menu is at the top: details, pricing, overview, movements, sales, purchases', tabs.join() === 'details,pricing,overview,movements,sales,purchases', tabs.join());
 const menuAbove = await page.evaluate(() =>
   document.querySelector('#tabs').getBoundingClientRect().bottom <= document.querySelector('#tab-body').getBoundingClientRect().top);
 check('above the content', menuAbove);

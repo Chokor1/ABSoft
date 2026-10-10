@@ -239,10 +239,11 @@ second list sees nothing new anywhere — no extra field on a sale, none on a pr
 Make another under **Settings → Price lists**: give it a name (جملة, *Fares cost*…) and say whether
 it is used for **selling**, for **buying**, or for both.
 
-- **Pricing items.** Open a product: under its own price there is now a row per list. Type what
-  this item costs on that list, or leave the box empty — an empty box means the item is sold, or
-  bought, at its own price above. Nothing has to be filled in; a list can price three items out of
-  three thousand.
+- **Pricing items.** A product has a **Pricing** tab: one row per list — the main list first,
+  showing the product's own price — with the price typed in place. An empty box means the item is
+  sold, or bought, at the main price. Nothing has to be filled in; a list can price three items out
+  of three thousand. Underneath, **Price changes** keeps every change the product's prices have
+  been through: the list, from what, to what, when and by whom.
 - **Selling on a list.** The Sell form gains a **Price list** field beside the customer. Each line
   takes its price from the chosen list as the item is added, and a price you type over is left
   alone when the list changes. The sale is kept with the list it was priced at.

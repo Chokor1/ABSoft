@@ -50,7 +50,7 @@ await page.waitForSelector('#sale-form');
 check('the sale form has no price list field', !(await page.$('#sale-form [name=price_list_id]')));
 await page.goto(`${BASE}#/products/new`);
 await page.waitForSelector('form');
-check('and a new product is not asked for other prices', !(await page.$('.prices-field')));
+check('and a new product form stays as it was', !(await page.$('.prices-field')));
 
 /* -------------------------------------------------------------- making a list */
 console.log('\n[making a wholesale list]');
@@ -72,12 +72,19 @@ await shot('150-price-lists');
 /* --------------------------------------------------------- pricing a product */
 console.log('\n[a product priced on it]');
 const beans = (await page.evaluate(async () => (await fetch('/api/products?search=Espresso')).json()))[0];
-await page.goto(`${BASE}#/products/${beans.id}/details`);
-await page.waitForSelector('.prices-field');
-check('the product now asks for its price on the other list', !!(await page.$('.prices-field [data-price-list]')));
-check('with the box empty, meaning the same price', (await page.inputValue('.prices-field [data-price-list]')) === '');
-await page.fill('.prices-field [data-price-list]', '14');
-await page.click('#page-form button[type=submit]');
+await page.goto(`${BASE}#/products/${beans.id}/pricing`);
+await page.waitForSelector('#pricing-table');
+const priceRows = await page.$$eval('#pricing-table tbody tr', (rs) => rs.map((r) => r.textContent.replace(/\s+/g, ' ')));
+check('the product has a Pricing tab listing every list', priceRows.length === 2 &&
+  priceRows[0].includes('Retail') && priceRows[1].includes('جملة'), priceRows.join(' | '));
+check('the main list shows the product\'s own price', (await page.inputValue(`[data-price-list="1"]`)) === '18');
+const otherId = await page.evaluate(async () => (await (await fetch('/api/price-lists')).json()).find((l) => !l.is_default).id);
+check('and the other list is empty, falling back to it',
+  (await page.inputValue(`[data-price-list="${otherId}"]`)) === '' &&
+  priceRows[1].includes('Sold at the main price'), priceRows[1]);
+check('no price change is recorded yet', (await page.textContent('#page')).includes('No price change yet'));
+await page.fill(`[data-price-list="${otherId}"]`, '14');
+await page.click('#save-prices');
 await wait(async () => {
   const p = await page.evaluate(async (id) => (await fetch(`/api/products/${id}`)).json(), beans.id);
   return p.prices?.length === 1;
@@ -85,6 +92,9 @@ await wait(async () => {
 const saved = await page.evaluate(async (id) => (await fetch(`/api/products/${id}`)).json(), beans.id);
 check('the list price is saved beside the product price', Math.abs(saved.prices[0].price - 14) < 0.01 && Math.abs(saved.price - 18) < 0.01,
   JSON.stringify({ list: saved.prices, own: saved.price }));
+await page.waitForSelector('#price-history', { timeout: 6000 });
+const hist = (await page.textContent('#price-history')).replace(/\s+/g, ' ');
+check('and the change is written into the price history', hist.includes('جملة') && hist.includes('$14.00') && hist.includes('admin'), hist);
 await shot('151-product-prices');
 
 /* --------------------------------------------------------- a customer's list */

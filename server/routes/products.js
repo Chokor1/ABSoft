@@ -6,7 +6,7 @@ import { dateRange, ean13Check, money, num, pageParams, pageResult, qty, require
 // After the browser has shrunk it; a phone photo straight off the camera is refused.
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 import { createAdjustment, writeAdjustment } from './adjustments.js';
-import { getList, pricesOf, setPrices } from './price-lists.js';
+import { getList, pricesOf, recordPriceChange, setPrices } from './price-lists.js';
 
 
 const SELECT_PRODUCT = `
@@ -418,7 +418,7 @@ export function register(router) {
         );
       const id = lastId(res);
       setBarcodes(id, extra);
-      setPrices(id, ctx.body.prices);
+      setPrices(id, ctx.body.prices, ctx.user.id);
 
       // Stock already on hand is recorded as an opening stock adjustment.
       if (opening > 0) {
@@ -552,7 +552,11 @@ export function register(router) {
         existing.id,
       );
       setBarcodes(existing.id, extra);
-      if (ctx.body.prices !== undefined) setPrices(existing.id, ctx.body.prices);
+      if (ctx.body.prices !== undefined) setPrices(existing.id, ctx.body.prices, ctx.user.id);
+      // The product's own price and cost are the main list's prices: their
+      // changes belong in the same history.
+      recordPriceChange(existing.id, null, 'price', existing.price, merged.price, ctx.user.id);
+      recordPriceChange(existing.id, null, 'cost', existing.cost, merged.cost, ctx.user.id);
     });
     rememberAll([
       ['category', merged.category],

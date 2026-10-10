@@ -438,6 +438,26 @@ const MIGRATIONS = [
       addColumn(db, 'purchases', 'price_list_id', 'INTEGER');
     },
   },
+  {
+    // Every price change a product goes through, on any list: what it was, what
+    // it became, when, and who did it.
+    name: 'price-history',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS price_changes (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          list_id    INTEGER REFERENCES price_lists(id) ON DELETE CASCADE,
+          field      TEXT    NOT NULL DEFAULT 'price',
+          old_price  REAL,
+          new_price  REAL,
+          changed_at TEXT    NOT NULL DEFAULT (datetime('now')),
+          user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_price_changes_product ON price_changes(product_id, id DESC);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

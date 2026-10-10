@@ -59,6 +59,7 @@ export const api = {
   deleteProductImage: (id) => api.del(`/api/products/${id}/image`),
   categories: () => api.get('/api/categories'),
 
+  productPrices: (id) => api.get(`/api/products/${id}/prices`),
   priceLists: (query) => api.get('/api/price-lists', query),
   savePriceList: (l) => (l.id ? api.put(`/api/price-lists/${l.id}`, l) : api.post('/api/price-lists', l)),
   deletePriceList: (id) => api.del(`/api/price-lists/${id}`),
