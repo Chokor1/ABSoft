@@ -1979,15 +1979,19 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
   background: #fff; color: #000; border: 1px dashed var(--border-strong); border-radius: 2px;
 }
 .label-name {
-  width: 100%; text-align: center; font-size: 2.6mm; font-weight: 700; line-height: 1.1;
-  max-height: 5.8mm; overflow: hidden; unicode-bidi: plaintext;
+  /* The text keeps its room; if anything has to give on a small label it is the
+     height of the bars, never the words. */
+  flex: none; width: 100%; text-align: center; font-size: 2.6mm; font-weight: 700; line-height: 1.2;
+  overflow: hidden; unicode-bidi: plaintext;
+  /* The name stands clear of the bars, which a scanner reads better. */
+  margin-bottom: 1mm;
 }
-.label-bars { display: flex; align-items: center; justify-content: center; }
-.label-bars .bc { display: block; }
+.label-bars { flex: 0 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.label-bars .bc { display: block; max-width: 100%; max-height: 100%; }
 .label-nocode { font-size: 2.4mm; color: #888; }
-.label-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 2mm; width: 100%; }
+.label-foot { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 2mm; width: 100%; line-height: 1.1; margin-top: 0.4mm; }
 .label-code { font-family: var(--mono); font-size: 2.3mm; letter-spacing: 0.02em; }
-.label-price { font-size: 3.4mm; font-weight: 800; margin-inline-start: auto; }
+.label-price { font-size: 3.1mm; font-weight: 800; margin-inline-start: auto; }
 
 @media print {
   /* Only the labels go to the printer, one per page, with no letterhead. */
