@@ -1950,3 +1950,54 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 /* A list's name may be in any language; it stays at the start of its cell. */
 .pl-name { display: inline-block; unicode-bidi: plaintext; }
 #pricing-table td:first-child { width: 55%; }
+
+/* ==========================================================================
+   barcode labels
+   A sheet of labels drawn at the size of the roll. On screen it is a preview;
+   on paper each label is a page of its own, so a label printer feeds one at a
+   time.
+   ========================================================================== */
+
+.labels-bar .labels-find { flex: 1 1 260px; min-width: 200px; }
+.labels-bar .filter-select .input { width: 86px; height: 32px; }
+.labels-bar .check { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.label-copies { width: 84px; text-align: end; height: 34px; }
+
+.labels-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; }
+.label-preview-card { width: min(320px, 92vw); }
+.label-preview { display: flex; justify-content: center; }
+.label-preview .label { box-shadow: var(--shadow-sm); }
+.label-empty { align-items: center; justify-content: center; }
+@media (max-width: 900px) { .labels-top { grid-template-columns: minmax(0, 1fr); } }
+
+/* The sheet itself is only ever printed. */
+.labels-sheet { display: none; }
+.label {
+  width: var(--label-w, 40mm); height: var(--label-h, 20mm);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5mm;
+  padding: 1.2mm 2mm; box-sizing: border-box; overflow: hidden;
+  background: #fff; color: #000; border: 1px dashed var(--border-strong); border-radius: 2px;
+}
+.label-name {
+  width: 100%; text-align: center; font-size: 2.6mm; font-weight: 700; line-height: 1.1;
+  max-height: 5.8mm; overflow: hidden; unicode-bidi: plaintext;
+}
+.label-bars { display: flex; align-items: center; justify-content: center; }
+.label-bars .bc { display: block; }
+.label-nocode { font-size: 2.4mm; color: #888; }
+.label-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 2mm; width: 100%; }
+.label-code { font-family: var(--mono); font-size: 2.3mm; letter-spacing: 0.02em; }
+.label-price { font-size: 3.4mm; font-weight: 800; margin-inline-start: auto; }
+
+@media print {
+  /* Only the labels go to the printer, one per page, with no letterhead. */
+  body:has(.labels-sheet .label) #app,
+  body:has(.labels-sheet .label) .print-only { display: none !important; }
+  body:has(.labels-sheet .label) { padding: 0 !important; }
+  .labels-sheet { display: block !important; position: absolute; inset: 0; margin: 0; }
+  .label {
+    border: 0; border-radius: 0; break-after: page; page-break-after: always;
+    width: var(--label-w, 40mm); height: var(--label-h, 20mm);
+  }
+  .label:last-child { break-after: auto; page-break-after: auto; }
+}

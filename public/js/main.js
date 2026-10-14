@@ -9,6 +9,7 @@ import * as products from './views/products.js';
 import * as purchases from './views/purchases.js';
 import * as adjustments from './views/adjustments.js';
 import * as stockCount from './views/stock-count.js';
+import * as labels from './views/labels.js';
 import { sweepPickers } from './picker.js';
 import { onRateChange, saveRate, second, watchRate } from './currency.js';
 import * as salesView from './views/sales.js';
@@ -42,6 +43,9 @@ const VIEWS = {
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
   'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
   adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
+  // Barcode labels for a label printer: reached from Products and from a product
+  // itself, so the menu stays short enough to show a whole section at once.
+  labels: { key: 'labels', icon: 'barcode', mod: labels, group: 'stock', hidden: true },
   // What products are filed under, and what they are counted in.
   categories: { key: 'categories', icon: 'list', group: 'stock', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'category', ctx.params) } },
   units: { key: 'units', icon: 'sliders', group: 'stock', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'unit', ctx.params) } },

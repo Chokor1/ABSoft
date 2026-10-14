@@ -591,6 +591,23 @@ export function register(router) {
    * one's, and the first is removed. The second keeps its own name, cost and
    * price; stock follows the movements, so the balance lands where it should.
    */
+  /**
+   * Give a product a barcode of the shop's own. Codes starting 200–299 are
+   * reserved by GS1 for in-store use, so one made here can never collide with a
+   * code printed on goods. The product's id makes it unique, and the check digit
+   * makes scanners accept it.
+   */
+  router.post('/api/products/:id/barcode', (ctx) => {
+    const product = getProduct(ctx.params.id);
+    if (!product) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    if (product.barcode && !ctx.body.replace) return product;
+    const body = `200${String(product.id).padStart(9, '0')}`;
+    const code = `${body}${ean13Check(body)}`;
+    assertBarcodeFree(code, product.id);
+    db.prepare(`UPDATE products SET barcode = ? WHERE id = ?`).run(code, product.id);
+    return getProduct(product.id);
+  });
+
   router.post('/api/products/:id/merge', (ctx) => {
     if (ctx.user.role !== 'admin') throw badRequest('Only an administrator can merge products', 'MERGE_ADMIN_ONLY');
     const from = getProduct(ctx.params.id);

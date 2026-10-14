@@ -620,6 +620,25 @@ profit.
 
 ---
 
+## Barcode labels
+
+**Products → Barcode labels** (or **Labels** on a product's own page) prints shelf labels on a label
+printer such as an Xprinter. The barcode is drawn in the browser, so nothing has to be installed.
+
+- Search a product and it joins the sheet; set how many labels of it to print. The total is at the
+  foot of the list.
+- The label is **40 × 20 mm** by default — change the width and height in millimetres for your roll
+  and this device remembers it. A preview beside the list shows one label at its real size.
+- **Product name** is printed by default and **Price** can be switched on; the barcode and its
+  digits are always there. With more than one price list, the price printed is the one from the list
+  you pick.
+- A product with no barcode gets a **Give it a barcode** button: it is given one in the 200–299
+  range GS1 reserves for a shop's own codes, so it can never clash with a code printed on goods.
+- Printing sends one label per page at exactly the roll size — no letterhead, no margins. A
+  13-digit code prints as EAN-13; anything else, letters included, prints as Code 128.
+
+---
+
 ## On paper
 
 Give the shop its logo under **Settings → Store**: choose a PNG or JPG and it is shrunk on your

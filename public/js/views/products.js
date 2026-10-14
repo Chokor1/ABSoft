@@ -172,11 +172,13 @@ async function renderList(root, ctx, { stock = '' } = {}) {
   let dropPicker = () => {};
 
   ctx.actions.innerHTML = `
+    <button class="btn" id="labels">${icon('barcode')} ${esc(t('nav.labels'))}</button>
     <button class="btn" id="import">${icon('upload')} ${esc(t('imp.button'))}</button>
     <button class="btn" id="export">${icon('download')} ${esc(t('common.export'))}</button>
     <button class="btn btn-primary" id="new">${icon('plus')} ${esc(t('prod.new'))}</button>`;
   ctx.actions.querySelector('#new').addEventListener('click', () => ctx.navigate('products/new'));
   ctx.actions.querySelector('#import').addEventListener('click', () => ctx.navigate('products/import'));
+  ctx.actions.querySelector('#labels').addEventListener('click', () => ctx.navigate('labels'));
   ctx.actions.querySelector('#export').addEventListener('click', () =>
     downloadCsv(
       'absoft-products.csv',
@@ -409,8 +411,10 @@ async function renderDetail(root, ctx, id, initialTab) {
   let dropPickers = () => {};
 
   ctx.actions.innerHTML = `
+    <button class="btn" id="labels">${icon('barcode')} ${esc(t('label.print_this'))}</button>
     <button class="btn" id="merge">${icon('package')} ${esc(t('prod.merge'))}</button>
     <button class="btn btn-ghost" id="remove" title="${esc(t('common.delete'))}" aria-label="${esc(t('common.delete'))}">${icon('trash')}</button>`;
+  ctx.actions.querySelector('#labels').addEventListener('click', () => ctx.navigate(`labels/${id}`));
   ctx.actions.querySelector('#merge').addEventListener('click', async () => {
     const into = await mergeProduct(product);
     if (into) ctx.navigate(`products/${into.id}`);

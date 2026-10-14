@@ -60,6 +60,7 @@ export const api = {
   categories: () => api.get('/api/categories'),
 
   productPrices: (id) => api.get(`/api/products/${id}/prices`),
+  generateBarcode: (id) => api.post(`/api/products/${id}/barcode`, {}),
   priceLists: (query) => api.get('/api/price-lists', query),
   savePriceList: (l) => (l.id ? api.put(`/api/price-lists/${l.id}`, l) : api.post('/api/price-lists', l)),
   deletePriceList: (id) => api.del(`/api/price-lists/${id}`),
