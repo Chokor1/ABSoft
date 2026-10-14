@@ -105,10 +105,12 @@ export async function render(root, ctx) {
     pageStyle.textContent = `@media print { @page { size: ${now.width}mm ${now.height}mm; margin: 0; } }`;
     sheet.style.setProperty('--label-w', `${now.width}mm`);
     sheet.style.setProperty('--label-h', `${now.height}mm`);
-    // The bars take the width that is left once the margins are off, and about
-    // half the height, so the name and the price have room.
-    const barWidth = Math.max(10, now.width - 6);
-    const barHeight = Math.max(5, now.height * (now.name || now.price ? 0.42 : 0.62));
+    // The bars take everything the words leave behind: the name needs about
+    // 4.2 mm with its gap, the row of digits and the price about 3.9 mm, and the
+    // label keeps 2.6 mm of padding. Whatever is left is bar height, so a taller
+    // roll prints taller bars.
+    const barWidth = Math.max(10, now.width - 4);
+    const barHeight = Math.max(5, now.height - (now.name ? 4.2 : 0) - 4 - 2.5);
     const label = (row) => {
       const code = row.product.barcode || '';
       return `<div class="label">
