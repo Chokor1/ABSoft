@@ -636,6 +636,9 @@ printer such as an Xprinter. The barcode is drawn in the browser, so nothing has
   range GS1 reserves for a shop's own codes, so it can never clash with a code printed on goods.
 - Printing sends one label per page at exactly the roll size — no letterhead, no margins. A
   13-digit code prints as EAN-13; anything else, letters included, prints as Code 128.
+- If the roll creeps out of place, a **Gap (mm)** box adds the space between labels to the printed
+  page, so one page equals one feed. The screen says how far each label feeds; set the same paper
+  size in the printer driver, and in the print dialog choose Margins: None and Scale: 100%.
 
 ---
 

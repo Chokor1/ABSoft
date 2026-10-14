@@ -152,11 +152,22 @@ await page.waitForTimeout(300);
 check('the sheet holds one label per copy', (await page.evaluate(() => document.querySelectorAll('#labels-sheet .label').length)) === 3);
 await page.click('#labels-print');
 check('printing is asked for', (await page.evaluate(() => window.__prints)) === 1);
+check('the roll gap starts at nothing, so a page is one label', (await page.inputValue('#label-gap')) === '0');
+await page.fill('#label-gap', '2');
+await page.waitForTimeout(300);
 const printed = await page.evaluate(() => {
   const style = [...document.head.querySelectorAll('style')].map((s) => s.textContent).join(' ');
-  return { page: /@page\s*{\s*size:\s*40mm 20mm/.test(style) };
+  return { page: /@page\s*{\s*size:\s*40mm 22mm/.test(style), style: style.slice(0, 120) };
 });
-check('on a page exactly the size of the label', printed.page, JSON.stringify(printed));
+// The page is the label plus the gap that follows it on the roll: what the
+// printer feeds between one tear and the next.
+check('on a page as long as the label and its gap', printed.page, JSON.stringify(printed));
+await page.fill('#label-gap', '0');
+await page.waitForTimeout(300);
+check('and back to the label alone with no gap', await page.evaluate(() => {
+  const style = [...document.head.querySelectorAll('style')].map((s) => s.textContent).join(' ');
+  return /@page\s*{\s*size:\s*40mm 20mm/.test(style);
+}));
 await page.emulateMedia({ media: 'print' });
 await page.waitForTimeout(300);
 const onPaper = await page.evaluate(() => {

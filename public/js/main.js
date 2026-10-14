@@ -43,9 +43,8 @@ const VIEWS = {
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
   'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
   adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
-  // Barcode labels for a label printer: reached from Products and from a product
-  // itself, so the menu stays short enough to show a whole section at once.
-  labels: { key: 'labels', icon: 'barcode', mod: labels, group: 'stock', hidden: true },
+  // Barcode labels for a label printer: 40 × 20 mm by default.
+  labels: { key: 'labels', icon: 'barcode', mod: labels, group: 'stock' },
   // What products are filed under, and what they are counted in.
   categories: { key: 'categories', icon: 'list', group: 'stock', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'category', ctx.params) } },
   units: { key: 'units', icon: 'sliders', group: 'stock', mod: { render: (root, ctx) => lists.renderKind(root, ctx, 'unit', ctx.params) } },
@@ -314,9 +313,16 @@ function layoutNav() {
     nav.querySelectorAll('[data-route]').forEach((a) => a.classList.toggle('active', a.dataset.route === currentRoute));
     nav.querySelectorAll('.nav-fold').forEach((f) => f.classList.toggle('has-active', !!f.querySelector(`[data-route="${currentRoute}"]`)));
   };
+  // A menu that does not fit gives things up in order: first the sidebar's
+  // decoration — the shop's tagline and the credit line — and only then does it
+  // fall back to showing one section at a time. The rows themselves never shrink.
+  const sidebar = document.getElementById('sidebar');
+  const overflows = () => window.innerWidth > 900 && nav.scrollHeight > nav.clientHeight + 1;
+  sidebar?.classList.remove('tight');
   oneAtATime = false;
   draw();
-  if (window.innerWidth > 900 && nav.scrollHeight > nav.clientHeight + 1) {
+  if (overflows()) sidebar?.classList.add('tight');
+  if (overflows()) {
     oneAtATime = true;
     draw();
   }

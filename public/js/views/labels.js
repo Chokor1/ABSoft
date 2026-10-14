@@ -16,7 +16,10 @@ import { emptyState, esc, money, qtyText, store, toast } from '../ui.js';
  */
 
 const KEY = 'absoft-labels';
-const DEFAULTS = { width: 40, height: 20, name: true, price: false, list: '' };
+// The gap starts at zero: a page exactly one label long, which is what a
+// printer set up for its roll expects. A roll that needs the space between
+// labels counted in as well can say so.
+const DEFAULTS = { width: 40, height: 20, gap: 0, name: true, price: false, list: '' };
 
 /** The label size and what goes on it, as this device last left them. */
 function savedSetup() {
@@ -55,6 +58,8 @@ export async function render(root, ctx) {
         <input class="input" id="label-w" type="number" min="10" max="120" step="1" value="${setup.width}"/></label>
       <label class="filter-select"><span>${esc(t('label.height'))}</span>
         <input class="input" id="label-h" type="number" min="10" max="120" step="1" value="${setup.height}"/></label>
+      <label class="filter-select" title="${esc(t('label.gap_help'))}"><span>${esc(t('label.gap'))}</span>
+        <input class="input" id="label-gap" type="number" min="0" max="20" step="0.5" value="${setup.gap}"/></label>
       <label class="check"><input type="checkbox" id="label-name" ${setup.name ? 'checked' : ''}/> ${esc(t('label.show_name'))}</label>
       <label class="check"><input type="checkbox" id="label-price" ${setup.price ? 'checked' : ''}/> ${esc(t('label.show_price'))}</label>
       ${
@@ -75,7 +80,9 @@ export async function render(root, ctx) {
       <div class="card label-preview-card">
         <div class="card-head"><div><h3>${esc(t('label.preview'))}</h3>
           <div class="sub" id="label-size-note"></div></div></div>
-        <div class="card-body"><div class="label-preview" id="label-preview"></div></div>
+        <div class="card-body"><div class="label-preview" id="label-preview"></div>
+          <p class="help label-feed" id="label-feed-note"></p>
+          <p class="help">${esc(t('label.driver_help'))}</p></div>
       </div>
     </div>`;
 
@@ -94,6 +101,7 @@ export async function render(root, ctx) {
   const readSetup = () => ({
     width: Math.min(120, Math.max(10, Number($('#label-w').value) || 40)),
     height: Math.min(120, Math.max(10, Number($('#label-h').value) || 20)),
+    gap: Math.min(20, Math.max(0, Number($('#label-gap').value) || 0)),
     name: $('#label-name').checked,
     price: $('#label-price').checked,
     list: $('#label-list')?.value || '',
@@ -102,7 +110,7 @@ export async function render(root, ctx) {
   function paintSheet() {
     const now = readSetup();
     remember(now);
-    pageStyle.textContent = `@media print { @page { size: ${now.width}mm ${now.height}mm; margin: 0; } }`;
+    pageStyle.textContent = `@media print { @page { size: ${now.width}mm ${now.height + now.gap}mm; margin: 0; } }`;
     sheet.style.setProperty('--label-w', `${now.width}mm`);
     sheet.style.setProperty('--label-h', `${now.height}mm`);
     // The bars take everything the words leave behind: the name needs about
@@ -140,6 +148,7 @@ export async function render(root, ctx) {
       ? label(rows[0])
       : `<div class="label label-empty"><span class="label-nocode">${esc(t('label.preview_empty'))}</span></div>`;
     $('#label-size-note').textContent = t('label.size_note', { w: now.width, h: now.height });
+    $('#label-feed-note').textContent = t('label.feed_note', { v: Math.round((now.height + now.gap) * 10) / 10 });
   }
 
   function paintRows() {
@@ -233,6 +242,7 @@ export async function render(root, ctx) {
 
   $('#label-w').addEventListener('input', paintSheet);
   $('#label-h').addEventListener('input', paintSheet);
+  $('#label-gap').addEventListener('input', paintSheet);
   $('#label-name').addEventListener('change', paintSheet);
   $('#label-price').addEventListener('change', paintSheet);
   // A different list re-prices every row that has not been printed yet.

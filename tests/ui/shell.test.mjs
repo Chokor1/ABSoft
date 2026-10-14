@@ -332,7 +332,7 @@ await page.reload();
 await page.waitForSelector('.nav-item');
 const menuRoutes = await page.$$eval('.nav [data-route]', (a) => a.map((x) => x.dataset.route));
 check('the menu: Dashboard, then Selling, Buying, Stock and Money', menuRoutes.join() ===
-  'dashboard,sales,shifts,customers,purchases,suppliers,products,stock-count,adjustments,categories,units,expenses,expense-categories,reports', menuRoutes.join());
+  'dashboard,sales,shifts,customers,purchases,suppliers,products,stock-count,adjustments,labels,categories,units,expenses,expense-categories,reports', menuRoutes.join());
 check('Lists is no longer a screen of its own', !menuRoutes.includes('lists'));
 check('Users and Settings have left the menu', !menuRoutes.includes('users') && !menuRoutes.includes('settings'));
 check('four sections, all the same kind of heading: Sales, Purchases, Stock, Finance',

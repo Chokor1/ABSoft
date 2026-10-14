@@ -1438,6 +1438,14 @@ table.data.compact td { padding: 8px 14px; }
 [dir="rtl"] .nav-chevron { transform: rotate(135deg); }
 .nav-fold.open .nav-chevron { transform: rotate(45deg); }
 /* Open and close smoothly, whatever the number of items; folded rows leave the tab order. */
+/* On a screen too short for the whole menu the sidebar gives up its decoration
+   — the shop's tagline under the brand, and the credit at the foot — so every
+   row keeps its full height. */
+.sidebar.tight .brand-text small,
+.sidebar.tight .credit { display: none; }
+.sidebar.tight .brand { padding-bottom: 6px; }
+.sidebar.tight .sidebar-foot { padding-top: 6px; margin-top: 8px; }
+
 .nav-children { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 0.22s ease, visibility 0s 0.22s; }
 .nav-fold.open .nav-children { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows 0.22s ease, visibility 0s; }
 .nav-children > div { overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
@@ -1989,19 +1997,28 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .label-bars { flex: 0 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
 .label-bars .bc { display: block; max-width: 100%; max-height: 100%; }
 .label-nocode { font-size: 2.4mm; color: #888; }
-.label-foot { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 2mm; width: 100%; line-height: 1.1; margin-top: 0.4mm; }
-.label-code { font-family: var(--mono); font-size: 2.3mm; letter-spacing: 0.02em; }
-.label-price { font-size: 3.1mm; font-weight: 800; margin-inline-start: auto; }
+/* The digits sit under the middle of the bars, like the name above them, and
+   the price keeps to the end without pushing them off centre. */
+.label-foot {
+  flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: baseline;
+  gap: 1mm; width: 100%; line-height: 1.1; margin-top: 0.4mm;
+}
+.label-code { grid-column: 2; text-align: center; font-family: var(--mono); font-size: 2.3mm; letter-spacing: 0.02em; }
+.label-price { grid-column: 3; justify-self: end; font-size: 3.1mm; font-weight: 800; }
 
 @media print {
   /* Only the labels go to the printer, one per page, with no letterhead. */
   body:has(.labels-sheet .label) #app,
   body:has(.labels-sheet .label) .print-only { display: none !important; }
   body:has(.labels-sheet .label) { padding: 0 !important; }
-  .labels-sheet { display: block !important; position: absolute; inset: 0; margin: 0; }
+  /* Plain blocks, so each label is one page and the last one ends the job —
+     an absolutely positioned sheet can leave a blank page, which costs a label. */
+  .labels-sheet { display: block !important; position: static; margin: 0; padding: 0; }
+  .labels-sheet .label:last-child { break-after: avoid; page-break-after: avoid; }
   .label {
     border: 0; border-radius: 0; break-after: page; page-break-after: always;
     width: var(--label-w, 40mm); height: var(--label-h, 20mm);
   }
   .label:last-child { break-after: auto; page-break-after: auto; }
 }
+.label-feed { margin-top: 10px; font-weight: 600; color: var(--text-2); }
