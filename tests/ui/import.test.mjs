@@ -82,6 +82,17 @@ check('with the columns to fill and an example', template.replace(/^﻿/, '').st
   template.split(/\r?\n/).length >= 3, template.slice(0, 120));
 await shot('160-import-start');
 
+// An .xlsx file reads the same as CSV: numbers, an Arabic name and a numeric
+// barcode cell all come through, with no "save as CSV" step.
+await page.setInputFiles('#imp-file', resolve(HERE, '../fixtures/import-sample.xlsx'));
+await page.waitForSelector('#imp-go', { timeout: 8000 });
+const xlsxHead = await page.textContent('#imp-result .card-head');
+check('an Excel file is read and previewed', xlsxHead.includes('3 ready'), xlsxHead.replace(/\s+/g, ' '));
+const xlsxTable = await page.textContent('.imp-table');
+check('Excel keeps the Arabic name and the numeric barcode as text',
+  xlsxTable.includes('زيت زيتون XLSX') && xlsxTable.includes('XLSX Import Flour') && xlsxTable.includes('12345678'), xlsxTable.slice(0, 200));
+await shot('160b-import-xlsx-preview');
+
 // Semicolons, quoted cells and an Arabic name: what Excel really saves.
 const csv = [
   'name;barcode;category;unit;cost;price;opening_stock',

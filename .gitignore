@@ -4,3 +4,6 @@ node_modules/
 
 # test scratch
 .test-run/
+
+# Local copy of the previous POS backup — never committed
+database-old-system/

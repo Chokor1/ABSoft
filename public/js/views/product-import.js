@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { parseCsv, toCsv } from '../csv.js';
+import { parseXlsx } from '../xlsx.js';
 import { icon } from '../icons.js';
 import { errorText, t } from '../i18n.js';
 import { emptyState, esc, forgetSuggestions, money, number, qtyText, toast, todayISO } from '../ui.js';
@@ -62,7 +63,7 @@ export async function renderImport(root, ctx) {
           <li><b>${esc(t('imp.step3'))}</b></li>
         </ol>
         <label class="imp-drop" id="imp-drop">
-          <input type="file" id="imp-file" accept=".csv,text/csv" hidden/>
+          <input type="file" id="imp-file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden/>
           ${icon('download')}
           <span class="imp-drop-title">${esc(t('imp.drop'))}</span>
           <span class="muted" id="imp-file-name">${esc(t('imp.drop_help'))}</span>
@@ -83,7 +84,9 @@ export async function renderImport(root, ctx) {
     root.querySelector('#imp-file-name').textContent = file.name;
     let table;
     try {
-      table = parseCsv(await file.text());
+      table = /\.xlsx$/i.test(file.name)
+        ? await parseXlsx(await file.arrayBuffer())
+        : parseCsv(await file.text());
     } catch {
       return toast(t('imp.unreadable'), 'error');
     }
