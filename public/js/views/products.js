@@ -21,7 +21,9 @@ import {
   formPage,
   money,
   filterSelect,
+  keepList,
   pager,
+  recallList,
   pct,
   productThumb,
   qtyText,
@@ -168,7 +170,17 @@ async function removeProduct(product) {
 /* ------------------------------------------------------------------ list -- */
 
 async function renderList(root, ctx, { stock = '' } = {}) {
-  const state = { search: '', showInactive: false, stock, category: '', rows: [], page: 1, per: 50, result: null };
+  // Where this list was last left, so opening a product and coming back lands
+  // on the same page with the same filters.
+  const state = {
+    ...recallList('products', { search: '', showInactive: false, category: '', page: 1, per: 50 }),
+    rows: [],
+    result: null,
+    // A badge's link (…/restock) asks for its own filter, whatever was kept.
+    ...(stock ? { stock, page: 1 } : {}),
+  };
+  if (state.stock === undefined) state.stock = '';
+  const keep = () => keepList('products', state, ['search', 'showInactive', 'stock', 'category', 'page', 'per']);
   let dropPicker = () => {};
 
   ctx.actions.innerHTML = `
@@ -203,13 +215,14 @@ async function renderList(root, ctx, { stock = '' } = {}) {
   root.innerHTML = `
     <div class="toolbar sticky-bar">
       <div class="input-icon">${icon('search')}
-        <input class="input" data-search id="search" placeholder="${esc(t('prod.search'))}"/>
+        <input class="input" data-search id="search" value="${esc(state.search)}" placeholder="${esc(t('prod.search'))}"/>
       </div>
       <div class="filter-select"><span>${esc(t('filter.category'))}</span>
-        <div class="combo"><input class="input" id="filter-category" placeholder="${esc(t('filter.all'))}" autocomplete="off"/></div>
+        <div class="combo"><input class="input" id="filter-category" value="${esc(state.category)}"
+          placeholder="${esc(t('filter.all'))}" autocomplete="off"/></div>
       </div>
       <div id="stock-filter"></div>
-      <label class="check"><input type="checkbox" id="inactive"/> ${esc(t('prod.include_archived'))}</label>
+      <label class="check"><input type="checkbox" id="inactive" ${state.showInactive ? 'checked' : ''}/> ${esc(t('prod.include_archived'))}</label>
       <div class="spacer"></div>
       <div id="summary" class="muted" style="font-size:12.5px"></div>
     </div>
@@ -269,6 +282,7 @@ async function renderList(root, ctx, { stock = '' } = {}) {
   });
 
   async function load() {
+    keep(); // the page and the filters, for when you come back
     list.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;

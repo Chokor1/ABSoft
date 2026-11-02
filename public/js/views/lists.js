@@ -14,7 +14,9 @@ import {
   methodMark,
   METHOD_ICONS,
   money,
+  keepList,
   pager,
+  recallList,
   shrinkImage,
   pct,
   forgetSuggestions,
@@ -85,7 +87,8 @@ export async function openParty(ctx, kind, name) {
 }
 
 async function renderList(root, ctx, kind, { actions = ctx.actions } = {}) {
-  const state = { kind, search: '', rows: [], page: 1, per: 50 };
+  const state = { kind, rows: [], ...recallList(`list-${kind}`, { search: '', page: 1, per: 50 }) };
+  const keep = () => keepList(`list-${kind}`, state, ['search', 'page', 'per']);
   const isAdmin = store.user.role === 'admin';
   const meta = () => KINDS.find((k) => k.kind === state.kind);
   const one = () => t(`lists.one.${state.kind}`);
@@ -96,7 +99,7 @@ async function renderList(root, ctx, kind, { actions = ctx.actions } = {}) {
   tabs.className = actions === 'inline' ? 'toolbar' : 'toolbar sticky-bar';
   tabs.innerHTML = `
     <div class="input-icon" style="min-width:230px">${icon('search')}
-      <input class="input" data-search id="list-search" placeholder="${esc(t('lists.search'))}"/>
+      <input class="input" data-search id="list-search" value="${esc(state.search)}" placeholder="${esc(t('lists.search'))}"/>
     </div>
     <div class="spacer"></div>
     ${actions === 'inline' ? '<div class="page-actions" data-inline-actions></div>' : ''}`;
@@ -142,6 +145,7 @@ async function renderList(root, ctx, kind, { actions = ctx.actions } = {}) {
   );
 
   async function load() {
+    keep(); // the page and the filters, for when you come back
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;

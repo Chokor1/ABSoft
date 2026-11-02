@@ -111,6 +111,17 @@ a cashier can find "750ml bottle" without knowing the product name.
 
 ---
 
+## Lists remember where you were
+
+Open a row from the middle of a list — the fifth page of products, a filtered week of invoices —
+and coming back puts you where you left: same page, same search, same filters. Every list does it:
+Products, Sell, Buy, Expenses, Stock Adjustment and the directories.
+
+It lasts as long as the browser tab. Close ABSoft and open it tomorrow and every list starts at its
+first page again.
+
+---
+
 ## Names you reuse — customers, suppliers, categories, units
 
 Type a customer on an invoice, a supplier on a purchase, or a category on a product, and

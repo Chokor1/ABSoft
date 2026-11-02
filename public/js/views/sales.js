@@ -9,7 +9,9 @@ import {
   debounce,
   docPage,
   filterSelect,
+  keepList,
   pager,
+  recallList,
   downloadCsv,
   emptyState,
   esc,
@@ -545,7 +547,8 @@ async function renderSale(root, ctx, id) {
 export async function render(root, ctx) {
   if (ctx.params[0] === 'new') return renderSaleForm(root, ctx);
   if (/^\d+$/.test(ctx.params[0] || '')) return renderSale(root, ctx, Number(ctx.params[0]));
-  const state = { from: monthStart(), to: todayISO(), search: '', status: '', page: 1, per: 50 };
+  const state = recallList('sales', { from: monthStart(), to: todayISO(), search: '', status: '', method: '', page: 1, per: 50 });
+  const keep = () => keepList('sales', state, ['from', 'to', 'search', 'status', 'method', 'page', 'per']);
   // Cost and profit are for administrators; the server leaves them out for cashiers.
   const admin = store.user.role === 'admin';
 
@@ -563,7 +566,7 @@ export async function render(root, ctx) {
   const searchWrap = document.createElement('div');
   searchWrap.className = 'input-icon';
   searchWrap.style.minWidth = '240px';
-  searchWrap.innerHTML = `${icon('search')}<input class="input" data-search placeholder="${esc(t('sales.search'))}"/>`;
+  searchWrap.innerHTML = `${icon('search')}<input class="input" data-search value="${esc(state.search)}" placeholder="${esc(t('sales.search'))}"/>`;
   searchWrap.querySelector('input').addEventListener(
     'input',
     debounce((e) => {
@@ -594,7 +597,7 @@ export async function render(root, ctx) {
   bar.appendChild(
     filterSelect({
       label: t('filter.method'),
-      value: '',
+      value: state.method,
       options: [
         { value: '', label: t('filter.all') },
         ...store.methods.map((m) => ({ value: m.name, label: methodText(m.name) })),
@@ -637,6 +640,7 @@ export async function render(root, ctx) {
   );
 
   async function load() {
+    keep(); // the page and the filters, for when you come back
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;

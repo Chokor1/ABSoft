@@ -580,6 +580,36 @@ export function wireTagInputs(root) {
 
 /* ---------------------------------------------------------------- paging -- */
 
+/**
+ * Where a list was left: its page, what was typed in its search box and which
+ * filters were set. Opening a row and coming back should land you on the same
+ * page you left, not at the top of the first one.
+ *
+ * Kept for this browser tab only, so a fresh window always starts clean:
+ *
+ *   const state = recallList('products', { search: '', page: 1, per: 50 });
+ *   …
+ *   keepList('products', state, ['search', 'page', 'per']);
+ */
+const LIST_KEY = (key) => `absoft-list-${key}`;
+
+export function recallList(key, fresh) {
+  try {
+    const kept = JSON.parse(sessionStorage.getItem(LIST_KEY(key)) || 'null');
+    return kept && typeof kept === 'object' ? { ...fresh, ...kept } : { ...fresh };
+  } catch {
+    return { ...fresh }; // storage blocked: the list simply starts fresh
+  }
+}
+
+export function keepList(key, state, fields) {
+  try {
+    sessionStorage.setItem(LIST_KEY(key), JSON.stringify(Object.fromEntries(fields.map((f) => [f, state[f]]))));
+  } catch {
+    /* storage blocked: it just will not be remembered */
+  }
+}
+
 export const PER_PAGE = [25, 50, 100, 200];
 
 /**

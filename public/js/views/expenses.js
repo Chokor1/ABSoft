@@ -10,7 +10,9 @@ import {
   emptyState,
   esc,
   filterSelect,
+  keepList,
   pager,
+  recallList,
   forgetSuggestions,
   formPage,
   money,
@@ -36,7 +38,8 @@ export async function render(root, ctx) {
 }
 
 async function renderList(root, ctx) {
-  const state = { from: monthStart(), to: todayISO(), search: '', category: '', page: 1, per: 50 };
+  const state = recallList('expenses', { from: monthStart(), to: todayISO(), search: '', category: '', page: 1, per: 50 });
+  const keep = () => keepList('expenses', state, ['from', 'to', 'search', 'category', 'page', 'per']);
   let rows = [];
   let used = await suggestions('expense_category');
 
@@ -70,7 +73,7 @@ async function renderList(root, ctx) {
   const searchWrap = document.createElement('div');
   searchWrap.className = 'input-icon';
   searchWrap.style.minWidth = '230px';
-  searchWrap.innerHTML = `${icon('search')}<input class="input" data-search placeholder="${esc(t('exp.search'))}"/>`;
+  searchWrap.innerHTML = `${icon('search')}<input class="input" data-search value="${esc(state.search)}" placeholder="${esc(t('exp.search'))}"/>`;
   searchWrap.querySelector('input').addEventListener(
     'input',
     debounce((e) => {
@@ -97,6 +100,7 @@ async function renderList(root, ctx) {
   root.append(bar, body);
 
   async function load() {
+    keep(); // the page and the filters, for when you come back
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(
       t('common.loading'),
     )}</p></div></div></div>`;

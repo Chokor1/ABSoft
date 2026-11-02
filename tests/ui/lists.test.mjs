@@ -105,7 +105,19 @@ await page.evaluate(async () => {
     body: JSON.stringify({ supplier: 'Month Start Supply', items: [{ product_id: p.id, qty: 1, unit_cost: p.cost || 1 }] }) });
 });
 await listPage('purchases', 'Purchases');
-await listPage('expenses', 'Expenses');
+// Expenses open on this month too, and on the first days of one the seed's are
+// all in the last.
+await listPage('expenses', 'Expenses', {
+  before: async () => {
+    await page.evaluate(async () => {
+      for (const note of ['Rent', 'Power', 'Water']) {
+        await fetch('/api/expenses', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: 'Utilities', amount: 25, note }) });
+      }
+    });
+    await page.reload();
+  },
+});
 await listPage('users', 'Users');
 
 console.log('\n[on a phone the page scrolls as before]');
