@@ -625,20 +625,43 @@ export function listScroll(key, root) {
   const SCROLL_KEY = `absoft-scroll-${key}`;
   const area = () => root.querySelector('.table-scroll');
   let restored = false;
-  // Clicking a row is what takes you off the list: remember the view just then.
-  // The screen behind every list is one and the same element, so the watcher a
-  // previous list left on it is taken off first — otherwise the suppliers you
-  // are looking at now would be writing down the customers' place.
-  const watch = () => {
+
+  const write = (where) => {
     try {
-      sessionStorage.setItem(SCROLL_KEY, JSON.stringify({ rows: Math.round(area()?.scrollTop || 0), page: Math.round(window.scrollY) }));
+      sessionStorage.setItem(SCROLL_KEY, JSON.stringify(where));
     } catch {
       /* storage blocked: it just will not be remembered */
     }
   };
-  if (root.listScrollWatcher) root.removeEventListener('click', root.listScrollWatcher, true);
-  root.listScrollWatcher = watch;
-  root.addEventListener('click', watch, true);
+  const here = () => ({ rows: Math.round(area()?.scrollTop || 0), page: Math.round(window.scrollY) });
+
+  /**
+   * Write the place down as it moves, not only when a row is clicked: a list can
+   * be left by the menu, by the browser's own Back, or by the keyboard, and none
+   * of those is a click inside the list.
+   *
+   * The screen behind every list is one and the same element, so a watcher left
+   * by a previous list is taken off first — otherwise the suppliers on screen
+   * now would be writing down the customers' place.
+   */
+  const watch = () => {
+    if (!restored) return; // nothing worth keeping until this screen has settled
+    write(here());
+  };
+  if (root.listScrollWatchers) {
+    const old = root.listScrollWatchers;
+    root.removeEventListener('click', old.click, true);
+    root.removeEventListener('scroll', old.scroll, true);
+    window.removeEventListener('scroll', old.scroll);
+  }
+  const onClick = () => write(here());
+  root.listScrollWatchers = { click: onClick, scroll: watch };
+  root.addEventListener('click', onClick, true);
+  // The rows scroll inside their own section, which does not bubble; the page
+  // scrolls on a phone. Both are listened for.
+  root.addEventListener('scroll', watch, true);
+  window.addEventListener('scroll', watch, { passive: true });
+
   const forget = () => {
     try {
       sessionStorage.removeItem(SCROLL_KEY);
@@ -646,6 +669,7 @@ export function listScroll(key, root) {
       /* nothing to forget */
     }
   };
+
   return {
     restore() {
       const rows = area();
@@ -660,9 +684,19 @@ export function listScroll(key, root) {
       } catch {
         saved = null;
       }
-      if (!saved) return;
-      if (rows) rows.scrollTop = saved.rows || 0;
-      if (saved.page) window.scrollTo(0, saved.page);
+      if (!saved || (!saved.rows && !saved.page)) return;
+      // Put it back now, and again once the browser has finished laying the rows
+      // out — until then the section may still be too short to scroll that far,
+      // and the browser would quietly stop at the top.
+      const put = () => {
+        const wrap = area();
+        if (wrap && saved.rows) wrap.scrollTop = saved.rows;
+        if (saved.page) window.scrollTo(0, saved.page);
+      };
+      put();
+      requestAnimationFrame(put);
+      setTimeout(put, 120);
+      setTimeout(put, 400);
     },
     forget,
   };
