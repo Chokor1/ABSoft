@@ -12,6 +12,7 @@ import {
   debounce,
   docPage,
   keepList,
+  listScroll,
   pager,
   recallList,
   downloadCsv,
@@ -41,6 +42,7 @@ const isAdmin = () => store.user?.role === 'admin';
 async function renderList(root, ctx) {
   const state = recallList('purchases', { from: monthStart(), to: todayISO(), search: '', page: 1, per: 50 });
   const keep = () => keepList('purchases', state, ['from', 'to', 'search', 'page', 'per']);
+  const scroll = listScroll('purchases', root);
   let rows = [];
 
   ctx.actions.innerHTML = `
@@ -70,6 +72,7 @@ async function renderList(root, ctx) {
   bar.classList.add('sticky-bar');
   const refilter = () => {
     state.page = 1;
+    scroll.forget();
     load();
   };
   const searchWrap = document.createElement('div');
@@ -197,6 +200,8 @@ async function renderList(root, ctx) {
         }
       }),
     );
+    // Back where you were, now the rows are on screen.
+    scroll.restore();
   }
 
   await load();

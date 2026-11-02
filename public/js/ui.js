@@ -610,6 +610,64 @@ export function keepList(key, state, fields) {
   }
 }
 
+/**
+ * How far a list was scrolled when you left it. The rows scroll inside their own
+ * section on a desk, and the whole page scrolls on a phone, so both are kept.
+ *
+ *   const scroll = listScroll('products', root);
+ *   …at the end of every paint: scroll.restore();
+ *   …whenever the filters change: scroll.forget();
+ *
+ * Only the first painting of a screen goes back to where you were; changing a
+ * page or a filter starts at the top of the rows, as it should.
+ */
+export function listScroll(key, root) {
+  const SCROLL_KEY = `absoft-scroll-${key}`;
+  const area = () => root.querySelector('.table-scroll');
+  let restored = false;
+  // Clicking a row is what takes you off the list: remember the view just then.
+  // The screen behind every list is one and the same element, so the watcher a
+  // previous list left on it is taken off first — otherwise the suppliers you
+  // are looking at now would be writing down the customers' place.
+  const watch = () => {
+    try {
+      sessionStorage.setItem(SCROLL_KEY, JSON.stringify({ rows: Math.round(area()?.scrollTop || 0), page: Math.round(window.scrollY) }));
+    } catch {
+      /* storage blocked: it just will not be remembered */
+    }
+  };
+  if (root.listScrollWatcher) root.removeEventListener('click', root.listScrollWatcher, true);
+  root.listScrollWatcher = watch;
+  root.addEventListener('click', watch, true);
+  const forget = () => {
+    try {
+      sessionStorage.removeItem(SCROLL_KEY);
+    } catch {
+      /* nothing to forget */
+    }
+  };
+  return {
+    restore() {
+      const rows = area();
+      if (restored) {
+        if (rows) rows.scrollTop = 0; // a new page of rows starts at its top
+        return;
+      }
+      restored = true;
+      let saved = null;
+      try {
+        saved = JSON.parse(sessionStorage.getItem(SCROLL_KEY) || 'null');
+      } catch {
+        saved = null;
+      }
+      if (!saved) return;
+      if (rows) rows.scrollTop = saved.rows || 0;
+      if (saved.page) window.scrollTo(0, saved.page);
+    },
+    forget,
+  };
+}
+
 export const PER_PAGE = [25, 50, 100, 200];
 
 /**

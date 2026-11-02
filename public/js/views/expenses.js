@@ -11,6 +11,7 @@ import {
   esc,
   filterSelect,
   keepList,
+  listScroll,
   pager,
   recallList,
   forgetSuggestions,
@@ -40,6 +41,7 @@ export async function render(root, ctx) {
 async function renderList(root, ctx) {
   const state = recallList('expenses', { from: monthStart(), to: todayISO(), search: '', category: '', page: 1, per: 50 });
   const keep = () => keepList('expenses', state, ['from', 'to', 'search', 'category', 'page', 'per']);
+  const scroll = listScroll('expenses', root);
   let rows = [];
   let used = await suggestions('expense_category');
 
@@ -68,6 +70,7 @@ async function renderList(root, ctx) {
   bar.classList.add('sticky-bar');
   const refilter = () => {
     state.page = 1;
+    scroll.forget();
     load();
   };
   const searchWrap = document.createElement('div');
@@ -195,6 +198,8 @@ async function renderList(root, ctx) {
         load();
       }),
     );
+    // Back where you were, now the rows are on screen.
+    scroll.restore();
   }
 
   await load();

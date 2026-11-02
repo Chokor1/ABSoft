@@ -22,6 +22,7 @@ import {
   money,
   filterSelect,
   keepList,
+  listScroll,
   pager,
   recallList,
   pct,
@@ -181,6 +182,7 @@ async function renderList(root, ctx, { stock = '' } = {}) {
   };
   if (state.stock === undefined) state.stock = '';
   const keep = () => keepList('products', state, ['search', 'showInactive', 'stock', 'category', 'page', 'per']);
+  const scroll = listScroll('products', root);
   let dropPicker = () => {};
 
   ctx.actions.innerHTML = `
@@ -232,6 +234,7 @@ async function renderList(root, ctx, { stock = '' } = {}) {
   // Any change of filter starts again at the first page.
   const refilter = () => {
     state.page = 1;
+    scroll.forget();
     load();
   };
   root.querySelector('#search').addEventListener(
@@ -375,6 +378,8 @@ async function renderList(root, ctx, { stock = '' } = {}) {
         }),
       );
     }
+    // Back where you were, now the rows are on screen.
+    scroll.restore();
   }
 
   await load();

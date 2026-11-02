@@ -114,8 +114,9 @@ a cashier can find "750ml bottle" without knowing the product name.
 ## Lists remember where you were
 
 Open a row from the middle of a list — the fifth page of products, a filtered week of invoices —
-and coming back puts you where you left: same page, same search, same filters. Every list does it:
-Products, Sell, Buy, Expenses, Stock Adjustment and the directories.
+and coming back puts you where you left: same page, same search, same filters, and the rows
+scrolled to the same place. Every list does it: Products, Sell, Buy, Expenses, Stock Adjustment and
+the directories. Turning to another page, or changing a filter, starts at the first row as before.
 
 It lasts as long as the browser tab. Close ABSoft and open it tomorrow and every list starts at its
 first page again.

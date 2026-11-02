@@ -10,6 +10,7 @@ import {
   docPage,
   filterSelect,
   keepList,
+  listScroll,
   pager,
   recallList,
   downloadCsv,
@@ -549,6 +550,7 @@ export async function render(root, ctx) {
   if (/^\d+$/.test(ctx.params[0] || '')) return renderSale(root, ctx, Number(ctx.params[0]));
   const state = recallList('sales', { from: monthStart(), to: todayISO(), search: '', status: '', method: '', page: 1, per: 50 });
   const keep = () => keepList('sales', state, ['from', 'to', 'search', 'status', 'method', 'page', 'per']);
+  const scroll = listScroll('sales', root);
   // Cost and profit are for administrators; the server leaves them out for cashiers.
   const admin = store.user.role === 'admin';
 
@@ -560,6 +562,7 @@ export async function render(root, ctx) {
   // Any change of filter starts again at the first page.
   const refilter = () => {
     state.page = 1;
+    scroll.forget();
     load();
   };
 
@@ -810,6 +813,8 @@ export async function render(root, ctx) {
         }
       }),
     );
+    // Back where you were, now the rows are on screen.
+    scroll.restore();
   }
 
   await load();

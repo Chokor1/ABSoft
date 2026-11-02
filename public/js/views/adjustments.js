@@ -14,6 +14,7 @@ import {
   esc,
   filterSelect,
   keepList,
+  listScroll,
   pager,
   recallList,
   money,
@@ -42,6 +43,7 @@ export async function render(root, ctx) {
 async function renderList(root, ctx) {
   const state = recallList('adjustments', { from: monthStart(), to: todayISO(), search: '', reason: '', type: '', page: 1, per: 50 });
   const keep = () => keepList('adjustments', state, ['from', 'to', 'search', 'reason', 'type', 'page', 'per']);
+  const scroll = listScroll('adjustments', root);
   let rows = [];
 
   ctx.actions.innerHTML = `
@@ -75,6 +77,7 @@ async function renderList(root, ctx) {
   bar.classList.add('sticky-bar');
   const refilter = () => {
     state.page = 1;
+    scroll.forget();
     load();
   };
   const searchWrap = document.createElement('div');
@@ -220,6 +223,8 @@ async function renderList(root, ctx) {
         }
       }),
     );
+    // Back where you were, now the rows are on screen.
+    scroll.restore();
   }
 
   await load();

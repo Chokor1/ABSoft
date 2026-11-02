@@ -66,6 +66,33 @@ check('coming back lands on the page you left, not the first',
   (await pageLabel()).includes('2') && (await firstRow()) === onPageTwo, `${await pageLabel()} · ${await firstRow()}`);
 await shot('170-list-memory');
 
+console.log('\n[scrolled down the rows]');
+const rowsTop = () => page.evaluate(() => Math.round(document.querySelector('.table-scroll')?.scrollTop ?? -1));
+await page.evaluate(() => document.querySelector('.table-scroll').scrollTo(0, 400));
+await page.waitForTimeout(300);
+const scrolledTo = await rowsTop();
+check('the rows scroll inside their section', scrolledTo > 200, String(scrolledTo));
+const deepRow = await page.evaluate(() => {
+  const wrap = document.querySelector('.table-scroll');
+  const row = [...wrap.querySelectorAll('tbody tr')].find((tr) => tr.offsetTop > wrap.scrollTop + 20);
+  row.click();
+  return row.querySelector('.cell-title').textContent.trim();
+});
+await page.waitForSelector('.product-hero, #page-form', { timeout: 8000 });
+check('a row well down the list opens', (await page.textContent('#page')).includes(deepRow), deepRow);
+await page.click('[data-back]').catch(() => page.goBack());
+await page.waitForSelector('table.data tbody tr', { timeout: 8000 });
+await page.waitForTimeout(400);
+check('coming back keeps the rows where they were, not at the top',
+  Math.abs((await rowsTop()) - scrolledTo) <= 4, `${scrolledTo} -> ${await rowsTop()}`);
+await shot('171-list-scroll');
+
+console.log('\n[a new page of rows starts at the top]');
+await page.click('.pager-nav [data-go="3"]');
+await wait(async () => (await pageLabel()).includes('3'), 5000);
+await page.waitForTimeout(400);
+check('turning the page puts you at the first row again', (await rowsTop()) === 0, String(await rowsTop()));
+
 console.log('\n[and the filters you set]');
 await page.fill('#search', 'a');
 await page.waitForTimeout(700);

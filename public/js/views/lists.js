@@ -15,6 +15,7 @@ import {
   METHOD_ICONS,
   money,
   keepList,
+  listScroll,
   pager,
   recallList,
   shrinkImage,
@@ -89,6 +90,7 @@ export async function openParty(ctx, kind, name) {
 async function renderList(root, ctx, kind, { actions = ctx.actions } = {}) {
   const state = { kind, rows: [], ...recallList(`list-${kind}`, { search: '', page: 1, per: 50 }) };
   const keep = () => keepList(`list-${kind}`, state, ['search', 'page', 'per']);
+  const scroll = listScroll(`list-${kind}`, root);
   const isAdmin = store.user.role === 'admin';
   const meta = () => KINDS.find((k) => k.kind === state.kind);
   const one = () => t(`lists.one.${state.kind}`);
@@ -116,6 +118,7 @@ async function renderList(root, ctx, kind, { actions = ctx.actions } = {}) {
   // A new search starts again at the first page.
   const refilter = () => {
     state.page = 1;
+    scroll.forget();
     load();
   };
   tabs.querySelector('#list-search').addEventListener(
@@ -251,6 +254,8 @@ async function renderList(root, ctx, kind, { actions = ctx.actions } = {}) {
         remove(state.rows.find((r) => r.id === Number(b.dataset.del)));
       }),
     );
+    // Back where you were, now the rows are on screen.
+    scroll.restore();
   }
 
   async function remove(entry) {
