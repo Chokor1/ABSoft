@@ -2111,3 +2111,59 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 
 /* The Sell form's size choice, under the product. */
 .size-select { margin-top: 6px; height: 34px; max-width: 220px; }
+
+/* ==========================================================================
+   add-ons and line notes
+   Only a product that offers a list of add-ons opens the sheet below; a line
+   only shows extras when it has some.
+   ========================================================================== */
+
+/* The till's sheet: the size, the toppings to tick, a note. */
+.build { display: grid; gap: 18px; }
+.build-part { display: grid; gap: 8px; }
+.build-head { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.build-sizes { display: flex; flex-wrap: wrap; gap: 8px; }
+.build-size {
+  display: grid; justify-items: center; gap: 1px; min-width: 84px; padding: 10px 14px; border-radius: 12px;
+  border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
+}
+.build-size b { font-size: 18px; font-weight: 800; unicode-bidi: plaintext; }
+.build-size span { font-size: 13px; font-weight: 700; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+.build-size.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+.build-addons { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.build-addon {
+  display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 12px; text-align: start;
+  border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.build-tick {
+  flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px;
+  border: 1.5px solid var(--border-strong); color: transparent;
+}
+.build-tick svg { width: 13px; height: 13px; }
+.build-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; unicode-bidi: plaintext; }
+.build-price { font-size: 12.5px; font-weight: 700; color: var(--accent-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.build-addon:hover { border-color: var(--border-strong); }
+.build-addon.on { border-color: var(--accent); background: var(--accent-soft); }
+.build-addon.on .build-tick { background: var(--accent); border-color: var(--accent); color: #fff; }
+#build-total { font-variant-numeric: tabular-nums; }
+
+/* A cart line says what was asked for, under its name. */
+.cl-extras { font-size: 12px; color: var(--accent-text); font-weight: 600; line-height: 1.35; margin-top: 1px; unicode-bidi: plaintext; }
+.cl-detail .cl-note { grid-column: 1 / -1; }
+.cl-detail .cl-note .input { text-align: start; unicode-bidi: plaintext; }
+
+/* A receipt line's extras, in the same small type as its detail. */
+.receipt .r-extras { font-size: 0.92em; }
+
+/* Settings → Add-ons. */
+.addon-lists { display: grid; }
+.addon-list { display: grid; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.addon-list:last-child { border-bottom: 0; }
+.addon-list-head { display: flex; align-items: center; gap: 8px; }
+.addon-list-head b { font-size: 15px; }
+.addon-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.addon-chip { font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
+.addon-chip small { color: var(--accent-text); font-weight: 700; }
+.addon-apply { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
+.addon-apply .select { width: auto; min-width: 200px; max-width: 100%; height: auto; padding-block: 6px; }

@@ -55,7 +55,7 @@ export async function render(root, ctx) {
 }
 
 /** The editable fields of a product, shared by the new-product page and the details tab. */
-function productFields(product) {
+function productFields(product, addonGroups = []) {
   const isNew = !product;
   return [
     { name: 'name', label: t('prod.name'), required: true, span: 2, value: product?.name, autofocus: isNew },
@@ -80,6 +80,20 @@ function productFields(product) {
     },
     { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
     { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
+    // Only a shop that keeps add-on lists is asked which one a product offers.
+    ...(addonGroups.length
+      ? [
+          {
+            name: 'addon_group_id',
+            label: t('addon.product_label'),
+            type: 'select',
+            span: 2,
+            value: product?.addon_group_id ?? '',
+            options: [{ value: '', label: t('addon.product_none') }, ...addonGroups.map((g) => ({ value: g.id, label: g.name }))],
+            help: t('addon.product_help'),
+          },
+        ]
+      : []),
     {
       name: 'sizes',
       label: t('size.title'),
@@ -401,11 +415,12 @@ async function renderList(root, ctx, { stock = '' } = {}) {
 
 async function renderForm(root, ctx) {
   const back = () => ctx.navigate('products');
+  const addonGroups = await api.addonGroups().catch(() => []);
   formPage(root, {
     title: t('prod.new'),
     subtitle: t('prod.new_sub'),
     submitLabel: t('prod.create'),
-    fields: productFields(null),
+    fields: productFields(null, addonGroups),
     onCancel: back,
     onSubmit: async (data) => {
       try {
@@ -437,6 +452,8 @@ async function renderDetail(root, ctx, id, initialTab) {
   }
   const state = { tab: TABS.includes(initialTab) ? initialTab : 'details', from: shiftDays(todayISO(), -29), to: todayISO() };
   let dropPickers = () => {};
+  // The add-on lists the shop keeps, so the product can offer one.
+  const addonGroups = await api.addonGroups().catch(() => []);
 
   ctx.actions.innerHTML = `
     <button class="btn" id="labels">${icon('barcode')} ${esc(t('label.print_this'))}</button>
@@ -511,7 +528,7 @@ async function renderDetail(root, ctx, id, initialTab) {
   function tabDetails() {
     // Laid out to fill the grid: the editable fields, what the product holds
     // (read only), then the active switch.
-    const fields = productFields(product).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
+    const fields = productFields(product, addonGroups).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
     const editable = fields.filter((f) => f.name !== 'active');
     const active = fields.filter((f) => f.name === 'active');
     const readOnly = (label, value) =>

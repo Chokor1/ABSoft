@@ -27,6 +27,7 @@ import { register as registerEntities } from './routes/entities.js';
 import { register as registerAdjustments } from './routes/adjustments.js';
 import { register as registerShifts } from './routes/shifts.js';
 import { register as registerPriceLists } from './routes/price-lists.js';
+import { register as registerAddons } from './routes/addons.js';
 import { register as registerHeld } from './routes/held.js';
 import { startAutoBackups } from './autobackup.js';
 
@@ -73,6 +74,7 @@ registerEntities(router);
 registerAdjustments(router);
 registerShifts(router);
 registerPriceLists(router);
+registerAddons(router);
 registerHeld(router);
 
 /* -------------------------------------------------------------- server ---- */
@@ -89,6 +91,8 @@ const CASHIER_ROUTES = new Set([
   'GET /api/products',
   // The till's row of categories.
   'GET /api/categories/in-use',
+  // The add-ons the till offers on a product.
+  'GET /api/addon-groups',
   'GET /api/products/lookup',
   'GET /api/products/:id/image',
   'GET /api/sales',

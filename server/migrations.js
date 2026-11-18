@@ -480,6 +480,36 @@ const MIGRATIONS = [
       addColumn(db, 'sale_items', 'size', "TEXT NOT NULL DEFAULT ''");
     },
   },
+  {
+    // Add-ons and line notes: toppings on a crêpe, protein in a shake, each at its
+    // own price, kept in lists a product can offer; and a note on any line. With
+    // no list and no note, a sale is exactly what it was.
+    name: 'addons-and-notes',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS addon_groups (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          name       TEXT    NOT NULL COLLATE NOCASE,
+          sort       INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS addons (
+          id       INTEGER PRIMARY KEY AUTOINCREMENT,
+          group_id INTEGER NOT NULL REFERENCES addon_groups(id) ON DELETE CASCADE,
+          name     TEXT    NOT NULL,
+          price    REAL    NOT NULL DEFAULT 0,
+          cost     REAL    NOT NULL DEFAULT 0,
+          sort     INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_addons_group ON addons(group_id, sort);
+      `);
+      addColumn(db, 'products', 'addon_group_id', 'INTEGER');
+      // What a line was made with, by name and price, and its note — kept as text,
+      // so an old invoice reads the same after a list is changed or removed.
+      addColumn(db, 'sale_items', 'addons', "TEXT NOT NULL DEFAULT ''");
+      addColumn(db, 'sale_items', 'note', "TEXT NOT NULL DEFAULT ''");
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

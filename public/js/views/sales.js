@@ -9,6 +9,7 @@ import {
   debounce,
   docPage,
   filterSelect,
+  itemExtras,
   itemName,
   keepList,
   listScroll,
@@ -60,6 +61,7 @@ function receiptHtml(sale, change = 0, change2 = null) {
           .map(
             (i) =>
               `${line(itemName(i), money(i.total))}
+               ${itemExtras(i) ? `<div class="r-line r-extras"><span>&nbsp;&nbsp;${esc(itemExtras(i))}</span><span></span></div>` : ''}
                <div class="r-line" style="color:var(--muted)"><span class="r-detail">&nbsp;&nbsp;${qtyText(
                  i.qty,
                )} ${esc(i.unit)} × ${money(i.unit_price)}${
@@ -314,6 +316,8 @@ export function returnDialog(sale, { atTill = false } = {}) {
           .map(
             (l, i) => `<tr data-i="${i}" class="${l.left > 0 ? '' : 'muted'}">
               <td><div class="cell-title">${esc(itemName(l.item))}</div>${
+                itemExtras(l.item) ? `<div class="cell-sub">${esc(itemExtras(l.item))}</div>` : ''
+              }${
                 l.item.returned ? `<div class="cell-sub">${esc(t('ret.already', { q: qtyText(l.item.returned) }))}</div>` : ''
               }</td>
               <td class="right">${qtyText(l.item.qty)} ${esc(l.item.unit || '')}</td>

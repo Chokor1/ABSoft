@@ -7,6 +7,7 @@ import {
   emptyState,
   esc,
   forgetSuggestions,
+  itemExtras,
   itemName,
   modal,
   sizesFrom,
@@ -66,6 +67,9 @@ export async function render(root, ctx) {
   // Settings → POS can add a row of categories above the products. Off, the till
   // is laid out and behaves exactly as it always has.
   const showCats = store.settings.pos_categories === '1';
+  // The add-on lists the shop keeps, by id: a product that offers one asks for
+  // its toppings and a note before it goes in the cart.
+  const addonGroups = new Map((await api.addonGroups().catch(() => [])).map((g) => [g.id, g]));
 
   root.innerHTML = `
     <div class="pos ${showCats ? 'with-cats' : ''}">
@@ -594,10 +598,20 @@ export async function render(root, ctx) {
   const lineDiscount = (l) => round2((l.qty * l.unit_price * Math.min(100, Math.max(0, Number(l.discountPct) || 0))) / 100);
   const lineTotal = (l) => Math.max(0, round2(l.qty * l.unit_price - lineDiscount(l)));
 
-  function addToCart(product, size = null) {
+  function addToCart(product, size = null, extras = null) {
     if (!product) return;
     // A label from the scale carries the weight (or the price, from which the weight follows).
     const weighed = product.scale?.qty > 0 ? product.scale : null;
+    // A product that offers add-ons opens one sheet: its size, if it has sizes,
+    // the toppings to tick and a note. A weighed label never asks anything.
+    const group = !weighed && product.addon_group_id ? addonGroups.get(product.addon_group_id) : null;
+    if (extras === null && group?.items.length) {
+      buildLine(product, group).then((built) => {
+        if (built) addToCart(product, built.size, { addons: built.addons, note: built.note });
+        scan.focus();
+      });
+      return;
+    }
     // A product sold in sizes asks which one first. A weighed label already says
     // what is being sold, so it never asks.
     if (!size && !weighed && product.sizes?.length) {
@@ -608,10 +622,14 @@ export async function render(root, ctx) {
       return;
     }
     const qty = weighed ? Math.round(weighed.qty * 1000) / 1000 : 1;
-    const price = weighed?.total > 0 ? round2(weighed.total / qty) : size ? Number(size.price) || 0 : Number(product.price) || 0;
-    // The same product in the same size is one line; Mango S and Mango L are two.
-    const key = size ? `${product.id}-${size.id}` : String(product.id);
-    const existing = state.cart.find((l) => lineKey(l) === key);
+    const addons = extras?.addons || [];
+    const note = (extras?.note || '').trim();
+    const base = weighed?.total > 0 ? round2(weighed.total / qty) : size ? Number(size.price) || 0 : Number(product.price) || 0;
+    // Toppings are part of what one costs: a $5 crêpe with two $1 toppings is $7 each.
+    const price = round2(base + addons.reduce((s, a) => s + (Number(a.price) || 0), 0));
+    // The same product, size, toppings and note make one line; anything else is another.
+    const wanted = sameAs({ product_id: product.id, size_id: size?.id, addons, note });
+    const existing = state.cart.find((l) => sameAs(l) === wanted);
     if (existing) {
       // Scanning the same item again adds one to its line rather than a second
       // line, and brings that line back to the top where the cashier is looking.
@@ -620,8 +638,11 @@ export async function render(root, ctx) {
       state.cart = [existing, ...state.cart.filter((l) => l !== existing)];
     } else {
       state.cart.unshift({
+        uid: ++lineSeq,
         product_id: product.id,
         ...(size ? { size_id: size.id, size: size.name } : {}),
+        ...(addons.length ? { addons } : {}),
+        ...(note ? { note } : {}),
         name: product.name,
         unit: product.unit,
         unit_price: price,
@@ -630,7 +651,91 @@ export async function render(root, ctx) {
         discountPct: 0,
       });
     }
-    drawCart(key);
+    drawCart((existing || state.cart[0]).uid);
+  }
+
+  /**
+   * The sheet for a product with add-ons: its sizes (when it has them), every
+   * topping on its list to tick, and a note. The Add button shows what the line
+   * will come to. Resolves { size, addons, note }, or nothing if the cashier
+   * changes their mind.
+   */
+  function buildLine(product, group) {
+    const sizes = product.sizes || [];
+    let size = sizes[0] || null;
+    const picked = new Set();
+    const base = () => (size ? Number(size.price) || 0 : Number(product.price) || 0);
+    const total = () => round2(base() + group.items.filter((a) => picked.has(a.id)).reduce((s, a) => s + a.price, 0));
+    return modal({
+      title: product.name,
+      subtitle: group.name,
+      wide: true,
+      body: `<div class="build">
+        ${
+          sizes.length
+            ? `<div class="build-part"><div class="build-head">${esc(t('size.choose'))}</div>
+                <div class="build-sizes" role="radiogroup">${sizes
+                  .map(
+                    (z, i) => `<button type="button" class="build-size ${i === 0 ? 'on' : ''}" role="radio"
+                      aria-checked="${i === 0}" data-size="${z.id}"><b>${esc(z.name)}</b><span>${money(z.price)}</span></button>`,
+                  )
+                  .join('')}</div></div>`
+            : ''
+        }
+        <div class="build-part"><div class="build-head">${esc(t('addon.pick'))}</div>
+          <div class="build-addons">${group.items
+            .map(
+              (a) => `<button type="button" class="build-addon" aria-pressed="false" data-addon="${a.id}">
+                <span class="build-tick">${icon('check')}</span><span class="build-name">${esc(a.name)}</span>
+                <span class="build-price">${a.price > 0 ? `+${money(a.price)}` : esc(t('addon.free'))}</span></button>`,
+            )
+            .join('')}</div></div>
+        <div class="build-part">
+          <label class="build-head" for="build-note">${esc(t('line.note'))}</label>
+          <input class="input" id="build-note" maxlength="200" autocomplete="off" placeholder="${esc(t('line.note_placeholder'))}"/>
+        </div>
+      </div>`,
+      footer: `<button class="btn" data-close>${esc(t('common.cancel'))}</button>
+               <button class="btn btn-primary btn-lg" id="build-add">${icon('plus')} ${esc(t('addon.add'))} · <span id="build-total"></span></button>`,
+      setup: (dialog, close) => {
+        const paintTotal = () => (dialog.querySelector('#build-total').innerHTML = money(total()));
+        dialog.querySelectorAll('[data-size]').forEach((b) =>
+          b.addEventListener('click', () => {
+            size = sizes.find((z) => String(z.id) === b.dataset.size) || size;
+            dialog.querySelectorAll('[data-size]').forEach((x) => {
+              x.classList.toggle('on', x === b);
+              x.setAttribute('aria-checked', String(x === b));
+            });
+            paintTotal();
+          }),
+        );
+        dialog.querySelectorAll('[data-addon]').forEach((b) =>
+          b.addEventListener('click', () => {
+            const id = Number(b.dataset.addon);
+            if (picked.has(id)) picked.delete(id);
+            else picked.add(id);
+            b.setAttribute('aria-pressed', String(picked.has(id)));
+            b.classList.toggle('on', picked.has(id));
+            paintTotal();
+          }),
+        );
+        const add = () =>
+          close({
+            size,
+            addons: group.items.filter((a) => picked.has(a.id)).map(({ id, name, price }) => ({ id, name, price })),
+            note: dialog.querySelector('#build-note').value.trim(),
+          });
+        dialog.querySelector('#build-add').addEventListener('click', add);
+        dialog.querySelector('#build-note').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            add();
+          }
+        });
+        paintTotal();
+        (dialog.querySelector('.build-size.on') || dialog.querySelector('[data-addon]'))?.focus();
+      },
+    });
   }
 
   /**
@@ -669,8 +774,22 @@ export async function render(root, ctx) {
     });
   }
 
-  /** A line is a product, or a product in one size: Mango S and Mango L are two lines. */
-  const lineKey = (l) => (l.size_id ? `${l.product_id}-${l.size_id}` : String(l.product_id));
+  /**
+   * Every cart line has an identity of its own, so typing a note on it never
+   * makes it a different line. What it is — the product, its size, its toppings
+   * and its note — decides whether one more of it joins that line or starts a
+   * new one: Mango S and Mango L are two lines, and so are a crêpe with Lotus and
+   * one with banana.
+   */
+  let lineSeq = 0;
+  const lineKey = (l) => String(l.uid);
+  const sameAs = (l) =>
+    [
+      l.product_id,
+      l.size_id || '',
+      (l.addons || []).map((a) => a.id).sort((a, b) => a - b).join('+'),
+      (l.note || '').trim().toLowerCase(),
+    ].join('|');
   const lineOf = (el) => state.cart.find((l) => lineKey(l) === el.closest('[data-line]')?.dataset.line);
 
   /** What the line comes to before its discount. */
@@ -711,6 +830,7 @@ export async function render(root, ctx) {
           <div class="cl-name" title="${esc(itemName(l))}">${esc(l.name)}${
             l.size ? ` <span class="cl-size">${esc(l.size)}</span>` : ''
           }</div>
+          <div class="cl-extras" data-extras ${itemExtras(l) ? '' : 'hidden'}>${esc(itemExtras(l))}</div>
           <div class="cl-sub" data-sub>${lineSub(l)}</div>
         </div>
         <span class="cl-short" data-stock ${l.qty > l.stock ? '' : 'hidden'}
@@ -743,6 +863,11 @@ export async function render(root, ctx) {
         <label class="cl-field">
           <span>${esc(t('pos.discount_amount'))}</span>
           <div class="input readonly" data-discount>${money(lineDiscount(l))}</div>
+        </label>
+        <label class="cl-field cl-note">
+          <span>${esc(t('line.note'))}</span>
+          <input class="input" data-field="note" maxlength="200" value="${esc(l.note || '')}"
+                 placeholder="${esc(t('line.note_placeholder'))}" aria-label="${esc(t('line.note'))}"/>
         </label>
       </div>
     </div>`;
@@ -846,6 +971,13 @@ export async function render(root, ctx) {
     if (!input) return;
     const line = lineOf(input);
     if (!line) return;
+    if (input.dataset.field === 'note') {
+      line.note = input.value;
+      const extras = input.closest('.cart-line').querySelector('[data-extras]');
+      extras.textContent = itemExtras(line);
+      extras.hidden = !itemExtras(line);
+      return;
+    }
     const value = Math.max(0, Number(input.value) || 0);
     if (input.dataset.field === 'discount') line.discountPct = Math.min(100, value);
     else if (input.dataset.field === 'total') setLineTotal(line, value);
@@ -936,6 +1068,8 @@ export async function render(root, ctx) {
         items: state.cart.map((l) => ({
           product_id: l.product_id,
           size_id: l.size_id || null,
+          addons: (l.addons || []).map((a) => a.id),
+          note: (l.note || '').trim(),
           qty: l.qty,
           unit_price: l.unit_price,
           discount_pct: l.discountPct || 0,
@@ -962,7 +1096,10 @@ export async function render(root, ctx) {
     try {
       const back = await api.resumeHeld(id);
       state.cart = back.items.map((l) => ({
+        uid: ++lineSeq,
         product_id: l.product_id,
+        ...(l.addons?.length ? { addons: l.addons } : {}),
+        ...(l.note ? { note: l.note } : {}),
         // A size removed while the sale was held: the line keeps its name and price.
         ...(l.size_id ? { size_id: l.size_id, size: l.size } : l.size ? { size: l.size } : {}),
         name: l.name,
@@ -1301,6 +1438,8 @@ export async function render(root, ctx) {
               items: state.cart.map((l) => ({
                 product_id: l.product_id,
                 size_id: l.size_id || null,
+                addons: (l.addons || []).map((a) => a.id),
+                note: (l.note || '').trim(),
                 qty: l.qty,
                 unit_price: l.unit_price,
                 discount: lineDiscount(l),

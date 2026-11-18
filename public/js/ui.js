@@ -276,15 +276,27 @@ export function readFields(root, fields) {
   return data;
 }
 
+/** The words a sizes table uses; an add-on list names its rows its own way. */
+const rowLabels = (over = {}) => ({
+  name: t('size.name'),
+  price: t('size.price'),
+  cost: t('size.cost'),
+  add: t('size.add'),
+  placeholder: t('size.name_placeholder'),
+  costSame: t('size.cost_same'),
+  max: 24,
+  ...over,
+});
+
 /** One row of a sizes table. An existing size keeps its id, so its sales stay linked to it. */
-function sizeRowHtml(z = {}) {
+function sizeRowHtml(z = {}, labels = rowLabels()) {
   return `<tr data-size-row ${z.id ? `data-size-id="${z.id}"` : ''}>
-    <td><input class="input" data-size-name value="${esc(z.name || '')}" placeholder="${esc(t('size.name_placeholder'))}"
-      aria-label="${esc(t('size.name'))}" maxlength="24"/></td>
+    <td><input class="input" data-size-name value="${esc(z.name || '')}" placeholder="${esc(labels.placeholder)}"
+      aria-label="${esc(labels.name)}" maxlength="${labels.max}"/></td>
     <td class="right"><input class="input" type="number" step="0.01" min="0" data-size-price value="${z.price ?? ''}"
-      aria-label="${esc(t('size.price'))}"/></td>
+      aria-label="${esc(labels.price)}"/></td>
     <td class="right"><input class="input" type="number" step="0.01" min="0" data-size-cost value="${z.cost ? z.cost : ''}"
-      placeholder="${esc(t('size.cost_same'))}" aria-label="${esc(t('size.cost'))}"/></td>
+      placeholder="${esc(labels.costSame)}" aria-label="${esc(labels.cost)}"/></td>
     <td class="right"><button type="button" class="btn btn-ghost btn-icon btn-sm" data-drop-size
       title="${esc(t('common.remove'))}" aria-label="${esc(t('common.remove'))}">${icon('trash')}</button></td>
   </tr>`;
@@ -310,8 +322,14 @@ export function wireSizeTables(root) {
     const rows = field.querySelector('[data-rows]');
     const head = field.querySelector('thead');
     const showHead = () => (head.hidden = !rows.children.length);
+    let labels = rowLabels();
+    try {
+      labels = { ...labels, ...JSON.parse(field.dataset.labels || '{}') };
+    } catch {
+      /* the sizes' own words */
+    }
     field.querySelector('[data-add-size]').addEventListener('click', () => {
-      rows.insertAdjacentHTML('beforeend', sizeRowHtml());
+      rows.insertAdjacentHTML('beforeend', sizeRowHtml({}, labels));
       showHead();
       rows.lastElementChild.querySelector('[data-size-name]').focus();
     });
@@ -322,6 +340,24 @@ export function wireSizeTables(root) {
       showHead();
     });
   });
+}
+
+/** The add-ons on a sale line: kept as text on a saved line, as a list on a cart line. */
+export function lineAddons(i) {
+  if (Array.isArray(i?.addons)) return i.addons;
+  if (!i?.addons) return [];
+  try {
+    const list = JSON.parse(i.addons);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+/** What was asked for on a line, under its name: "+ Lotus Biscuit, Banana · cut in four". */
+export function itemExtras(i) {
+  const addons = lineAddons(i).map((a) => a.name);
+  return [addons.length ? `+ ${addons.join(', ')}` : '', i?.note || ''].filter(Boolean).join(' · ');
 }
 
 /** A sale line's name, with the size it was sold in: "Mango · L". */
@@ -413,15 +449,16 @@ function fieldHtml(f) {
     // One row per size: its name, its price, and what it costs to make (optional).
     // No rows at all is a product sold without sizes, the way every product was.
     const sizes = Array.isArray(f.value) ? f.value : [];
-    return `<div class="field ${span} sizes-field">
+    const labels = rowLabels(f.labels);
+    return `<div class="field ${span} sizes-field" data-labels="${esc(JSON.stringify(labels))}">
       <label>${esc(f.label)}</label>
       <div class="sizes-box">
         <table class="data sizes-table">
-          <thead${sizes.length ? '' : ' hidden'}><tr><th>${esc(t('size.name'))}</th><th class="right">${esc(t('size.price'))}</th>
-            <th class="right">${esc(t('size.cost'))}</th><th></th></tr></thead>
-          <tbody data-rows>${sizes.map(sizeRowHtml).join('')}</tbody>
+          <thead${sizes.length ? '' : ' hidden'}><tr><th>${esc(labels.name)}</th><th class="right">${esc(labels.price)}</th>
+            <th class="right">${esc(labels.cost)}</th><th></th></tr></thead>
+          <tbody data-rows>${sizes.map((z) => sizeRowHtml(z, labels)).join('')}</tbody>
         </table>
-        <div class="sizes-add"><button type="button" class="btn btn-sm" data-add-size>${icon('plus')} ${esc(t('size.add'))}</button></div>
+        <div class="sizes-add"><button type="button" class="btn btn-sm" data-add-size>${icon('plus')} ${esc(labels.add)}</button></div>
       </div>
       <input type="hidden" name="${f.name}" value=""/>
       ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}

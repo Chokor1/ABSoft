@@ -59,6 +59,10 @@ export const api = {
   deleteProductImage: (id) => api.del(`/api/products/${id}/image`),
   categories: () => api.get('/api/categories'),
   categoriesInUse: () => api.get('/api/categories/in-use'),
+  addonGroups: () => api.get('/api/addon-groups'),
+  saveAddonGroup: (g) => (g.id ? api.put(`/api/addon-groups/${g.id}`, g) : api.post('/api/addon-groups', g)),
+  deleteAddonGroup: (id) => api.del(`/api/addon-groups/${id}`),
+  applyAddonGroup: (id, category) => api.post(`/api/addon-groups/${id}/apply`, { category }),
 
   productPrices: (id) => api.get(`/api/products/${id}/prices`),
   generateBarcode: (id) => api.post(`/api/products/${id}/barcode`, {}),

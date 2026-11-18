@@ -28,6 +28,15 @@ const shape = (row) => {
   return { ...rest, barcodes: JSON.parse(barcodes_json || '[]'), sizes: JSON.parse(sizes_json || '[]') };
 };
 
+/** Which add-on list a product offers: one that exists, or none. */
+function setAddonGroup(productId, value) {
+  const id = value === '' || value === null ? null : Number(value) || null;
+  if (id && !db.prepare(`SELECT 1 FROM addon_groups WHERE id = ?`).get(id)) {
+    throw badRequest('That add-on list does not exist', 'ADDON_GROUP_NOT_FOUND');
+  }
+  db.prepare(`UPDATE products SET addon_group_id = ? WHERE id = ?`).run(id, productId);
+}
+
 const MAX_SIZES = 12;
 
 /**
@@ -467,6 +476,7 @@ export function register(router) {
       const id = lastId(res);
       setBarcodes(id, extra);
       if (ctx.body.sizes !== undefined) setSizes(id, readSizes(ctx.body.sizes));
+      if (ctx.body.addon_group_id !== undefined) setAddonGroup(id, ctx.body.addon_group_id);
       setPrices(id, ctx.body.prices, ctx.user.id);
 
       // Stock already on hand is recorded as an opening stock adjustment.
@@ -603,6 +613,7 @@ export function register(router) {
       setBarcodes(existing.id, extra);
       // Sent: replace the sizes. Left out: keep them as they are.
       if (ctx.body.sizes !== undefined) setSizes(existing.id, readSizes(ctx.body.sizes));
+      if (ctx.body.addon_group_id !== undefined) setAddonGroup(existing.id, ctx.body.addon_group_id);
       if (ctx.body.prices !== undefined) setPrices(existing.id, ctx.body.prices, ctx.user.id);
       // The product's own price and cost are the main list's prices: their
       // changes belong in the same history.

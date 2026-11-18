@@ -337,8 +337,8 @@ check('no column header: each line explains itself', (await page.$$('.cl-head'))
 /* ------------------------------------------------------ edit where it sits */
 console.log('\n[lines are edited in place]');
 check('there is no edit button to open', (await page.$$('.cart-line [data-edit]')).length === 0);
-check('each line has quantity, unit price, discount and (once opened) its total',
-  (await page.$$('#cart-lines .cart-line:first-child [data-field]')).length === 4);
+check('each line has quantity, unit price, discount and (once opened) its total and a note',
+  (await page.$$('#cart-lines .cart-line:first-child [data-field]')).length === 5);
 
 const espresso = '.cart-line:has-text("Espresso")';
 await page.fill(`${espresso} [data-field="qty"]`, '3');

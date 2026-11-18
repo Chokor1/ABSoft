@@ -543,6 +543,27 @@ as before, with no question asked.
   read "Mango · L" after a size is renamed or removed. Held sales keep their sizes too.
 - Profit on a line uses the size's own cost when it has one.
 
+### Add-ons and line notes
+
+Toppings on a crêpe, protein in a shake: extras a product can offer at the till, each at its own
+price. Make a list under **Settings → Add-ons** — "Crêpe toppings" with Lotus Biscuit, Banana,
+Kiwi… at $1 each — then offer it on the products that take it: on one product from its page, or on
+every product in a category in one go from the list itself. A product offers at most one list;
+choose **None** on its page to take it off again.
+
+- **At the till**, tapping a product that offers a list opens one sheet: its sizes, if it has
+  them, the add-ons to tick, and a note. The **Add** button shows what the line will come to. The
+  same product with the same add-ons and note joins its line; anything different is a line of its
+  own.
+- **Any line can carry a note** — open it with its arrow and type ("grind fine", "less sugar") —
+  whether or not it has add-ons. The note shows under the name.
+- **On the sale** each line keeps its add-ons by name and price, and its note: receipts, returns
+  and held sales show them, and old invoices still read them after a list is changed or removed.
+  The add-ons' prices are part of the line's price, and their costs part of its cost.
+- Add-ons are priced, not stocked: what they use comes out of stock with recipes.
+
+A shop with no add-on list sees no change; products are not even asked which list they offer.
+
 ### Categories at the till
 
 Off by default; switch on under **Settings → POS → Show categories at the till**. A row of chips

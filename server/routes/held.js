@@ -9,6 +9,7 @@
  * never ring up the same cart.
  */
 import { db, lastId, transact } from '../db.js';
+import { readLineAddons } from './addons.js';
 import { badRequest, notFound } from '../http.js';
 import { money, num, qty, str } from '../util.js';
 
@@ -44,9 +45,14 @@ function readCart(body) {
       ? db.prepare(`SELECT id, name FROM product_sizes WHERE id = ? AND product_id = ?`).get(num(line.size_id), product.id)
       : null;
     names.push(`${product.name}${size ? ` · ${size.name}` : ''} × ${quantity}`);
+    // Toppings and the note go aside with the line, by name and price.
+    const addons = readLineAddons(line.addons).map(({ id, name, price }) => ({ id, name, price }));
+    const note = str(line.note).slice(0, 200);
     return {
       product_id: product.id,
       ...(size ? { size_id: size.id, size: size.name } : {}),
+      ...(addons.length ? { addons } : {}),
+      ...(note ? { note } : {}),
       qty: quantity,
       unit_price: money(Math.max(0, num(line.unit_price))),
       discount_pct: Math.min(100, Math.max(0, num(line.discount_pct))),
