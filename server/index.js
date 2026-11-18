@@ -87,6 +87,8 @@ const PUBLIC_ROUTES = new Set(['POST /api/auth/login', 'POST /api/auth/logout', 
  */
 const CASHIER_ROUTES = new Set([
   'GET /api/products',
+  // The till's row of categories.
+  'GET /api/categories/in-use',
   'GET /api/products/lookup',
   'GET /api/products/:id/image',
   'GET /api/sales',

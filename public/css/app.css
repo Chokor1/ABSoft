@@ -2022,3 +2022,43 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
   .label:last-child { break-after: auto; page-break-after: auto; }
 }
 .label-feed { margin-top: 10px; font-weight: 600; color: var(--text-2); }
+
+/* ==========================================================================
+   the till's categories (Settings → POS)
+   Only a till with the row switched on is laid out differently: one more line
+   between the search and the products. Without it, nothing here applies.
+   ========================================================================== */
+
+.pos.with-cats {
+  grid-template-areas:
+    "scan  cart"
+    "cats  cart"
+    "tiles cart";
+  grid-template-rows: auto auto 1fr;
+}
+.pos > .cat-bar { grid-area: cats; }
+.cat-bar {
+  display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px;
+  scrollbar-width: thin;
+}
+.cat-bar:empty { display: none; }
+.cat-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 7px;
+  height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  font: inherit; font-size: 13.5px; font-weight: 600; white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.cat-chip span { unicode-bidi: plaintext; }
+.cat-chip small {
+  min-width: 20px; padding: 1px 6px; border-radius: 999px; text-align: center;
+  background: var(--surface-3); color: var(--muted); font-size: 11px; font-weight: 700;
+}
+.cat-chip:hover { border-color: var(--border-strong); color: var(--text); }
+.cat-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cat-chip.active small { background: color-mix(in srgb, #fff 22%, transparent); color: #fff; }
+
+/* Stacked on a narrower screen: the categories sit right above the products. */
+@media (max-width: 1180px) {
+  .pos.with-cats { grid-template-areas: "scan" "cart" "cats" "tiles"; grid-template-rows: auto; }
+}

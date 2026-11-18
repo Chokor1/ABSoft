@@ -58,6 +58,7 @@ export const api = {
   uploadProductImage: (id, data) => api.put(`/api/products/${id}/image`, { data }),
   deleteProductImage: (id) => api.del(`/api/products/${id}/image`),
   categories: () => api.get('/api/categories'),
+  categoriesInUse: () => api.get('/api/categories/in-use'),
 
   productPrices: (id) => api.get(`/api/products/${id}/prices`),
   generateBarcode: (id) => api.post(`/api/products/${id}/barcode`, {}),

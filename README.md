@@ -525,6 +525,16 @@ line. A label with a wrong check digit is refused, never guessed.
 Switching it on is refused while any real 13-digit product barcode starts with that prefix, since
 such a product would then ring up as a weight; the message says how many, so you can change either.
 
+### Categories at the till
+
+Off by default; switch on under **Settings → POS → Show categories at the till**. A row of chips
+then sits above the products: **All**, followed by every category that has a product on sale, each
+with how many. Tap one and the cards show only that category — and the search, and the next batch
+that loads as you scroll, stay inside it too. **All** brings the whole shop back. A scan still finds
+any product, whatever category is showing.
+
+Off, the till looks and works exactly as before; the setting changes nothing else.
+
 ### Shifts (opening and closing)
 
 Off by default; switch on under **Settings → POS → Work in shifts**. With shifts on, the till sells

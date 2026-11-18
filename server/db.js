@@ -164,6 +164,8 @@ const DEFAULT_SETTINGS = {
   // The shop's logo, as a small data URL; it heads every printed document.
   store_logo: '',
   pos_shifts: '0',
+  // A row of categories above the till's products: off, the till is as it was.
+  pos_categories: '0',
   search_min_chars: '1',
   pos_page_size: '40',
 };

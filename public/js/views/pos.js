@@ -61,9 +61,12 @@ export async function render(root, ctx) {
   const QUICK = Math.max(10, Number(store.settings.pos_page_size) || 40);
   const MIN_SEARCH = Math.min(5, Math.max(1, Number(store.settings.search_min_chars) || 1));
   const RESULTS = QUICK;
+  // Settings → POS can add a row of categories above the products. Off, the till
+  // is laid out and behaves exactly as it always has.
+  const showCats = store.settings.pos_categories === '1';
 
   root.innerHTML = `
-    <div class="pos">
+    <div class="pos ${showCats ? 'with-cats' : ''}">
       <div class="scan-bar">
         <div class="input-icon combo">
           ${icon('barcode')}
@@ -98,6 +101,7 @@ export async function render(root, ctx) {
         </div>
       </aside>
 
+      ${showCats ? `<div class="cat-bar" id="cat-bar" role="tablist" aria-label="${esc(t('pos.categories'))}"></div>` : ''}
       <div id="tiles" class="product-grid"></div>
 
       <!-- phones: the total and the way to pay stay in reach while scrolling products -->
@@ -143,6 +147,7 @@ export async function render(root, ctx) {
    */
   let searchToken = 0; // an answer to an older search must not paint over a newer one
   state.mode = 'popular';
+  state.category = ''; // every category, until one is picked
   state.resultsFor = '';
   state.more = false; // the last batch was full, so there may be more
   let loadingMore = false;
@@ -162,7 +167,7 @@ export async function render(root, ctx) {
       tiles.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>${esc(t('pos.loading_products'))}</p></div>`;
     }
     const token = ++searchToken;
-    const rows = await api.products({ sort: 'popular', limit: QUICK });
+    const rows = await api.products({ sort: 'popular', limit: QUICK, category: state.category });
     if (token !== searchToken) return;
     Object.assign(state, { products: rows, mode: 'popular', resultsFor: '', more: rows.length === QUICK });
     drawTiles();
@@ -175,7 +180,7 @@ export async function render(root, ctx) {
     const token = ++searchToken;
     let rows;
     try {
-      rows = await api.products({ search: text, limit: RESULTS });
+      rows = await api.products({ search: text, limit: RESULTS, category: state.category });
     } catch {
       return null;
     }
@@ -201,8 +206,8 @@ export async function render(root, ctx) {
     const batch = state.mode === 'search' ? RESULTS : QUICK;
     const query =
       state.mode === 'search'
-        ? { search: state.resultsFor, limit: RESULTS, offset: state.products.length }
-        : { sort: 'popular', limit: QUICK, offset: state.products.length };
+        ? { search: state.resultsFor, limit: RESULTS, offset: state.products.length, category: state.category }
+        : { sort: 'popular', limit: QUICK, offset: state.products.length, category: state.category };
     paintMore();
     let rows = [];
     try {
@@ -244,6 +249,46 @@ export async function render(root, ctx) {
     const bottom = Math.min(window.innerHeight, tiles.scrollHeight > tiles.clientHeight + 1 ? box.bottom : window.innerHeight);
     if (end.getBoundingClientRect().top < bottom + 120) loadMore();
   }
+  /**
+   * The row of categories, when the shop has switched it on. Picking one keeps
+   * the cards, the search and the batches that load as you scroll all inside
+   * it; All goes back to the whole shop. A scan still finds any product.
+   */
+  if (showCats) {
+    const bar = $('#cat-bar');
+    const chip = (name, label, n) =>
+      `<button type="button" class="cat-chip ${name === state.category ? 'active' : ''}" role="tab"
+         aria-selected="${name === state.category}" data-cat="${esc(name)}">
+         <span>${esc(label)}</span>${n === undefined ? '' : `<small>${n}</small>`}</button>`;
+    const paintCats = (cats) => {
+      bar.innerHTML = chip('', t('pos.all_categories')) + cats.map((c) => chip(c.name, c.name, c.n)).join('');
+    };
+    api
+      .categoriesInUse()
+      .then(paintCats)
+      .catch(() => paintCats([]));
+    bar.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-cat]');
+      if (!btn || btn.dataset.cat === state.category) return;
+      state.category = btn.dataset.cat;
+      bar.querySelectorAll('[data-cat]').forEach((b) => {
+        const on = b === btn;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      // Bring the chosen chip fully into view if it was cut off at an edge —
+      // moving only the row, never the page, and not at all when it shows.
+      const edge = bar.getBoundingClientRect();
+      const box = btn.getBoundingClientRect();
+      if (box.left < edge.left) bar.scrollLeft -= edge.left - box.left + 8;
+      else if (box.right > edge.right) bar.scrollLeft += box.right - edge.right + 8;
+      // A different shelf: start at its top, with whatever is typed still applied.
+      state.products = [];
+      tiles.scrollTop = 0;
+      loadProducts();
+    });
+  }
+
   const onScroll = () => maybeLoadMore();
   tiles.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('scroll', onScroll, { passive: true });

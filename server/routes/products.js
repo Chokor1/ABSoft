@@ -664,4 +664,19 @@ export function register(router) {
   // Backed by the directory, so a category created there shows up before any
   // product uses it.
   router.get('/api/categories', () => listEntities('category').map((e) => e.name));
+
+  /**
+   * The categories the till can show: only those that have a product on sale,
+   * each with how many, in name order. A category with nothing in it would
+   * only be a button that leads nowhere.
+   */
+  router.get('/api/categories/in-use', () =>
+    db
+      .prepare(
+        `SELECT category AS name, COUNT(*) AS n FROM products
+         WHERE active = 1 AND TRIM(category) <> ''
+         GROUP BY category COLLATE NOCASE ORDER BY category COLLATE NOCASE`,
+      )
+      .all(),
+  );
 }

@@ -105,9 +105,13 @@ export async function render(root, ctx) {
       ${
         isAdmin
           ? `<form class="card" id="pos-form">
-              <div class="card-head"><div><h3>${esc(t('set.shifts'))}</h3>
-                <div class="sub">${esc(t('set.shifts_sub'))}</div></div></div>
-              <div class="card-body">
+              <div class="card-head"><div><h3>${esc(t('set.till_options'))}</h3>
+                <div class="sub">${esc(t('set.till_options_sub'))}</div></div></div>
+              <div class="card-body" style="display:grid;gap:12px">
+                <label class="set-switch">
+                  <input type="checkbox" name="pos_categories" ${cfg.pos_categories === '1' ? 'checked' : ''}/>
+                  <span><b>${esc(t('set.categories_enable'))}</b><small>${esc(t('set.categories_help'))}</small></span>
+                </label>
                 <label class="set-switch">
                   <input type="checkbox" name="pos_shifts" ${cfg.pos_shifts === '1' ? 'checked' : ''}/>
                   <span><b>${esc(t('set.shifts_enable'))}</b><small>${esc(t('set.shifts_help'))}</small></span>
@@ -496,7 +500,10 @@ export async function render(root, ctx) {
 
   $('#pos-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    await save({ pos_shifts: e.target.pos_shifts.checked ? '1' : '0' });
+    await save({
+      pos_shifts: e.target.pos_shifts.checked ? '1' : '0',
+      pos_categories: e.target.pos_categories.checked ? '1' : '0',
+    });
   });
 
   // Scale labels: the example under the fields follows what is typed, so the layout
