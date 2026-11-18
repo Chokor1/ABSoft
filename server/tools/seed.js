@@ -10,11 +10,14 @@
  * second currency. Only on an empty catalogue; safe to skip entirely.
  *
  *   npm run seed
+ *   node server/tools/seed.js --menu-only   the catalogue alone, for a real shop
  */
 import { db, saveSettings, transact } from '../db.js';
 import { ensureSeedAdmin } from '../auth.js';
 import { money, qty, shiftDays, today } from '../util.js';
 import { rememberEntity } from '../entities.js';
+
+const MENU_ONLY = process.argv.includes('--menu-only');
 
 ensureSeedAdmin();
 const admin = db.prepare(`SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1`).get();
@@ -198,6 +201,20 @@ const pad = (n) => String(n).padStart(2, '0');
 const clock = (minutes) => `${pad(Math.floor(minutes / 60))}:${pad(Math.floor(minutes % 60))}:${pad(Math.floor(Math.random() * 60))}`;
 const scaled = (recipe, k) => Object.fromEntries(Object.entries(recipe).map(([name, q]) => [name, qty(q * k)]));
 
+/** Categories, units, suppliers and the like, offered again in the pickers. */
+function rememberNames() {
+  const names = (sql) => db.prepare(sql).all().map((r) => r.name).filter(Boolean);
+  for (const [kind, sql] of [
+    ['category', `SELECT DISTINCT category AS name FROM products`],
+    ['unit', `SELECT DISTINCT unit AS name FROM products`],
+    ['supplier', `SELECT DISTINCT supplier AS name FROM purchases`],
+    ['customer', `SELECT DISTINCT customer AS name FROM sales`],
+    ['expense_category', `SELECT DISTINCT category AS name FROM expenses`],
+  ]) {
+    names(sql).forEach((name) => rememberEntity(kind, name));
+  }
+}
+
 saveSettings({
   store_name: 'Juice Fuel',
   receipt_footer: 'Crepe • Juice • Waffle • Saj — thank you!',
@@ -290,6 +307,9 @@ transact(() => {
     return item;
   });
   for (const v of [...juices.flat(), ...shakes, ...smoothies, ...crepes, ...plates, ...saj]) v.toppings = v.category === 'Crêpes & More';
+
+  // For a real shop: the menu alone — no sales, purchases, expenses or counts, every stock at zero.
+  if (MENU_ONLY) return rememberNames();
 
   /* ------------------------------------------------------------ the month */
 
@@ -437,16 +457,7 @@ transact(() => {
     for (const offset of [33 - i, 3 + (i % 3)]) insertExpense.run(day(offset), category, note, money(amount * between(0.9, 1.1)), admin.id);
   });
 
-  const names = (sql) => db.prepare(sql).all().map((r) => r.name).filter(Boolean);
-  for (const [kind, sql] of [
-    ['category', `SELECT DISTINCT category AS name FROM products`],
-    ['unit', `SELECT DISTINCT unit AS name FROM products`],
-    ['supplier', `SELECT DISTINCT supplier AS name FROM purchases`],
-    ['customer', `SELECT DISTINCT customer AS name FROM sales`],
-    ['expense_category', `SELECT DISTINCT category AS name FROM expenses`],
-  ]) {
-    names(sql).forEach((name) => rememberEntity(kind, name));
-  }
+  rememberNames();
 });
 
 const counts = db
@@ -458,4 +469,4 @@ const counts = db
             (SELECT COUNT(*) FROM expenses) AS expenses`,
   )
   .get();
-console.log('Juice bar demo created:', { ...counts });
+console.log(MENU_ONLY ? 'Juice bar menu created:' : 'Juice bar demo created:', { ...counts });
