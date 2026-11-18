@@ -1979,6 +1979,14 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
     width: 74mm; margin: 0 auto; font-size: 11px;
   }
   .receipt .r-rule { border-top: 1px dashed #96a0b0; }
+  /* A thermal roll: black on white, nothing grey that the head would print faint. */
+  body.print-roll .receipt, body.print-roll .receipt * { color: #000 !important; }
+  body.print-roll .receipt .r-rule, body.print-roll .receipt .r-by { border-color: #000 !important; }
+}
+/* printSlip measures a receipt as it will print on a roll: off screen, print type. */
+.receipt.roll-measure {
+  position: absolute; left: -10000px; top: 0; visibility: hidden;
+  background: none; border: 0; padding: 2mm 0; font-size: 11px; max-width: none;
 }
 
 /* A product's price on each of the shop's other price lists. */

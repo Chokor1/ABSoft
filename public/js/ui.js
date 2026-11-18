@@ -918,6 +918,38 @@ export const slipHead = (cfg = store.settings) => `
   ${cfg.store_logo ? `<div class="r-logo"><img src="${esc(cfg.store_logo)}" alt="" /></div>` : ''}
   <div class="r-center r-shop"><b>${esc(cfg.store_name || t('app.name'))}</b></div>`;
 
+/**
+ * Print a slip (a receipt, a shift report). On a full page, as it always has.
+ * With a thermal roll chosen in Settings (80 or 58 mm), the page is the roll's
+ * width and the slip's own length, with no margin, so the printer feeds just the
+ * receipt and cuts, not a sheet of A4 mostly blank.
+ */
+export function printSlip(root = document) {
+  const paper = store.settings?.receipt_paper;
+  const slip = [...root.querySelectorAll('.receipt')].pop();
+  if (!['80', '58'].includes(paper) || !slip) return window.print();
+  const width = paper === '80' ? 72 : 48; // the printable width of the roll, in mm
+  // Measure the slip as it will print: at the roll's width, in print type.
+  const probe = slip.cloneNode(true);
+  probe.classList.add('roll-measure');
+  probe.style.width = `${width}mm`;
+  document.body.append(probe);
+  const mm = probe.getBoundingClientRect().height * (25.4 / 96);
+  probe.remove();
+  const style = document.createElement('style');
+  style.textContent = `@media print { @page { size: ${paper}mm ${Math.ceil(mm + 8)}mm; margin: 0; }
+    body.print-roll .receipt { width: ${width}mm !important; margin: 0 auto !important; padding: 2mm 0 !important; } }`;
+  document.head.append(style);
+  document.body.classList.add('print-roll');
+  const done = () => {
+    style.remove();
+    document.body.classList.remove('print-roll');
+    window.removeEventListener('afterprint', done);
+  };
+  window.addEventListener('afterprint', done);
+  window.print();
+}
+
 /** The tail of a printed slip: the software that printed it, in small type. */
 export const slipFoot = () => `
   <div class="r-by"><img src="/img/logo-mark.svg" alt="" /><span>${esc(t('print.by', { v: store.version || '' }))}</span></div>`;

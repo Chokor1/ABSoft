@@ -32,7 +32,7 @@ import {
   toast,
   todayISO,
 } from '../ui.js';
-import { methodMark, paymentMethods } from '../ui.js';
+import { methodMark, paymentMethods, printSlip } from '../ui.js';
 import { openParty } from './lists.js';
 import { renderSaleForm } from './sale-form.js';
 
@@ -108,7 +108,7 @@ export function showReceipt(sale, { change = 0, change2 = null, onChanged, after
                t('common.print'),
              )}</button>`,
     setup: (root, close) => {
-      root.querySelector('[data-print]').addEventListener('click', () => window.print());
+      root.querySelector('[data-print]').addEventListener('click', () => printSlip(root));
       root.querySelector('[data-pay]')?.addEventListener('click', async () => {
         close();
         const updated = await recordPayment(sale);
@@ -503,7 +503,7 @@ async function renderSale(root, ctx, id) {
       sale = await api.sale(sale.id);
       paint();
     });
-    root.querySelector('[data-print]').addEventListener('click', () => window.print());
+    root.querySelector('[data-print]').addEventListener('click', () => printSlip(root));
     root.querySelector('[data-pay]')?.addEventListener('click', async () => {
       const updated = await recordPayment(sale);
       if (updated) {

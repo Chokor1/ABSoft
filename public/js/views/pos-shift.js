@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { formatSecond, second } from '../currency.js';
 import { icon } from '../icons.js';
 import { errorText, methodText, t } from '../i18n.js';
-import { dateTimeText, esc, methodIcon, methodMark, modal, money, slipFoot, slipHead, store, toast } from '../ui.js';
+import { dateTimeText, esc, methodIcon, methodMark, modal, money, printSlip, slipFoot, slipHead, store, toast } from '../ui.js';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const time = (value) => dateTimeText(value);
@@ -448,9 +448,9 @@ export function printShiftReport(shift) {
     footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
              <button class="btn btn-primary no-print" data-print>${icon('print')} ${esc(t('common.print'))}</button>`,
     setup: (root) => {
-      root.querySelector('[data-print]').addEventListener('click', () => window.print());
+      root.querySelector('[data-print]').addEventListener('click', () => printSlip(root));
       // Give the report a moment to paint before the print dialog takes over.
-      setTimeout(() => window.print(), 250);
+      setTimeout(() => printSlip(root), 250);
     },
   });
 }

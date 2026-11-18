@@ -154,6 +154,9 @@ const DEFAULT_SETTINGS = {
   tax_rate: '0',
   low_stock_alert: '1',
   receipt_footer: 'Thank you for your business!',
+  // The paper a receipt prints on: '' a full page, as it always has; '80' or '58' a
+  // thermal roll, the page cut to the receipt's own length so the printer feeds no blank paper.
+  receipt_paper: '',
   // Optional second currency, e.g. L.L at 89,500 to the dollar. Off until switched on.
   currency2_enabled: '0',
   currency2_symbol: 'L.L',

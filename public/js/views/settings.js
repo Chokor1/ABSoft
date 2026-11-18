@@ -94,6 +94,13 @@ export async function render(root, ctx) {
               <label>${esc(t('set.receipt_footer'))}</label>
               <textarea class="input" name="receipt_footer" ${off}>${esc(cfg.receipt_footer)}</textarea>
             </div>
+            <div class="field">
+              <label>${esc(t('set.receipt_paper'))}</label>
+              <select class="input" name="receipt_paper" ${off}>
+                ${['', '80', '58'].map((v) => `<option value="${v}" ${(cfg.receipt_paper || '') === v ? 'selected' : ''}>${esc(t(`set.paper_${v || 'page'}`))}</option>`).join('')}
+              </select>
+              <div class="help">${esc(t('set.receipt_paper_help'))}</div>
+            </div>
             <div class="field span-2">
               <label class="check">
                 <input type="checkbox" name="low_stock_alert" ${cfg.low_stock_alert === '1' ? 'checked' : ''} ${off}/>
@@ -679,6 +686,7 @@ export async function render(root, ctx) {
       currency: form.currency.value.trim() || '$',
       tax_rate: form.tax_rate.value || '0',
       receipt_footer: form.receipt_footer.value.trim(),
+      receipt_paper: form.receipt_paper.value,
       low_stock_alert: form.low_stock_alert.checked ? '1' : '0',
     });
     if (saved) document.querySelector('.brand small').textContent = saved.store_name || t('app.tagline');
