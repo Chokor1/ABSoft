@@ -476,7 +476,7 @@ async function renderForm(root, ctx) {
   }
 
   const productPicker = attachPicker(find, {
-    search: (q) => (q ? api.products({ search: q, limit: 25 }) : []),
+    search: (q) => (q ? api.products({ search: q, limit: 25, leaf: '1' }) : []),
     render: productOption,
     emptyText: t('buy.no_product_match'),
     openOnFocus: false,
@@ -510,7 +510,7 @@ async function renderForm(root, ctx) {
       attachNamePicker(categoryInput, {
         kind: 'category',
         onPick: async (c) => {
-          const found = (await api.products({ search: c.name })).filter(
+          const found = (await api.products({ search: c.name, leaf: '1' })).filter(
             (p) => (p.category || '').toLowerCase() === c.name.toLowerCase(),
           );
           categoryInput.value = '';
@@ -679,7 +679,7 @@ async function renderOpeningForm(root, ctx) {
   }
 
   const picker = attachPicker(find, {
-    search: (q) => (q ? api.products({ search: q, limit: 25 }) : []),
+    search: (q) => (q ? api.products({ search: q, limit: 25, leaf: '1' }) : []),
     render: productOption,
     emptyText: t('buy.no_product_match'),
     openOnFocus: false,

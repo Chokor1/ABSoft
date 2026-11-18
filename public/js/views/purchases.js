@@ -537,7 +537,7 @@ async function renderForm(root, ctx, editId = null) {
       const line = lines[+input.dataset.product];
       pickers.push(
         attachPicker(input, {
-          search: (q) => api.products({ search: q, limit: 25, price_list: listField?.value || '' }),
+          search: (q) => api.products({ search: q, limit: 25, leaf: '1', price_list: listField?.value || '' }),
           render: productOption,
           emptyText: t('buy.no_product_match'),
           onPick: (p) => {

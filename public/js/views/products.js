@@ -40,7 +40,6 @@ import {
   todayISO,
   toTop,
   wireBarcodeTables,
-  wireSizeTables,
   wireTagInputs,
 } from '../ui.js';
 
@@ -94,20 +93,37 @@ function productFields(product, addonGroups = []) {
           },
         ]
       : []),
-    {
-      name: 'sizes',
-      label: t('size.title'),
-      type: 'sizes',
-      span: 2,
-      value: product?.sizes || [],
-      help: t('size.help'),
-    },
+    // Only a shop that switched them on is asked about templates and recipes.
+    ...kindFields(product),
     { name: 'unit', label: t('common.unit'), value: product?.unit || 'pcs', placeholder: t('prod.unit_placeholder'), names: 'unit' },
     { name: 'min_stock', label: t('prod.min_stock'), type: 'number', step: 'any', min: 0, value: product?.min_stock ?? 0 },
     ...(isNew
       ? [{ name: 'opening_stock', label: t('prod.opening'), type: 'number', step: 'any', min: 0, value: 0, span: 2, help: t('prod.opening_help') }]
       : [{ name: 'active', label: t('prod.active'), type: 'checkbox', value: !!product.active, span: 2 }]),
   ];
+}
+
+const attributesOn = () => store.settings.attributes === '1';
+const recipesOn = () => store.settings.recipes === '1';
+const isTemplate = (p) => Number(p?.has_variants) === 1;
+const isMadeToOrder = (p) => recipesOn() && Number(p?.stocked ?? 1) === 0;
+
+/**
+ * Template, made to order, raw material: each asked only while its switch is on.
+ * A variant is never a template; a template is never a raw material.
+ */
+function kindFields(product) {
+  const out = [];
+  if (attributesOn() && !product?.variant_of) {
+    out.push({ name: 'has_variants', label: t('variant.is_template'), type: 'checkbox', span: 2, value: isTemplate(product), help: t('variant.is_template_help') });
+  }
+  if (recipesOn()) {
+    out.push({ name: 'made_to_order', label: t('recipe.made_to_order'), type: 'checkbox', span: 2, value: Number(product?.stocked ?? 1) === 0, help: t('recipe.made_to_order_help') });
+    if (!isTemplate(product)) {
+      out.push({ name: 'raw', label: t('recipe.raw'), type: 'checkbox', span: 2, value: Number(product?.raw) === 1, help: t('recipe.raw_help') });
+    }
+  }
+  return out;
 }
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -441,6 +457,17 @@ async function renderForm(root, ctx) {
 
 const TABS = ['details', 'pricing', 'overview', 'movements', 'sales', 'purchases'];
 
+/**
+ * The tabs a product shows. A template: its details and its variants, since
+ * the variants are what is priced, stocked and sold. Made to order: its recipe
+ * beside its prices.
+ */
+function tabsFor(product) {
+  if (isTemplate(product)) return ['details', 'variants'];
+  if (isMadeToOrder(product)) return ['details', 'pricing', 'recipe', 'overview', 'sales'];
+  return TABS;
+}
+
 async function renderDetail(root, ctx, id, initialTab) {
   const admin = store.user?.role === 'admin';
   let product;
@@ -450,7 +477,7 @@ async function renderDetail(root, ctx, id, initialTab) {
     toast(errorText(err), 'error');
     return ctx.navigate('products');
   }
-  const state = { tab: TABS.includes(initialTab) ? initialTab : 'details', from: shiftDays(todayISO(), -29), to: todayISO() };
+  const state = { tab: tabsFor(product).includes(initialTab) ? initialTab : 'details', from: shiftDays(todayISO(), -29), to: todayISO() };
   let dropPickers = () => {};
   // The add-on lists the shop keeps, so the product can offer one.
   const addonGroups = await api.addonGroups().catch(() => []);
@@ -500,26 +527,51 @@ async function renderDetail(root, ctx, id, initialTab) {
         ${productThumb(product, 'xs')}
         <div class="ph-text">
           <h2>${esc(product.name)}</h2>
-          ${product.active ? '' : `<div class="ph-badges"><span class="badge warn">${esc(t('prod.archived'))}</span></div>`}
+          ${heroBadges()}
         </div>
         <div class="spacer"></div>
-        <div class="seg" id="tabs">${TABS.map(
+        <div class="seg" id="tabs">${tabsFor(product).map(
           (k) => `<button data-tab="${k}" class="${k === state.tab ? 'active' : ''}">${esc(t(`prod.tab.${k}`))}</button>`,
         ).join('')}</div>
       </div>`;
     hero.querySelector('#back').addEventListener('click', () => ctx.navigate('products'));
+    hero.querySelector('[data-template]')?.addEventListener('click', () => ctx.navigate(`products/${product.variant_of}/variants`));
     hero.querySelector('#tabs').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-tab]');
       if (btn) go(btn.dataset.tab);
     });
   }
 
+  /** Archived, a template, a variant of one, made to order, a raw material. */
+  function heroBadges() {
+    const badges = [];
+    if (!product.active) badges.push(`<span class="badge warn">${esc(t('prod.archived'))}</span>`);
+    if (isTemplate(product)) badges.push(`<span class="badge">${esc(t('variant.template'))}</span>`);
+    if (product.variant_of) {
+      badges.push(`<button type="button" class="badge badge-link" data-template>${esc(t('variant.of', { name: product.template_name || '' }))}</button>`);
+    }
+    if (!isTemplate(product) && isMadeToOrder(product)) badges.push(`<span class="badge">${esc(t('recipe.made_to_order_badge'))}</span>`);
+    if (recipesOn() && Number(product.raw) === 1) badges.push(`<span class="badge">${esc(t('recipe.raw_badge'))}</span>`);
+    return badges.length ? `<div class="ph-badges">${badges.join('')}</div>` : '';
+  }
+
   function showTab() {
+    // A change on Details can add or take away tabs: land on one that is there.
+    if (!tabsFor(product).includes(state.tab)) state.tab = 'details';
     dropPickers();
     dropPickers = () => {};
     hero.querySelectorAll('#tabs [data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
     body.innerHTML = `<div class="card"><div class="card-body"><div class="empty"><p>${esc(t('common.loading'))}</p></div></div></div>`;
-    ({ details: tabDetails, pricing: tabPricing, overview: tabOverview, movements: tabMovements, sales: tabSales, purchases: tabPurchases })[
+    ({
+      details: tabDetails,
+      pricing: tabPricing,
+      overview: tabOverview,
+      movements: tabMovements,
+      sales: tabSales,
+      purchases: tabPurchases,
+      variants: tabVariants,
+      recipe: tabRecipe,
+    })[
       state.tab
     ]();
   }
@@ -569,7 +621,6 @@ async function renderDetail(root, ctx, id, initialTab) {
     dropPickers = wireNamePickers(form, fields);
     wireTagInputs(form);
     wireBarcodeTables(form);
-    wireSizeTables(form);
     const paintPrice2 = () => {
       const el = body.querySelector('#price2');
       if (el) el.textContent = money2(form.price.value);
@@ -592,7 +643,7 @@ async function renderDetail(root, ctx, id, initialTab) {
         toast(t('prod.updated'), 'success');
         product = await api.product(id);
         paintHero();
-        tabDetails();
+        showTab();
       } catch (err) {
         toast(errorText(err), 'error');
       }
@@ -722,6 +773,222 @@ async function renderDetail(root, ctx, id, initialTab) {
       try {
         product = await api.saveProduct({ id, price: own, prices });
         toast(t('price.saved_prices'), 'success');
+        showTab();
+      } catch (err) {
+        toast(errorText(err), 'error');
+        btn.disabled = false;
+      }
+    });
+  }
+
+  /**
+   * Variants: which values of the shop's attributes this template comes in, a
+   * button that makes every combination not made yet, and each variant with its
+   * price, typed in place.
+   */
+  async function tabVariants() {
+    const [attrs, data] = await Promise.all([api.attributes().catch(() => []), api.productVariants(id).catch(() => null)]);
+    if (state.tab !== 'variants') return;
+    if (!data) {
+      body.innerHTML = `<div class="card"><div class="card-body">${emptyState(t('common.page_error'), '', 'tag')}</div></div>`;
+      return;
+    }
+    const chosen = new Set(data.value_ids);
+    const canEdit = admin && attributesOn();
+    body.innerHTML = `
+      <div class="card">
+        <div class="card-head"><div><h3>${esc(t('variant.values'))}</h3>
+          <div class="sub">${esc(t('variant.values_sub'))}</div></div></div>
+        <div class="card-body">${
+          attrs.length
+            ? `<div class="attr-pick">${attrs
+                .map(
+                  (a) => `<div class="attr-group"><div class="attr-name">${esc(a.name)}</div><div class="attr-values">${a.values
+                    .map(
+                      (v) => `<label class="attr-chip"><input type="checkbox" data-value="${v.id}" ${chosen.has(v.id) ? 'checked' : ''} ${
+                        canEdit ? '' : 'disabled'
+                      }/><span>${esc(v.name)}</span></label>`,
+                    )
+                    .join('')}</div></div>`,
+                )
+                .join('')}</div>`
+            : emptyState(t('variant.no_attributes'), t('variant.no_attributes_sub'), 'tag')
+        }</div>
+        ${
+          canEdit && attrs.length
+            ? `<div class="card-head set-foot"><div class="help" id="variant-count"></div><div class="spacer"></div>
+                 <button class="btn btn-primary" id="generate">${icon('plus')} ${esc(t('variant.generate'))}</button></div>`
+            : ''
+        }
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h3>${esc(t('variant.list'))}</h3>
+          <div class="sub">${esc(t('variant.list_sub', { n: data.variants.length }))}</div></div></div>
+        <div class="card-body flush">${
+          data.variants.length
+            ? `<div class="table-wrap"><table class="data" id="variants-table">
+                <thead><tr><th>${esc(t('common.name'))}</th><th>${esc(t('variant.values_col'))}</th>
+                  <th class="right">${esc(t('common.price'))}</th><th class="right">${esc(t('common.stock'))}</th><th></th></tr></thead>
+                <tbody>${data.variants
+                  .map(
+                    (v) => `<tr data-variant-row="${v.id}">
+                      <td><div class="cell-title">${esc(v.name)}${v.active ? '' : ` <span class="badge warn">${esc(t('prod.archived'))}</span>`}</div>
+                        ${v.barcode ? `<div class="cell-sub">${esc(v.barcode)}</div>` : ''}</td>
+                      <td>${esc(v.label)}</td>
+                      <td class="right"><input class="input price-input" type="number" step="0.01" min="0" data-variant-price="${v.id}"
+                        value="${v.price}" aria-label="${esc(v.name)}" ${admin ? '' : 'disabled'}/></td>
+                      <td class="right">${isMadeToOrder(v) ? `<span class="muted">${esc(t('recipe.made_to_order_badge'))}</span>` : `${qtyText(v.stock)} ${esc(v.unit)}`}</td>
+                      <td class="right"><button class="btn btn-sm" data-open="${v.id}">${esc(t('variant.open'))}</button></td>
+                    </tr>`,
+                  )
+                  .join('')}</tbody>
+              </table></div>`
+            : `<div class="empty"><p>${esc(t('variant.none'))}</p></div>`
+        }</div>
+        ${
+          admin && data.variants.length
+            ? `<div class="card-head set-foot"><div class="help">${esc(t('variant.prices_help'))}</div><div class="spacer"></div>
+                 <button class="btn btn-primary" id="save-variant-prices">${icon('check')} ${esc(t('common.save'))}</button></div>`
+            : ''
+        }
+      </div>`;
+
+    // How many variants the ticked values make, and how many of them are new.
+    const picked = () => [...body.querySelectorAll('[data-value]:checked')].map((el) => Number(el.dataset.value));
+    const paintCount = () => {
+      const el = body.querySelector('#variant-count');
+      if (!el) return;
+      const ids = new Set(picked());
+      const groups = attrs.map((a) => a.values.filter((v) => ids.has(v.id)).length).filter(Boolean);
+      const n = groups.length ? groups.reduce((a, b) => a * b, 1) : 0;
+      el.textContent = n ? t('variant.will_make', { n }) : t('variant.pick_values');
+      body.querySelector('#generate').disabled = !n;
+    };
+    body.querySelectorAll('[data-value]').forEach((el) => el.addEventListener('change', paintCount));
+    paintCount();
+
+    body.querySelector('#generate')?.addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      try {
+        const res = await api.generateVariants(id, picked());
+        toast(res.created ? t('variant.generated', { n: res.created }) : t('variant.generated_none'), 'success');
+        product = await api.product(id);
+        showTab();
+      } catch (err) {
+        toast(errorText(err), 'error');
+        paintCount();
+      }
+    });
+    body.querySelector('#save-variant-prices')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      const prices = {};
+      body.querySelectorAll('[data-variant-price]').forEach((el) => (prices[el.dataset.variantPrice] = el.value.trim()));
+      try {
+        await api.saveVariantPrices(id, prices);
+        toast(t('price.saved_prices'), 'success');
+        showTab();
+      } catch (err) {
+        toast(errorText(err), 'error');
+        btn.disabled = false;
+      }
+    });
+    body.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => ctx.navigate(`products/${b.dataset.open}`)));
+  }
+
+  /**
+   * Recipe: what one of this product usually takes, as an estimate. Each sale
+   * writes this down; the ingredients' stock moves when they are reconciled.
+   */
+  async function tabRecipe() {
+    const data = await api.recipe(id).catch(() => null);
+    if (state.tab !== 'recipe') return;
+    if (!data) {
+      body.innerHTML = `<div class="card"><div class="card-body">${emptyState(t('common.page_error'), '', 'tag')}</div></div>`;
+      return;
+    }
+    const lines = data.lines.map((l) => ({ ...l.ingredient, qty: l.qty }));
+    const cost = () => round2(lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0));
+    body.innerHTML = `
+      <div class="card">
+        <div class="card-head"><div><h3>${esc(t('recipe.title'))}</h3>
+          <div class="sub">${esc(t('recipe.sub'))}</div></div></div>
+        <div class="card-body flush"><div class="table-wrap"><table class="data" id="recipe-table">
+          <thead><tr><th>${esc(t('recipe.ingredient'))}</th><th class="right" style="width:170px">${esc(t('recipe.qty'))}</th>
+            ${admin ? `<th class="right">${esc(t('common.cost'))}</th>` : ''}<th style="width:44px"></th></tr></thead>
+          <tbody id="recipe-lines"></tbody>
+          ${admin ? `<tfoot><tr><td colspan="2">${esc(t('recipe.cost'))}</td><td class="right"><b id="recipe-cost"></b></td><td></td></tr></tfoot>` : ''}
+        </table></div></div>
+        ${
+          admin
+            ? `<div class="card-body"><div class="combo"><input class="input" id="recipe-find" placeholder="${esc(t('recipe.add_placeholder'))}" autocomplete="off"/></div></div>
+               <div class="card-head set-foot"><div class="help">${esc(t('recipe.help'))}</div><div class="spacer"></div>
+                 <button class="btn btn-primary" id="save-recipe">${icon('check')} ${esc(t('common.save'))}</button></div>`
+            : ''
+        }
+      </div>`;
+    const tbody = body.querySelector('#recipe-lines');
+    const paintCost = () => {
+      const el = body.querySelector('#recipe-cost');
+      if (el) el.textContent = money(cost());
+    };
+    const paint = () => {
+      tbody.innerHTML = lines.length
+        ? lines
+            .map(
+              (l, i) => `<tr data-recipe-row="${l.id}">
+                <td><div class="cell-title">${esc(l.name)}</div></td>
+                <td class="right"><span class="qty-unit"><input class="input price-input" type="number" step="any" min="0" data-recipe-qty="${i}"
+                  value="${l.qty}" aria-label="${esc(l.name)}" ${admin ? '' : 'disabled'}/><span class="muted">${esc(l.unit || '')}</span></span></td>
+                ${admin ? `<td class="right" data-recipe-cost="${i}">${money((Number(l.qty) || 0) * (Number(l.cost) || 0))}</td>` : ''}
+                <td>${admin ? `<button class="btn btn-ghost btn-icon btn-sm" data-recipe-remove="${i}" aria-label="${esc(t('common.delete'))}">${icon('trash')}</button>` : ''}</td>
+              </tr>`,
+            )
+            .join('')
+        : `<tr><td colspan="4"><div class="empty"><p>${esc(t('recipe.empty'))}</p></div></td></tr>`;
+      tbody.querySelectorAll('[data-recipe-qty]').forEach((el) =>
+        el.addEventListener('input', () => {
+          const l = lines[+el.dataset.recipeQty];
+          l.qty = Number(el.value) || 0;
+          const c = tbody.querySelector(`[data-recipe-cost="${el.dataset.recipeQty}"]`);
+          if (c) c.textContent = money(l.qty * (Number(l.cost) || 0));
+          paintCost();
+        }),
+      );
+      tbody.querySelectorAll('[data-recipe-remove]').forEach((b) =>
+        b.addEventListener('click', () => {
+          lines.splice(+b.dataset.recipeRemove, 1);
+          paint();
+        }),
+      );
+      paintCost();
+    };
+    paint();
+
+    const find = body.querySelector('#recipe-find');
+    if (find) {
+      const picker = attachPicker(find, {
+        // Any stocked item can go into a recipe; raw materials are the usual ones.
+        search: (q) => (q ? api.products({ search: q, limit: 25, leaf: '1' }).then((rows) => rows.filter((p) => p.id !== id)) : []),
+        render: productOption,
+        emptyText: t('buy.no_product_match'),
+        openOnFocus: false,
+        onPick: (p) => {
+          find.value = '';
+          picker.reset();
+          if (!lines.some((l) => l.id === p.id)) lines.push({ id: p.id, name: p.name, unit: p.unit, cost: Number(p.cost) || 0, qty: 0 });
+          paint();
+          tbody.querySelector(`[data-recipe-row="${p.id}"] [data-recipe-qty]`)?.focus();
+        },
+      });
+      dropPickers = () => picker.destroy();
+    }
+    body.querySelector('#save-recipe')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await api.saveRecipe(id, lines.map((l) => ({ ingredient_id: l.id, qty: Number(l.qty) || 0 })));
+        toast(t('recipe.saved'), 'success');
         showTab();
       } catch (err) {
         toast(errorText(err), 'error');

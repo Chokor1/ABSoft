@@ -166,6 +166,10 @@ const DEFAULT_SETTINGS = {
   pos_shifts: '0',
   // A row of categories above the till's products: off, the till is as it was.
   pos_categories: '0',
+  // Recipes and consumption reconciliation: off, stock moves as it always has.
+  recipes: '0',
+  // Attributes and variants (templates): off, products are as they always were.
+  attributes: '0',
   search_min_chars: '1',
   pos_page_size: '40',
 };

@@ -54,15 +54,6 @@ export async function renderSaleForm(root, ctx) {
                 <td>
                   <div class="combo"><input class="input" data-product="${i}" value="${esc(l.name)}"
                     placeholder="${esc(t('buy.find_product'))}"/></div>
-                  ${
-                    l.sizes?.length
-                      ? `<select class="select size-select" data-size="${i}" aria-label="${esc(t('size.title'))}">${l.sizes
-                          .map(
-                            (z) => `<option value="${z.id}" ${String(z.id) === String(l.size_id) ? 'selected' : ''}>${esc(z.name)} · ${money(z.price)}</option>`,
-                          )
-                          .join('')}</select>`
-                      : ''
-                  }
                   <div data-stock="${i}">${stockNote(l)}</div>
                 </td>
                 <td><input class="input" type="number" step="any" min="0" value="${l.qty}" data-qty="${i}" style="text-align:end"/></td>
@@ -145,8 +136,7 @@ export async function renderSaleForm(root, ctx) {
   if (listField) {
     // Changing the list re-prices every line the salesperson has not typed over.
     listField.addEventListener('change', async () => {
-      // A line in a size keeps that size's price: a list prices the product, not its sizes.
-      const priced = lines.filter((l) => l.product_id && !l.touchedPrice && !l.size_id);
+      const priced = lines.filter((l) => l.product_id && !l.touchedPrice);
       if (!priced.length) return; // nothing typed in yet: leave the form alone
       const rows = await api
         .products({ ids: priced.map((l) => l.product_id).join(','), price_list: listField.value || '' })
@@ -234,15 +224,13 @@ export async function renderSaleForm(root, ctx) {
       const line = lines[+input.dataset.product];
       pickers.push(
         attachPicker(input, {
-          search: (q) => api.products({ search: q, limit: 25, price_list: listField?.value || '' }),
+          // Sold line by line: never a raw material (recipes on) nor a template, whose variants are listed instead.
+          search: (q) => api.products({ search: q, limit: 25, sale: '1', leaf: '1', price_list: listField?.value || '' }),
           render: productOption,
           emptyText: t('buy.no_product_match'),
           onPick: (p) => {
             Object.assign(line, { product_id: p.id, name: p.name, unit: p.unit, stock: Number(p.stock) });
-            // A product sold in sizes starts on its first one, and is priced as that size.
-            const sizes = Array.isArray(p.sizes) ? p.sizes : [];
-            Object.assign(line, { sizes, size_id: sizes[0]?.id ?? null, size: sizes[0]?.name ?? '' });
-            if (!line.touchedPrice) line.unit_price = sizes.length ? Number(sizes[0].price) || 0 : priceOf(p);
+            if (!line.touchedPrice) line.unit_price = priceOf(p);
             redraw();
             linesEl.querySelector(`[data-qty="${input.dataset.product}"]`)?.focus();
           },
@@ -259,16 +247,6 @@ export async function renderSaleForm(root, ctx) {
     onInput('data-qty', (l, v) => (l.qty = v));
     onInput('data-price', (l, v) => ((l.unit_price = v), (l.touchedPrice = true)));
     onInput('data-discount', (l, v) => (l.discount = v));
-    linesEl.querySelectorAll('[data-size]').forEach((select) =>
-      select.addEventListener('change', () => {
-        const line = lines[+select.dataset.size];
-        const size = line.sizes.find((z) => String(z.id) === select.value);
-        if (!size) return;
-        Object.assign(line, { size_id: size.id, size: size.name });
-        if (!line.touchedPrice) line.unit_price = Number(size.price) || 0;
-        redraw();
-      }),
-    );
     linesEl.querySelectorAll('[data-remove]').forEach((btn) =>
       btn.addEventListener('click', () => {
         lines.splice(+btn.dataset.remove, 1);
@@ -322,7 +300,6 @@ export async function renderSaleForm(root, ctx) {
         paid: s.paid,
         items: valid.map((l) => ({
           product_id: l.product_id,
-          size_id: l.size_id || null,
           qty: l.qty,
           unit_price: l.unit_price,
           discount: l.discount,

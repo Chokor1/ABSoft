@@ -19,6 +19,7 @@ import * as lists from './views/lists.js';
 import * as users from './views/users.js';
 import * as settings from './views/settings.js';
 import * as shifts from './views/shifts.js';
+import * as consumption from './views/consumption.js';
 
 /**
  * Route table. Titles are keys so the whole shell re-labels on a language switch.
@@ -43,6 +44,8 @@ const VIEWS = {
   products: { key: 'products', icon: 'box', mod: products, group: 'stock' },
   'stock-count': { key: 'stockcount', icon: 'clipboard', mod: stockCount, group: 'stock' },
   adjustments: { key: 'adjustments', icon: 'adjust', mod: adjustments, group: 'stock' },
+  // What the ingredients really went down by, against what the recipes say: once recipes are on.
+  consumption: { key: 'consumption', icon: 'clipboard', mod: consumption, group: 'stock', when: () => store.settings.recipes === '1' },
   // Barcode labels for a label printer: 40 × 20 mm by default.
   labels: { key: 'labels', icon: 'barcode', mod: labels, group: 'stock' },
   // What products are filed under, and what they are counted in.

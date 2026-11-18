@@ -363,13 +363,6 @@ export function itemExtras(i) {
 /** A sale line's name, with the size it was sold in: "Mango · L". */
 export const itemName = (i) => (i?.size ? `${i.name} · ${i.size}` : i?.name || '');
 
-/** What a product with sizes costs, said briefly: "from $3". Null without sizes. */
-export function sizesFrom(p) {
-  const sizes = Array.isArray(p?.sizes) ? p.sizes : [];
-  if (!sizes.length) return null;
-  return Math.min(...sizes.map((z) => Number(z.price) || 0));
-}
-
 /** What was typed against each price list: { listId: price }, blanks included. */
 export function priceValues(field) {
   const out = {};
@@ -501,7 +494,7 @@ function fieldHtml(f) {
   if (f.type === 'checkbox') {
     return `<div class="field ${span}"><label class="check"><input type="checkbox" ${common} ${
       f.value ? 'checked' : ''
-    }/> ${esc(f.label)}</label></div>`;
+    }/> ${esc(f.label)}</label>${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}</div>`;
   }
   const control =
     f.type === 'select'

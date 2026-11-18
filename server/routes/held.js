@@ -40,17 +40,12 @@ function readCart(body) {
     if (quantity <= 0) {
       throw badRequest(`Quantity for "${product.name}" must be greater than zero`, 'QTY_POSITIVE', { name: product.name });
     }
-    // The size travels with the line, by id and by name, so it comes back as it went.
-    const size = line.size_id
-      ? db.prepare(`SELECT id, name FROM product_sizes WHERE id = ? AND product_id = ?`).get(num(line.size_id), product.id)
-      : null;
-    names.push(`${product.name}${size ? ` · ${size.name}` : ''} × ${quantity}`);
+    names.push(`${product.name} × ${quantity}`);
     // Toppings and the note go aside with the line, by name and price.
     const addons = readLineAddons(line.addons).map(({ id, name, price }) => ({ id, name, price }));
     const note = str(line.note).slice(0, 200);
     return {
       product_id: product.id,
-      ...(size ? { size_id: size.id, size: size.name } : {}),
       ...(addons.length ? { addons } : {}),
       ...(note ? { note } : {}),
       qty: quantity,
@@ -110,7 +105,7 @@ export function register(router) {
         // The name and the stock are today's; the price is the one it was held at.
         const product = db
           .prepare(
-            `SELECT p.id, p.name, p.unit, p.price, COALESCE(s.stock, 0) AS stock FROM products p
+            `SELECT p.id, p.name, p.unit, p.price, p.stocked, COALESCE(s.stock, 0) AS stock FROM products p
              LEFT JOIN product_stock s ON s.product_id = p.id WHERE p.id = ?`,
           )
           .get(line.product_id);
@@ -118,17 +113,11 @@ export function register(router) {
           dropped++;
           continue;
         }
-        // A size removed while the sale was held: the line keeps its name and its
-        // price, and is sold as the product.
-        const size = line.size_id
-          ? db.prepare(`SELECT id, name FROM product_sizes WHERE id = ? AND product_id = ?`).get(line.size_id, product.id)
-          : null;
         items.push({
           ...line,
-          size_id: size ? size.id : null,
-          size: size ? size.name : line.size || '',
           name: product.name,
           unit: product.unit,
+          stocked: product.stocked,
           stock: num(product.stock),
           price: num(product.price),
         });

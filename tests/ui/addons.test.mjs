@@ -50,10 +50,7 @@ await page.waitForSelector('.shell');
 
 const nutella = await api('/api/products', 'POST', { name: 'Nutella Crêpe', category: 'Crêpes', cost: 1.5, price: 5 });
 const lotusCrepe = await api('/api/products', 'POST', { name: 'Lotus Crêpe', category: 'Crêpes', cost: 1.5, price: 5 });
-const waffle = await api('/api/products', 'POST', {
-  name: 'Belgian Waffle', category: 'Waffles', cost: 2, price: 7,
-  sizes: [{ name: 'S', price: 7 }, { name: 'L', price: 10 }],
-});
+const waffle = await api('/api/products', 'POST', { name: 'Belgian Waffle L', category: 'Waffles', cost: 2, price: 10 });
 
 /* ------------------------------------------------------------ before any list */
 console.log('\n[before any list, nothing changes]');
@@ -144,19 +141,17 @@ const cart = await page.$$eval('.cart-line', (ls) => ls.map((l) => `${l.querySel
 check('the same toppings and note add one to that line', cart.some((c) => c === '2:+ Lotus Biscuit, Banana · cut in four'), cart.join(' | '));
 check('different toppings are a line of their own', cart.some((c) => c === '1:+ Kiwi'), cart.join(' | '));
 
-console.log('\n[a waffle with sizes and toppings]');
+console.log('\n[a waffle with toppings]');
 await page.fill('#scan', 'Belgian');
 await page.waitForSelector(`#tiles .tile[data-add="${waffle.id}"]:not([hidden])`);
 await page.click(`#tiles .tile[data-add="${waffle.id}"]`);
-await page.waitForSelector('.build .build-size');
-check('a product with sizes and toppings asks for both on one sheet', (await page.$$('.build .build-size')).length === 2);
-await page.click('.build-size >> nth=1');
+await page.waitForSelector('.build .build-addon');
 await page.click('.build-addon[data-addon] >> nth=2');
-check('the size and the topping make the price', (await page.textContent('#build-total')).includes('$11.00'), await page.textContent('#build-total'));
+check('its price and the topping make the line', (await page.textContent('#build-total')).includes('$11.00'), await page.textContent('#build-total'));
 await page.click('#build-add');
 await page.waitForTimeout(400);
 const wLine = (await page.textContent('.cart-line')).replace(/\s+/g, ' ');
-check('the waffle line has its size and its topping', wLine.includes('Belgian Waffle') && wLine.includes('L') && wLine.includes('+ Kiwi') && wLine.includes('$11.00'), wLine);
+check('the waffle line has its topping', wLine.includes('Belgian Waffle L') && wLine.includes('+ Kiwi') && wLine.includes('$11.00'), wLine);
 
 console.log('\n[a note on any line]');
 const espresso = (await api('/api/products?search=Espresso&limit=5'))[0];

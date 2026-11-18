@@ -525,23 +525,55 @@ line. A label with a wrong check digit is refused, never guessed.
 Switching it on is refused while any real 13-digit product barcode starts with that prefix, since
 such a product would then ring up as a weight; the message says how many, so you can change either.
 
-### Sizes
+### Attributes and variants (off until switched on)
 
-A product can be sold in sizes — S, M, L and Bottle, a small or large plate — each at its own price.
-Open the product and add them under **Sizes**: a name, a price, and, if you know it, what that size
-costs to make (left empty, the product's own cost is used). A product with no sizes sells exactly
-as before, with no question asked.
+A product sold in sizes, flavours or both — S, M, L and Bottle; Mango and Strawberry — is set up
+the way an ERP does it: one **template** and its **variants**, each variant an item of its own.
+Switch it on under **Settings → POS → Attributes and variants**; until then nothing on any screen
+changes.
 
-- **At the till** the card shows where its prices start ("from $3") and how many sizes it has.
-  Tapping it asks **Which size?** with one big button per size and its price; the number keys pick
-  too (1 for the first size). The size goes on the cart line as a badge, so a Small is never sold as
-  a Large. Mango S and Mango L are two lines; Mango L again adds one to the L line.
-- **In the Sell form** a product with sizes gets a size choice under its name, starting on the first
-  size; changing it changes the price, unless you typed one yourself. A price list prices the
-  product, not its sizes, so it leaves a sized line's price alone.
-- **On the sale** each line keeps its size by name as well: receipts, returns and old invoices still
-  read "Mango · L" after a size is renamed or removed. Held sales keep their sizes too.
-- Profit on a line uses the size's own cost when it has one.
+- **Settings → Attributes** keeps the list: Size with S, M, L and Bottle; Flavour with Mango and
+  Strawberry. A value products use cannot be removed; renaming the attribute keeps its values.
+- **A template**: tick **Has attributes** on a new product. Its **Variants** tab shows the shop's
+  attributes; tick the values it comes in and press **Generate variants**. Each combination becomes
+  a product — "Mango juice L", "Mango juice Bottle" — with the template's price, cost, category and
+  add-on list to start from. Generating again only makes the ones still missing.
+- **Each variant is an ordinary product**: its own price (typed in place on the template's Variants
+  tab, with price history), barcode, labels, stock, purchases and, made to order, its own recipe.
+- **The template is never sold, bought or counted**: the till, documents and pickers never offer it
+  as a line, and a sale of it is refused.
+- **At the till** the template is one card with where its prices start and how many variants it
+  has; it ranks by what its variants sell. Tapping it asks **Which one?** with a big button per
+  variant (the number keys pick too); then its toppings, if it offers any. Scanning a variant's
+  barcode adds that variant directly.
+- Switched off again, the variants sell as the plain products they are.
+
+### Recipes and consumption (off until switched on)
+
+For a shop that makes what it sells. Switch it on under **Settings → POS → Recipes and
+consumption**; until then stock moves exactly as it always has.
+
+- **Made to order** (on a product's page): a shake or a crêpe keeps no stock of its own. Selling it
+  moves no stock and is never "short".
+- **Raw material**: an ingredient — bananas by the kilo, milk by the litre. Bought, counted and
+  adjusted like any stock, but not offered at the till or in the Sell form.
+- **Recipe** (a made-to-order product's tab): what one usually takes — 0.3 kg banana, 0.4 l milk —
+  with what that costs at today's prices. It is an estimate: sometimes one banana, sometimes two.
+  Each sale writes down its recipe times its quantity, and the line's cost is the recipe's cost.
+  For variants, each size has its own recipe.
+- **Stock → Consumption** reconciles the ingredients whenever you choose: at the end of the day, or
+  when one runs out. A new reconciliation lists every ingredient a recipe uses with what the sales
+  say it used since **its own** last reconciliation. Tick the ones you are reconciling, count what
+  is left (what was used follows) or type what was used; the difference against the recipes shows
+  as you type. Leave **Up to** empty to cover everything up to the moment you submit, or pick a past
+  day.
+- **Draft, then Submit.** A draft moves nothing and follows the sales live. Submitting takes each
+  ticked ingredient's stock down by what was really used, as a *Consumption* movement, and moves
+  its cutoff to that moment: the next reconciliation of it starts there, so nothing is counted
+  twice and nothing is missed. Ingredients not ticked carry on from where they were. A draft whose
+  ingredient was reconciled elsewhere after it was saved is refused until it is opened and saved
+  again.
+- A returned made-to-order item goes back on no shelf; what it used stays used.
 
 ### Add-ons and line notes
 
@@ -551,8 +583,8 @@ Kiwi… at $1 each — then offer it on the products that take it: on one produc
 every product in a category in one go from the list itself. A product offers at most one list;
 choose **None** on its page to take it off again.
 
-- **At the till**, tapping a product that offers a list opens one sheet: its sizes, if it has
-  them, the add-ons to tick, and a note. The **Add** button shows what the line will come to. The
+- **At the till**, tapping a product that offers a list opens one sheet: the add-ons to tick, and a
+  note. The **Add** button shows what the line will come to. The
   same product with the same add-ons and note joins its line; anything different is a line of its
   own.
 - **Any line can carry a note** — open it with its arrow and type ("grind fine", "less sugar") —

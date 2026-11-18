@@ -2167,3 +2167,21 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .addon-chip small { color: var(--accent-text); font-weight: 700; }
 .addon-apply { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
 .addon-apply .select { width: auto; min-width: 200px; max-width: 100%; height: auto; padding-block: 6px; }
+
+/* ---- attributes and variants ---- */
+.attr-pick { display: grid; gap: 14px; }
+.attr-group { display: grid; gap: 7px; }
+.attr-name { font-weight: 650; font-size: 13px; }
+.attr-values { display: flex; flex-wrap: wrap; gap: 7px; }
+.attr-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border: 1px solid var(--border);
+  border-radius: 999px; cursor: pointer; font-size: 13px; user-select: none; }
+.attr-chip:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.attr-chip input { margin: 0; }
+.badge-link { cursor: pointer; border: 0; font: inherit; }
+.badge-link:hover { text-decoration: underline; }
+
+/* ---- recipes and consumption ---- */
+.qty-unit { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.qty-unit .input { width: 100px; }
+#con-lines .price-input { width: 110px; }
+#con-lines tr.con-off td:not(:first-child) { opacity: 0.55; }

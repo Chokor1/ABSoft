@@ -270,7 +270,7 @@ export async function render(root, ctx) {
 
   const find = root.querySelector('#count-find');
   const productPicker = attachPicker(find, {
-    search: (q) => (q ? api.products({ search: q, limit: 25 }) : []),
+    search: (q) => (q ? api.products({ search: q, limit: 25, leaf: '1' }) : []),
     render: productOption,
     emptyText: t('buy.no_product_match'),
     openOnFocus: false,

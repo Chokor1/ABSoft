@@ -7,6 +7,8 @@ import { dateRange, ean13Check, money, num, pageParams, pageResult, qty, require
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 import { createAdjustment, writeAdjustment } from './adjustments.js';
 import { getList, pricesOf, recordPriceChange, setPrices } from './price-lists.js';
+import { recipesEnabled } from './recipes.js';
+import { attributesEnabled } from './attributes.js';
 
 
 const SELECT_PRODUCT = `
@@ -14,19 +16,43 @@ const SELECT_PRODUCT = `
          (SELECT json_group_array(b.barcode) FROM
             (SELECT barcode FROM product_barcodes WHERE product_id = p.id ORDER BY id) b) AS barcodes_json,
          (SELECT updated_at FROM product_images i WHERE i.product_id = p.id) AS image_at,
-         (SELECT json_group_array(json_object('id', z.id, 'name', z.name, 'price', z.price, 'cost', z.cost)) FROM
-            (SELECT id, name, price, cost FROM product_sizes WHERE product_id = p.id ORDER BY sort, id) z) AS sizes_json,
+         (SELECT COUNT(*) FROM products v WHERE v.variant_of = p.id AND v.active = 1) AS variants,
+         (SELECT MIN(v.price) FROM products v WHERE v.variant_of = p.id AND v.active = 1) AS variants_from,
          ROUND(COALESCE(s.stock, 0) * p.cost, 2) AS stock_value,
          CASE WHEN p.price > 0 THEN ROUND((p.price - p.cost) / p.price * 100, 1) ELSE 0 END AS margin
   FROM products p
   LEFT JOIN product_stock s ON s.product_id = p.id`;
 
-/** A product row as the client sees it: the extra barcodes and the sizes as lists. */
+/** A product row as the client sees it: the extra barcodes as a list. */
 const shape = (row) => {
   if (!row) return row;
-  const { barcodes_json, sizes_json, ...rest } = row;
-  return { ...rest, barcodes: JSON.parse(barcodes_json || '[]'), sizes: JSON.parse(sizes_json || '[]') };
+  const { barcodes_json, ...rest } = row;
+  return { ...rest, barcodes: JSON.parse(barcodes_json || '[]') };
 };
+
+/**
+ * Made to order (keeps no stock of its own) and raw material (an ingredient, not
+ * sold at the till). Each is changed only when it is sent.
+ */
+function setKinds(productId, body) {
+  const flag = (v) => (v === true || v === 1 || v === '1' || v === 'true' ? 1 : 0);
+  // A template: its variants are the products; it is never sold or stocked itself.
+  if (body.has_variants !== undefined) {
+    const on = flag(body.has_variants);
+    if (!on && db.prepare(`SELECT 1 FROM products WHERE variant_of = ? LIMIT 1`).get(productId)) {
+      throw badRequest('This product has variants: it stays a template', 'TEMPLATE_HAS_VARIANTS');
+    }
+    if (on && db.prepare(`SELECT variant_of FROM products WHERE id = ?`).get(productId)?.variant_of) {
+      throw badRequest('A variant cannot be a template too', 'VARIANT_NOT_TEMPLATE');
+    }
+    if (on && db.prepare(`SELECT 1 FROM stock_moves WHERE product_id = ? LIMIT 1`).get(productId)) {
+      throw badRequest('This product already has stock movements: make a new product as the template', 'TEMPLATE_HAS_STOCK');
+    }
+    db.prepare(`UPDATE products SET has_variants = ? WHERE id = ?`).run(on, productId);
+  }
+  if (body.made_to_order !== undefined) db.prepare(`UPDATE products SET stocked = ? WHERE id = ?`).run(flag(body.made_to_order) ? 0 : 1, productId);
+  if (body.raw !== undefined) db.prepare(`UPDATE products SET raw = ? WHERE id = ?`).run(flag(body.raw), productId);
+}
 
 /** Which add-on list a product offers: one that exists, or none. */
 function setAddonGroup(productId, value) {
@@ -35,52 +61,6 @@ function setAddonGroup(productId, value) {
     throw badRequest('That add-on list does not exist', 'ADDON_GROUP_NOT_FOUND');
   }
   db.prepare(`UPDATE products SET addon_group_id = ? WHERE id = ?`).run(id, productId);
-}
-
-const MAX_SIZES = 12;
-
-/**
- * The sizes sent with a product, checked: each has a name, no two share one,
- * and prices and costs are never negative. An empty list means the product is
- * sold without sizes, as every product was before sizes existed.
- */
-function readSizes(value) {
-  const list = Array.isArray(value) ? value : [];
-  const out = [];
-  const seen = new Set();
-  for (const raw of list) {
-    const name = str(raw?.name);
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) throw badRequest(`The size "${name}" is listed twice`, 'SIZE_TWICE', { name });
-    seen.add(key);
-    out.push({
-      id: Number(raw.id) || null,
-      name,
-      price: money(Math.max(0, num(raw.price))),
-      cost: money(Math.max(0, num(raw.cost))),
-    });
-  }
-  if (out.length > MAX_SIZES) throw badRequest(`A product can have at most ${MAX_SIZES} sizes`, 'SIZES_TOO_MANY', { n: MAX_SIZES });
-  return out;
-}
-
-/**
- * Write a product's sizes. A size sent with its id is updated in place, so the
- * sales already made in it still point at it; a size left out is removed. Its
- * old sales keep the size's name, written on the line when they were made.
- */
-function setSizes(productId, sizes) {
-  const keep = new Set(sizes.filter((z) => z.id).map((z) => z.id));
-  const current = db.prepare(`SELECT id FROM product_sizes WHERE product_id = ?`).all(productId);
-  const drop = db.prepare(`DELETE FROM product_sizes WHERE id = ?`);
-  for (const row of current) if (!keep.has(row.id)) drop.run(row.id);
-  const update = db.prepare(`UPDATE product_sizes SET name = ?, price = ?, cost = ?, sort = ? WHERE id = ? AND product_id = ?`);
-  const insert = db.prepare(`INSERT INTO product_sizes (product_id, name, price, cost, sort) VALUES (?, ?, ?, ?, ?)`);
-  sizes.forEach((z, i) => {
-    const updated = z.id ? update.run(z.name, z.price, z.cost, i, z.id, productId).changes : 0;
-    if (!updated) insert.run(productId, z.name, z.price, z.cost, i);
-  });
 }
 
 /**
@@ -239,6 +219,14 @@ export function register(router) {
       args.push(like, like, like, like, like);
     }
     if (lowStock) where.push('COALESCE(s.stock, 0) <= p.min_stock');
+    // Selling: an ingredient is not for sale, while recipes are switched on.
+    if (ctx.query.sale === '1' && recipesEnabled()) where.push('p.raw = 0');
+    // Anything bought, counted or sold line by line: a template is none of those.
+    if (ctx.query.leaf === '1') where.push('p.has_variants = 0');
+    // The till: a template stands for its variants, which it asks for when tapped.
+    if (ctx.query.templates === '1' && attributesEnabled()) where.push('p.variant_of IS NULL');
+    // A template's variants, for its picker.
+    if (num(ctx.query.variant_of) > 0) (where.push('p.variant_of = ?'), args.push(num(ctx.query.variant_of)));
     // A document re-pricing its lines asks for exactly those products.
     const ids = str(ctx.query.ids)
       .split(',')
@@ -299,8 +287,9 @@ export function register(router) {
       const popular = db
         .prepare(
           `${SELECT_PRODUCT}
-           LEFT JOIN (SELECT i.product_id, SUM(i.qty) AS sold FROM sale_items i JOIN sales sx ON sx.id = i.sale_id
-                      WHERE sx.date >= ? GROUP BY i.product_id) pop ON pop.product_id = p.id
+           LEFT JOIN (SELECT COALESCE(px.variant_of, i.product_id) AS product_id, SUM(i.qty) AS sold
+                      FROM sale_items i JOIN sales sx ON sx.id = i.sale_id JOIN products px ON px.id = i.product_id
+                      WHERE sx.date >= ? GROUP BY 1) pop ON pop.product_id = p.id
            ${clause} ORDER BY COALESCE(pop.sold, 0) DESC, p.name COLLATE NOCASE ${limitSql}`,
         )
         .all(shiftDays(today(), -29), ...args)
@@ -330,7 +319,10 @@ export function register(router) {
         )
         .get(code, code) || db.prepare(`${SELECT_PRODUCT} WHERE p.name = ? COLLATE NOCASE AND p.active = 1`).get(code),
     );
-    if (found) return withListPrice([found], str(ctx.query.price_list))[0];
+    // Selling, with recipes on: an ingredient is not rung up at the till.
+    if (found && !(ctx.query.sale === '1' && recipesEnabled() && Number(found.raw) === 1)) {
+      return withListPrice([found], str(ctx.query.price_list))[0];
+    }
     // Not a product's own code: perhaps a label from the scale.
     const weighed = scaleLookup(code);
     if (weighed) return weighed;
@@ -354,7 +346,9 @@ export function register(router) {
          WHERE i.product_id = ? AND s.date >= ?`,
       )
       .get(product.id, shiftDays(today(), -29));
-    return { ...product, prices: pricesOf(product.id), sold_30: qty(recent.qty), revenue_30: money(recent.revenue), history };
+    // A variant names its template, so its page can lead back to it.
+    const templateName = product.variant_of ? db.prepare(`SELECT name FROM products WHERE id = ?`).get(product.variant_of)?.name || '' : '';
+    return { ...product, template_name: templateName, prices: pricesOf(product.id), sold_30: qty(recent.qty), revenue_30: money(recent.revenue), history };
   });
 
   /** How a product sold over a period: totals, a day-by-day series and every line. */
@@ -475,12 +469,12 @@ export function register(router) {
         );
       const id = lastId(res);
       setBarcodes(id, extra);
-      if (ctx.body.sizes !== undefined) setSizes(id, readSizes(ctx.body.sizes));
       if (ctx.body.addon_group_id !== undefined) setAddonGroup(id, ctx.body.addon_group_id);
+      setKinds(id, ctx.body);
       setPrices(id, ctx.body.prices, ctx.user.id);
 
       // Stock already on hand is recorded as an opening stock adjustment.
-      if (opening > 0) {
+      if (opening > 0 && !db.prepare(`SELECT has_variants FROM products WHERE id = ?`).get(id).has_variants) {
         writeAdjustment(
           { type: 'opening', note: data.name, items: [{ product_id: id, qty: opening, unit_cost: data.cost }] },
           ctx.user.id,
@@ -611,9 +605,8 @@ export function register(router) {
         existing.id,
       );
       setBarcodes(existing.id, extra);
-      // Sent: replace the sizes. Left out: keep them as they are.
-      if (ctx.body.sizes !== undefined) setSizes(existing.id, readSizes(ctx.body.sizes));
       if (ctx.body.addon_group_id !== undefined) setAddonGroup(existing.id, ctx.body.addon_group_id);
+      setKinds(existing.id, ctx.body);
       if (ctx.body.prices !== undefined) setPrices(existing.id, ctx.body.prices, ctx.user.id);
       // The product's own price and cost are the main list's prices: their
       // changes belong in the same history.

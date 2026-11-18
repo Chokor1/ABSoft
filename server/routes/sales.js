@@ -7,6 +7,7 @@ import { applyAverageCost } from '../costing.js';
 import { openShift, shiftsEnabled } from './shifts.js';
 import { priceListId } from './price-lists.js';
 import { readLineAddons } from './addons.js';
+import { keepsStock, recipeCost, recipesEnabled, recordEstimatedUse, useStamp } from './recipes.js';
 
 /**
  * What was handed over, as { currency: '' | 'second', amount, amount2, base } entries.
@@ -164,7 +165,7 @@ export function register(router) {
     const prepared = lines.map((line) => {
       const product = db
         .prepare(
-          `SELECT p.id, p.name, p.cost, COALESCE(st.stock, 0) AS stock FROM products p
+          `SELECT p.id, p.name, p.cost, p.stocked, p.has_variants, COALESCE(st.stock, 0) AS stock FROM products p
            LEFT JOIN product_stock st ON st.product_id = p.id WHERE p.id = ?`,
         )
         .get(num(line.product_id));
@@ -174,22 +175,20 @@ export function register(router) {
       const unitPrice = money(Math.max(0, num(line.unit_price)));
       const lineDiscount = money(Math.max(0, num(line.discount)));
       const total = money(Math.max(0, quantity * unitPrice - lineDiscount));
-      // Sold in a size: it must be one of this product's own, and a size with a
-      // cost of its own makes the profit on the line. A line with no size is sold
-      // as the product, the way every line was before sizes.
-      let size = null;
-      if (line.size_id) {
-        size = db.prepare(`SELECT id, name, cost FROM product_sizes WHERE id = ? AND product_id = ?`).get(num(line.size_id), product.id);
-        if (!size) throw badRequest(`That size is not one of "${product.name}"'s`, 'SIZE_UNKNOWN', { name: product.name });
+      // A template stands for its variants: it is the variant that is sold.
+      if (product.has_variants) {
+        throw badRequest(`"${product.name}" is a template: choose one of its variants`, 'PRODUCT_IS_TEMPLATE', { name: product.name });
       }
       // Toppings and extras: each must exist, is written on the line by name and
       // price, and what it costs adds to the line's cost. The price the till sends
       // already includes them.
       const addons = readLineAddons(line.addons);
-      const baseCost = num(size && num(size.cost) > 0 ? size.cost : product.cost);
+      // With recipes on, what a made-to-order product costs is what its recipe
+      // costs at today's prices, when it has one.
+      const fromRecipe = recipesEnabled() ? recipeCost(product.id) : null;
+      const baseCost = fromRecipe !== null ? fromRecipe : num(product.cost);
       return {
         product,
-        size,
         addons,
         note: str(line.note).slice(0, 200),
         qty: quantity,
@@ -226,7 +225,7 @@ export function register(router) {
 
     // Selling into negative stock is allowed (counts often lag reality) but reported back.
     const shortages = prepared
-      .filter((l) => l.qty > num(l.product.stock))
+      .filter((l) => keepsStock(l.product) && l.qty > num(l.product.stock))
       .map((l) => ({ name: l.product.name, available: num(l.product.stock), requested: l.qty }));
 
     const sale = transact(() => {
@@ -264,22 +263,36 @@ export function register(router) {
          VALUES (?, ?, ?, 'sale', 'sales', ?, ?, ?, ?)`,
       );
 
+      // When the sale was recorded: what it probably used belongs to the
+      // reconciliation that comes next, whatever day the invoice is dated.
+      const usedAt = useStamp();
       for (const line of prepared) {
-        insertItem.run(
+        const itemRes = insertItem.run(
           saleId, line.product.id, line.qty, line.unit_price, line.unit_cost, line.discount, line.total,
-          line.size?.id ?? null, line.size?.name ?? '',
+          null, '',
           line.addons.length ? JSON.stringify(line.addons.map(({ id, name, price }) => ({ id, name, price }))) : '',
           line.note,
         );
-        insertMove.run(
-          line.product.id,
-          -line.qty,
-          line.unit_cost,
+        // A product made to order keeps no stock of its own; what it used is
+        // written down, and comes out of the ingredients when they are reconciled.
+        if (keepsStock(line.product)) {
+          insertMove.run(
+            line.product.id,
+            -line.qty,
+            line.unit_cost,
+            saleId,
+            `${docNo}${customer ? ' · ' + customer : ''}`,
+            ctx.user.id,
+            `${date} ${new Date().toISOString().slice(11, 19)}`,
+          );
+        }
+        recordEstimatedUse({
           saleId,
-          `${docNo}${customer ? ' · ' + customer : ''}`,
-          ctx.user.id,
-          `${date} ${new Date().toISOString().slice(11, 19)}`,
-        );
+          saleItemId: lastId(itemRes),
+          productId: line.product.id,
+          quantity: line.qty,
+          stamp: usedAt,
+        });
       }
       // What was handed over at the till is the first instalment, one row per
       // currency. Anything above the total is change, not an overpayment, so the
@@ -403,7 +416,10 @@ export function register(router) {
         throw badRequest(`Only ${left} of "${item.name}" can still be returned`, 'RETURN_TOO_MANY', { name: item.name, left });
       }
       const share = quantity / item.qty;
-      const restock = !(w.restock === false || w.restock === 0 || w.restock === '0' || w.restock === 'damaged');
+      // Something made to order was made: it goes back on no shelf, and its
+      // ingredients stay used (while recipes are switched on).
+      const restock = !(w.restock === false || w.restock === 0 || w.restock === '0' || w.restock === 'damaged')
+        && keepsStock(db.prepare(`SELECT stocked FROM products WHERE id = ?`).get(item.product_id));
       lines.push({ item, qty: quantity, restock, discount: money(item.discount * share), total: money(item.total * share) });
     }
     if (!lines.length) throw badRequest('Nothing to return', 'RETURN_EMPTY');

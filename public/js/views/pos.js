@@ -10,7 +10,6 @@ import {
   itemExtras,
   itemName,
   modal,
-  sizesFrom,
   confirmDialog,
   dateTimeText,
   methodMark,
@@ -62,6 +61,12 @@ export async function render(root, ctx) {
   // From Settings → Search: how many cards come at a time, and how many letters
   // start a search of every product (a small shop can start at one).
   const QUICK = Math.max(10, Number(store.settings.pos_page_size) || 40);
+  // What the till asks for: no raw materials (with recipes on), and a template
+  // instead of its variants (with attributes on). The server applies each only
+  // while its switch is on, so a shop with both off sees what it always saw.
+  const SELLING = { sale: '1', templates: '1' };
+  // Made to order (recipes on): no stock of its own to show, run short of or run out of.
+  const madeToOrder = (p) => store.settings.recipes === '1' && Number(p?.stocked ?? 1) === 0;
   const MIN_SEARCH = Math.min(5, Math.max(1, Number(store.settings.search_min_chars) || 1));
   const RESULTS = QUICK;
   // Settings → POS can add a row of categories above the products. Off, the till
@@ -173,7 +178,7 @@ export async function render(root, ctx) {
       tiles.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>${esc(t('pos.loading_products'))}</p></div>`;
     }
     const token = ++searchToken;
-    const rows = await api.products({ sort: 'popular', limit: QUICK, category: state.category });
+    const rows = await api.products({ ...SELLING, sort: 'popular', limit: QUICK, category: state.category });
     if (token !== searchToken) return;
     Object.assign(state, { products: rows, mode: 'popular', resultsFor: '', more: rows.length === QUICK });
     drawTiles();
@@ -186,7 +191,7 @@ export async function render(root, ctx) {
     const token = ++searchToken;
     let rows;
     try {
-      rows = await api.products({ search: text, limit: RESULTS, category: state.category });
+      rows = await api.products({ ...SELLING, search: text, limit: RESULTS, category: state.category });
     } catch {
       return null;
     }
@@ -212,8 +217,8 @@ export async function render(root, ctx) {
     const batch = state.mode === 'search' ? RESULTS : QUICK;
     const query =
       state.mode === 'search'
-        ? { search: state.resultsFor, limit: RESULTS, offset: state.products.length, category: state.category }
-        : { sort: 'popular', limit: QUICK, offset: state.products.length, category: state.category };
+        ? { ...SELLING, search: state.resultsFor, limit: RESULTS, offset: state.products.length, category: state.category }
+        : { ...SELLING, sort: 'popular', limit: QUICK, offset: state.products.length, category: state.category };
     paintMore();
     let rows = [];
     try {
@@ -310,16 +315,19 @@ export async function render(root, ctx) {
   }
 
   function tileHtml(p) {
-    // A product with sizes shows where its prices start, and how many sizes it has.
-    const from = sizesFrom(p);
+    // A template shows where its variants' prices start, and how many there are.
+    const template = Number(p.has_variants) === 1;
+    const from = template && p.variants_from !== null && p.variants_from !== undefined ? Number(p.variants_from) : null;
+    const out = !template && !madeToOrder(p) && p.stock <= 0;
     const priceHtml =
       from === null
         ? `<span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}`
         : `<span class="t-price"><small class="t-from">${esc(t('size.from'))}</small> ${money(from)}</span>${money2Html(from, { cls: 'block' })}`;
-    const stockHtml =
-      from === null
-        ? `<span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>`
-        : `<span class="t-sizes">${esc(t(p.sizes.length === 1 ? 'size.count_one' : 'size.count', { n: p.sizes.length }))}</span>`;
+    const stockHtml = template
+      ? `<span class="t-sizes">${esc(t(Number(p.variants) === 1 ? 'variant.count_one' : 'variant.count', { n: Number(p.variants) || 0 }))}</span>`
+      : madeToOrder(p)
+        ? ''
+        : `<span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>`;
     const prices = `<div class="t-meta">
       <span class="t-prices">${priceHtml}</span>
       ${stockHtml}
@@ -329,7 +337,7 @@ export async function render(root, ctx) {
       // Picture cards: the picture fills the top, the name sits over its lower
       // edge, the price is underneath. No picture yet: a quiet placeholder.
       const src = p.image_at ? `/api/products/${p.id}/image?v=${encodeURIComponent(p.image_at)}` : '';
-      return `<button class="tile tile-pic ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}"
+      return `<button class="tile tile-pic ${out ? 'out' : ''}" data-add="${p.id}"
                data-find="${esc(haystack(p))}" title="${esc(title)}">
         <div class="tp-media ${src ? '' : 'no-img'}">
           ${src ? `<img class="tp-img" src="${esc(src)}" alt="" loading="lazy" decoding="async" draggable="false"/>` : icon('image')}
@@ -338,7 +346,7 @@ export async function render(root, ctx) {
         <div class="tp-body">${prices}</div>
       </button>`;
     }
-    return `<button class="tile ${p.stock <= 0 ? 'out' : ''}" data-add="${p.id}"
+    return `<button class="tile ${out ? 'out' : ''}" data-add="${p.id}"
            data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}>
     <div class="t-name">${esc(p.name)}</div>
     ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
@@ -470,7 +478,7 @@ export async function render(root, ctx) {
     }
     let notFound;
     try {
-      addToCart(await api.lookup(code));
+      addToCart(await api.lookup(code, SELLING));
       return resetSearch();
     } catch (err) {
       notFound = err;
@@ -598,25 +606,25 @@ export async function render(root, ctx) {
   const lineDiscount = (l) => round2((l.qty * l.unit_price * Math.min(100, Math.max(0, Number(l.discountPct) || 0))) / 100);
   const lineTotal = (l) => Math.max(0, round2(l.qty * l.unit_price - lineDiscount(l)));
 
-  function addToCart(product, size = null, extras = null) {
+  function addToCart(product, extras = null) {
     if (!product) return;
-    // A label from the scale carries the weight (or the price, from which the weight follows).
-    const weighed = product.scale?.qty > 0 ? product.scale : null;
-    // A product that offers add-ons opens one sheet: its size, if it has sizes,
-    // the toppings to tick and a note. A weighed label never asks anything.
-    const group = !weighed && product.addon_group_id ? addonGroups.get(product.addon_group_id) : null;
-    if (extras === null && group?.items.length) {
-      buildLine(product, group).then((built) => {
-        if (built) addToCart(product, built.size, { addons: built.addons, note: built.note });
-        scan.focus();
+    // A template stands for its variants: which one? Then that one is added,
+    // with its own toppings if it offers them.
+    if (Number(product.has_variants) === 1) {
+      chooseVariant(product).then((variant) => {
+        if (variant) addToCart(variant);
+        else scan.focus();
       });
       return;
     }
-    // A product sold in sizes asks which one first. A weighed label already says
-    // what is being sold, so it never asks.
-    if (!size && !weighed && product.sizes?.length) {
-      chooseSize(product).then((chosen) => {
-        if (chosen) addToCart(product, chosen);
+    // A label from the scale carries the weight (or the price, from which the weight follows).
+    const weighed = product.scale?.qty > 0 ? product.scale : null;
+    // A product that offers add-ons opens one sheet: the toppings to tick and a
+    // note. A weighed label never asks anything.
+    const group = !weighed && product.addon_group_id ? addonGroups.get(product.addon_group_id) : null;
+    if (extras === null && group?.items.length) {
+      buildLine(product, group).then((built) => {
+        if (built) addToCart(product, { addons: built.addons, note: built.note });
         scan.focus();
       });
       return;
@@ -624,11 +632,11 @@ export async function render(root, ctx) {
     const qty = weighed ? Math.round(weighed.qty * 1000) / 1000 : 1;
     const addons = extras?.addons || [];
     const note = (extras?.note || '').trim();
-    const base = weighed?.total > 0 ? round2(weighed.total / qty) : size ? Number(size.price) || 0 : Number(product.price) || 0;
+    const base = weighed?.total > 0 ? round2(weighed.total / qty) : Number(product.price) || 0;
     // Toppings are part of what one costs: a $5 crêpe with two $1 toppings is $7 each.
     const price = round2(base + addons.reduce((s, a) => s + (Number(a.price) || 0), 0));
-    // The same product, size, toppings and note make one line; anything else is another.
-    const wanted = sameAs({ product_id: product.id, size_id: size?.id, addons, note });
+    // The same product, toppings and note make one line; anything else is another.
+    const wanted = sameAs({ product_id: product.id, addons, note });
     const existing = state.cart.find((l) => sameAs(l) === wanted);
     if (existing) {
       // Scanning the same item again adds one to its line rather than a second
@@ -640,13 +648,13 @@ export async function render(root, ctx) {
       state.cart.unshift({
         uid: ++lineSeq,
         product_id: product.id,
-        ...(size ? { size_id: size.id, size: size.name } : {}),
         ...(addons.length ? { addons } : {}),
         ...(note ? { note } : {}),
         name: product.name,
         unit: product.unit,
         unit_price: price,
         stock: Number(product.stock) || 0,
+        ...(madeToOrder(product) ? { made: true } : {}),
         qty,
         discountPct: 0,
       });
@@ -655,33 +663,19 @@ export async function render(root, ctx) {
   }
 
   /**
-   * The sheet for a product with add-ons: its sizes (when it has them), every
-   * topping on its list to tick, and a note. The Add button shows what the line
-   * will come to. Resolves { size, addons, note }, or nothing if the cashier
-   * changes their mind.
+   * The sheet for a product with add-ons: every topping on its list to tick, and
+   * a note. The Add button shows what the line will come to. Resolves
+   * { addons, note }, or nothing if the cashier changes their mind.
    */
   function buildLine(product, group) {
-    const sizes = product.sizes || [];
-    let size = sizes[0] || null;
     const picked = new Set();
-    const base = () => (size ? Number(size.price) || 0 : Number(product.price) || 0);
+    const base = () => Number(product.price) || 0;
     const total = () => round2(base() + group.items.filter((a) => picked.has(a.id)).reduce((s, a) => s + a.price, 0));
     return modal({
       title: product.name,
       subtitle: group.name,
       wide: true,
       body: `<div class="build">
-        ${
-          sizes.length
-            ? `<div class="build-part"><div class="build-head">${esc(t('size.choose'))}</div>
-                <div class="build-sizes" role="radiogroup">${sizes
-                  .map(
-                    (z, i) => `<button type="button" class="build-size ${i === 0 ? 'on' : ''}" role="radio"
-                      aria-checked="${i === 0}" data-size="${z.id}"><b>${esc(z.name)}</b><span>${money(z.price)}</span></button>`,
-                  )
-                  .join('')}</div></div>`
-            : ''
-        }
         <div class="build-part"><div class="build-head">${esc(t('addon.pick'))}</div>
           <div class="build-addons">${group.items
             .map(
@@ -699,16 +693,6 @@ export async function render(root, ctx) {
                <button class="btn btn-primary btn-lg" id="build-add">${icon('plus')} ${esc(t('addon.add'))} · <span id="build-total"></span></button>`,
       setup: (dialog, close) => {
         const paintTotal = () => (dialog.querySelector('#build-total').innerHTML = money(total()));
-        dialog.querySelectorAll('[data-size]').forEach((b) =>
-          b.addEventListener('click', () => {
-            size = sizes.find((z) => String(z.id) === b.dataset.size) || size;
-            dialog.querySelectorAll('[data-size]').forEach((x) => {
-              x.classList.toggle('on', x === b);
-              x.setAttribute('aria-checked', String(x === b));
-            });
-            paintTotal();
-          }),
-        );
         dialog.querySelectorAll('[data-addon]').forEach((b) =>
           b.addEventListener('click', () => {
             const id = Number(b.dataset.addon);
@@ -721,7 +705,6 @@ export async function render(root, ctx) {
         );
         const add = () =>
           close({
-            size,
             addons: group.items.filter((a) => picked.has(a.id)).map(({ id, name, price }) => ({ id, name, price })),
             note: dialog.querySelector('#build-note').value.trim(),
           });
@@ -733,50 +716,62 @@ export async function render(root, ctx) {
           }
         });
         paintTotal();
-        (dialog.querySelector('.build-size.on') || dialog.querySelector('[data-addon]'))?.focus();
+        dialog.querySelector('[data-addon]')?.focus();
       },
     });
   }
 
   /**
-   * Which size? Big buttons, one per size with its price, in the order the shop
-   * set them. The number keys pick too: 1 for the first size, 2 for the second.
-   * Resolves the size, or nothing if the cashier changes their mind.
+   * Which variant? Big buttons, one per variant with its price, in the order of
+   * the shop's attributes. The number keys pick too: 1 for the first, 2 for the
+   * second. Resolves the variant, or nothing if the cashier changes their mind.
    */
-  function chooseSize(product) {
+  async function chooseVariant(template) {
+    let variants = [];
+    try {
+      variants = (await api.productVariants(template.id, { active: '1' })).variants;
+    } catch (err) {
+      toast(errorText(err), 'error');
+      return null;
+    }
+    if (!variants.length) {
+      toast(t('variant.none_to_sell', { name: template.name }), 'error');
+      return null;
+    }
+    if (variants.length === 1) return variants[0];
     return modal({
-      title: product.name,
-      subtitle: t('size.choose'),
-      body: `<div class="size-pick" role="group" aria-label="${esc(t('size.choose'))}">${product.sizes
+      title: template.name,
+      subtitle: t('variant.choose'),
+      body: `<div class="size-pick" role="group" aria-label="${esc(t('variant.choose'))}">${variants
         .map(
-          (z, i) => `<button type="button" class="size-btn" data-size="${z.id}">
-            <span class="size-key">${i + 1}</span>
-            <b>${esc(z.name)}</b>
-            <span class="size-price">${money(z.price)}</span>${money2Html(z.price, { cls: 'block' })}
+          (v, i) => `<button type="button" class="size-btn" data-variant="${v.id}">
+            ${i < 9 ? `<span class="size-key">${i + 1}</span>` : ''}
+            <b>${esc(v.label || v.name)}</b>
+            <span class="size-price">${money(v.price)}</span>${money2Html(v.price, { cls: 'block' })}
           </button>`,
         )
         .join('')}</div>`,
       setup: (dialog, close) => {
-        const pick = (id) => close(product.sizes.find((z) => String(z.id) === String(id)));
-        dialog.querySelectorAll('[data-size]').forEach((b) => b.addEventListener('click', () => pick(b.dataset.size)));
+        const pick = (id) => close(variants.find((v) => String(v.id) === String(id)));
+        dialog.querySelectorAll('[data-variant]').forEach((b) => b.addEventListener('click', () => pick(b.dataset.variant)));
         dialog.addEventListener('keydown', (e) => {
           const n = Number(e.key);
-          if (n >= 1 && n <= product.sizes.length) {
-            // The key picks the size and ends there: it must not go on to the
+          if (n >= 1 && n <= Math.min(9, variants.length)) {
+            // The key picks the variant and ends there: it must not go on to the
             // search box once the picker has closed.
             e.preventDefault();
             e.stopPropagation();
-            pick(product.sizes[n - 1].id);
+            pick(variants[n - 1].id);
           }
         });
-        dialog.querySelector('[data-size]')?.focus();
+        dialog.querySelector('[data-variant]')?.focus();
       },
     });
   }
 
   /**
    * Every cart line has an identity of its own, so typing a note on it never
-   * makes it a different line. What it is — the product, its size, its toppings
+   * makes it a different line. What it is — the product, its toppings
    * and its note — decides whether one more of it joins that line or starts a
    * new one: Mango S and Mango L are two lines, and so are a crêpe with Lotus and
    * one with banana.
@@ -786,7 +781,6 @@ export async function render(root, ctx) {
   const sameAs = (l) =>
     [
       l.product_id,
-      l.size_id || '',
       (l.addons || []).map((a) => a.id).sort((a, b) => a - b).join('+'),
       (l.note || '').trim().toLowerCase(),
     ].join('|');
@@ -827,13 +821,11 @@ export async function render(root, ctx) {
           <button type="button" data-step="1" title="${esc(t('pos.more'))}" aria-label="${esc(t('pos.more'))}">+</button>
         </div>
         <div class="cl-text">
-          <div class="cl-name" title="${esc(itemName(l))}">${esc(l.name)}${
-            l.size ? ` <span class="cl-size">${esc(l.size)}</span>` : ''
-          }</div>
+          <div class="cl-name" title="${esc(itemName(l))}">${esc(l.name)}</div>
           <div class="cl-extras" data-extras ${itemExtras(l) ? '' : 'hidden'}>${esc(itemExtras(l))}</div>
           <div class="cl-sub" data-sub>${lineSub(l)}</div>
         </div>
-        <span class="cl-short" data-stock ${l.qty > l.stock ? '' : 'hidden'}
+        <span class="cl-short" data-stock ${!l.made && l.qty > l.stock ? '' : 'hidden'}
               title="${esc(t('pos.on_hand', { q: qtyText(l.stock), u: l.unit }))}">${esc(t('pos.low_badge'))}</span>
         <span class="cl-totals"><span class="cl-total" data-total>${money(lineTotal(l))}</span>${money2Html(lineTotal(l), { cls: 'cl-total2' })}</span>
         <button class="cl-remove" data-remove title="${esc(t('pos.remove_line'))}" aria-label="${esc(t('pos.remove_line'))}">${icon('trash')}</button>
@@ -918,7 +910,7 @@ export async function render(root, ctx) {
       total2.dataset.base = lineTotal(line);
       total2.textContent = money2(lineTotal(line));
     }
-    el.querySelector('[data-stock]').hidden = line.qty <= line.stock;
+    el.querySelector('[data-stock]').hidden = line.made || line.qty <= line.stock;
     paintTotals();
   }
 
@@ -1067,7 +1059,6 @@ export async function render(root, ctx) {
       const held = await api.holdSale({
         items: state.cart.map((l) => ({
           product_id: l.product_id,
-          size_id: l.size_id || null,
           addons: (l.addons || []).map((a) => a.id),
           note: (l.note || '').trim(),
           qty: l.qty,
@@ -1100,12 +1091,11 @@ export async function render(root, ctx) {
         product_id: l.product_id,
         ...(l.addons?.length ? { addons: l.addons } : {}),
         ...(l.note ? { note: l.note } : {}),
-        // A size removed while the sale was held: the line keeps its name and price.
-        ...(l.size_id ? { size_id: l.size_id, size: l.size } : l.size ? { size: l.size } : {}),
         name: l.name,
         unit: l.unit,
         unit_price: Number(l.unit_price) || 0,
         stock: Number(l.stock) || 0,
+        ...(madeToOrder(l) ? { made: true } : {}),
         qty: Number(l.qty) || 0,
         discountPct: Number(l.discount_pct) || 0,
       }));
@@ -1437,7 +1427,6 @@ export async function render(root, ctx) {
               note: draft.note.trim(),
               items: state.cart.map((l) => ({
                 product_id: l.product_id,
-                size_id: l.size_id || null,
                 addons: (l.addons || []).map((a) => a.id),
                 note: (l.note || '').trim(),
                 qty: l.qty,

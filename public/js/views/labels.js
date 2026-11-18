@@ -230,7 +230,7 @@ export async function render(root, ctx) {
 
   const find = $('#label-find');
   const picker = attachPicker(find, {
-    search: (q) => api.products({ search: q, limit: 25, price_list: $('#label-list')?.value || '' }),
+    search: (q) => api.products({ search: q, limit: 25, leaf: '1', price_list: $('#label-list')?.value || '' }),
     render: productOption,
     emptyText: t('buy.no_product_match'),
     onPick: (p) => {

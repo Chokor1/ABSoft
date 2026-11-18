@@ -27,6 +27,8 @@ const SECTIONS = [
   { key: 'prices', icon: 'tag', admin: true },
   // Toppings and extras a product can offer at the till.
   { key: 'addons', icon: 'plus', admin: true },
+  // Size, Flavour…: what a template's variants are made of. Listed once switched on.
+  { key: 'attributes', icon: 'list', admin: true, when: (cfg) => cfg.attributes === '1' },
   { key: 'language', icon: 'globe' },
   { key: 'backup', icon: 'database', admin: true },
   { key: 'about', icon: 'info' },
@@ -38,10 +40,10 @@ export async function render(root, ctx) {
   if (isAdmin && ctx.params[0] === 'payments' && ctx.params.length > 1) {
     return renderKind(root, ctx, 'payment_method', ctx.params.slice(1));
   }
-  const sections = SECTIONS.filter((s) => isAdmin || !s.admin);
+  const [cfg, sys] = await Promise.all([api.settings(), api.system()]);
+  const sections = SECTIONS.filter((s) => (isAdmin || !s.admin) && (!s.when || s.when(cfg)));
   const wanted = ctx.params[0];
   const active = sections.some((s) => s.key === wanted) ? wanted : 'store';
-  const [cfg, sys] = await Promise.all([api.settings(), api.system()]);
   const off = isAdmin ? '' : 'disabled';
 
   const saveBar = () =>
@@ -117,6 +119,14 @@ export async function render(root, ctx) {
                 <label class="set-switch">
                   <input type="checkbox" name="pos_shifts" ${cfg.pos_shifts === '1' ? 'checked' : ''}/>
                   <span><b>${esc(t('set.shifts_enable'))}</b><small>${esc(t('set.shifts_help'))}</small></span>
+                </label>
+                <label class="set-switch">
+                  <input type="checkbox" name="attributes" ${cfg.attributes === '1' ? 'checked' : ''}/>
+                  <span><b>${esc(t('set.attributes_enable'))}</b><small>${esc(t('set.attributes_help'))}</small></span>
+                </label>
+                <label class="set-switch">
+                  <input type="checkbox" name="recipes" ${cfg.recipes === '1' ? 'checked' : ''}/>
+                  <span><b>${esc(t('set.recipes_enable'))}</b><small>${esc(t('set.recipes_help'))}</small></span>
                 </label>
               </div>
               ${saveBar()}
@@ -302,6 +312,16 @@ export async function render(root, ctx) {
         <div class="card-body flush"><div id="addon-groups"></div></div>
       </div>`,
 
+    attributes: () => `
+      <div class="card">
+        <div class="card-head">
+          <div><h3>${esc(t('attr.title'))}</h3><div class="sub">${esc(t('attr.sub'))}</div></div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary btn-sm" id="attr-new">${icon('plus')} ${esc(t('attr.new'))}</button>
+        </div>
+        <div class="card-body flush"><div id="attr-list"></div></div>
+      </div>`,
+
     prices: () => `
       <div class="card">
         <div class="card-head">
@@ -472,6 +492,85 @@ export async function render(root, ctx) {
     return;
   }
 
+  if (active === 'attributes') {
+    const box = root.querySelector('#attr-list');
+    const load = async () => {
+      const attrs = await api.attributes();
+      if (!attrs.length) {
+        box.innerHTML = `<div class="empty"><p>${esc(t('attr.none'))}</p><p class="muted">${esc(t('attr.none_sub'))}</p></div>`;
+        return;
+      }
+      box.innerHTML = `<div class="addon-lists">${attrs
+        .map(
+          (a) => `<div class="addon-list" data-attr="${a.id}">
+            <div class="addon-list-head">
+              <div><b>${esc(a.name)}</b><div class="cell-sub">${esc(t('attr.count', { n: a.values.length }))}</div></div>
+              <div class="spacer"></div>
+              <button class="btn btn-ghost btn-icon btn-sm" data-edit title="${esc(t('common.edit'))}">${icon('edit')}</button>
+              <button class="btn btn-ghost btn-icon btn-sm" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>
+            </div>
+            <div class="addon-chips">${a.values.map((v) => `<span class="addon-chip">${esc(v.name)}</span>`).join('')}</div>
+          </div>`,
+        )
+        .join('')}</div>`;
+      box.querySelectorAll('[data-attr]').forEach((el) => {
+        const attr = attrs.find((a) => a.id === Number(el.dataset.attr));
+        el.querySelector('[data-edit]').addEventListener('click', () => editAttr(attr));
+        el.querySelector('[data-del]').addEventListener('click', () => removeAttr(attr));
+      });
+    };
+
+    /** An attribute and its values: Size, with S, M, L and Bottle. */
+    async function editAttr(attr) {
+      const data = await formModal({
+        title: attr ? t('attr.edit', { name: attr.name }) : t('attr.new'),
+        subtitle: t('attr.form_sub'),
+        submitLabel: t('common.save'),
+        fields: [
+          { name: 'name', label: t('attr.name'), required: true, span: 2, value: attr?.name || '', autofocus: true, placeholder: t('attr.name_placeholder') },
+          {
+            name: 'values',
+            label: t('attr.values'),
+            type: 'tags',
+            span: 2,
+            value: (attr?.values || []).map((v) => v.name),
+            placeholder: t('attr.values_placeholder'),
+            help: t('attr.values_help'),
+          },
+        ],
+      });
+      if (!data) return;
+      try {
+        await api.saveAttribute({ id: attr?.id, name: data.name, values: data.values });
+        toast(t('attr.saved'), 'success');
+        load();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    }
+
+    async function removeAttr(attr) {
+      const ok = await confirmDialog({
+        title: t('attr.delete_title', { name: attr.name }),
+        message: t('attr.delete_msg'),
+        confirmLabel: t('common.delete'),
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await api.deleteAttribute(attr.id);
+        toast(t('attr.deleted'), 'success');
+        load();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    }
+
+    root.querySelector('#attr-new').addEventListener('click', () => editAttr(null));
+    await load();
+    return;
+  }
+
   if (active === 'prices') {
     const box = root.querySelector('#price-lists');
     /** Every list the shop keeps, the default first. */
@@ -624,10 +723,14 @@ export async function render(root, ctx) {
 
   $('#pos-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    await save({
+    const saved = await save({
       pos_shifts: e.target.pos_shifts.checked ? '1' : '0',
       pos_categories: e.target.pos_categories.checked ? '1' : '0',
+      attributes: e.target.attributes.checked ? '1' : '0',
+      recipes: e.target.recipes.checked ? '1' : '0',
     });
+    // Attributes switched on or off adds or takes away its section above.
+    if (saved && saved.attributes !== cfg.attributes) render(root, ctx);
   });
 
   // Scale labels: the example under the fields follows what is typed, so the layout

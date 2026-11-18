@@ -510,6 +510,96 @@ const MIGRATIONS = [
       addColumn(db, 'sale_items', 'note', "TEXT NOT NULL DEFAULT ''");
     },
   },
+  {
+    // Recipes and consumption reconciliation, for shops that make what they sell.
+    // Nothing here changes how stock moves until the shop switches recipes on:
+    // every product keeps stock (stocked = 1) and none is a raw material (raw = 0).
+    name: 'recipes-and-consumption',
+    up: (db) => {
+      addColumn(db, 'products', 'stocked', 'INTEGER NOT NULL DEFAULT 1');
+      addColumn(db, 'products', 'raw', 'INTEGER NOT NULL DEFAULT 0');
+      // Where an ingredient's unreconciled use starts: its own last reconciliation.
+      addColumn(db, 'products', 'consumed_until', 'TEXT');
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS recipe_lines (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id    INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          ingredient_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          qty           REAL    NOT NULL DEFAULT 0,
+          sort          INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_recipe_product ON recipe_lines(product_id);
+        CREATE INDEX IF NOT EXISTS idx_recipe_ingredient ON recipe_lines(ingredient_id);
+
+        -- What each sale probably used, written when it was made.
+        CREATE TABLE IF NOT EXISTS estimated_use (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          sale_id       INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+          sale_item_id  INTEGER,
+          ingredient_id INTEGER NOT NULL,
+          qty           REAL    NOT NULL,
+          created_at    TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_estimated_use ON estimated_use(ingredient_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS consumptions (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_no       TEXT    NOT NULL,
+          until        TEXT,
+          note         TEXT    NOT NULL DEFAULT '',
+          status       TEXT    NOT NULL DEFAULT 'draft',
+          user_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at   TEXT    NOT NULL,
+          submitted_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS consumption_items (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          consumption_id INTEGER NOT NULL REFERENCES consumptions(id) ON DELETE CASCADE,
+          product_id     INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          since          TEXT    NOT NULL DEFAULT '',
+          suggested      REAL    NOT NULL DEFAULT 0,
+          actual         REAL    NOT NULL DEFAULT 0,
+          counted        REAL,
+          unit_cost      REAL    NOT NULL DEFAULT 0,
+          sort           INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+    },
+  },
+  {
+    // Attributes: a template item ("Mango juice") whose variants ("Mango juice L",
+    // "Mango juice Bottle") are items of their own, each with its price, barcode,
+    // stock and recipe. Nothing changes for a shop that never makes a template.
+    name: 'attributes-and-variants',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS attributes (
+          id   INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT    NOT NULL COLLATE NOCASE UNIQUE,
+          sort INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS attribute_values (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          attribute_id INTEGER NOT NULL REFERENCES attributes(id) ON DELETE CASCADE,
+          name         TEXT    NOT NULL,
+          sort         INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_attribute_values ON attribute_values(attribute_id, sort);
+        -- A template: the values it comes in. A variant: the values it is.
+        CREATE TABLE IF NOT EXISTS product_attribute_values (
+          product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          value_id   INTEGER NOT NULL REFERENCES attribute_values(id) ON DELETE CASCADE,
+          PRIMARY KEY (product_id, value_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pav_value ON product_attribute_values(value_id);
+      `);
+      addColumn(db, 'products', 'has_variants', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(db, 'products', 'variant_of', 'INTEGER REFERENCES products(id) ON DELETE SET NULL');
+      // The variant's values, as sorted ids: one variant per combination.
+      addColumn(db, 'products', 'variant_key', 'TEXT');
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_products_variant_of ON products(variant_of)`);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
