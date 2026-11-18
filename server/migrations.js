@@ -458,6 +458,28 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // Sizes: one product sold in several sizes (S, M, L, Bottle), each at its own
+    // price. A product with no sizes has no rows here and sells exactly as it
+    // always has. A sale line keeps the size's name as text, so an old invoice
+    // still reads "Mango · L" after a size is renamed or removed.
+    name: 'product-sizes',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS product_sizes (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          name       TEXT    NOT NULL,
+          price      REAL    NOT NULL DEFAULT 0,
+          cost       REAL    NOT NULL DEFAULT 0,
+          sort       INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_product_sizes_product ON product_sizes(product_id, sort);
+      `);
+      addColumn(db, 'sale_items', 'size_id', 'INTEGER');
+      addColumn(db, 'sale_items', 'size', "TEXT NOT NULL DEFAULT ''");
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

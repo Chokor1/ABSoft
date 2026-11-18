@@ -40,6 +40,7 @@ import {
   todayISO,
   toTop,
   wireBarcodeTables,
+  wireSizeTables,
   wireTagInputs,
 } from '../ui.js';
 
@@ -79,6 +80,14 @@ function productFields(product) {
     },
     { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
     { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
+    {
+      name: 'sizes',
+      label: t('size.title'),
+      type: 'sizes',
+      span: 2,
+      value: product?.sizes || [],
+      help: t('size.help'),
+    },
     { name: 'unit', label: t('common.unit'), value: product?.unit || 'pcs', placeholder: t('prod.unit_placeholder'), names: 'unit' },
     { name: 'min_stock', label: t('prod.min_stock'), type: 'number', step: 'any', min: 0, value: product?.min_stock ?? 0 },
     ...(isNew
@@ -543,6 +552,7 @@ async function renderDetail(root, ctx, id, initialTab) {
     dropPickers = wireNamePickers(form, fields);
     wireTagInputs(form);
     wireBarcodeTables(form);
+    wireSizeTables(form);
     const paintPrice2 = () => {
       const el = body.querySelector('#price2');
       if (el) el.textContent = money2(form.price.value);

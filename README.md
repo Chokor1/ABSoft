@@ -525,6 +525,24 @@ line. A label with a wrong check digit is refused, never guessed.
 Switching it on is refused while any real 13-digit product barcode starts with that prefix, since
 such a product would then ring up as a weight; the message says how many, so you can change either.
 
+### Sizes
+
+A product can be sold in sizes — S, M, L and Bottle, a small or large plate — each at its own price.
+Open the product and add them under **Sizes**: a name, a price, and, if you know it, what that size
+costs to make (left empty, the product's own cost is used). A product with no sizes sells exactly
+as before, with no question asked.
+
+- **At the till** the card shows where its prices start ("from $3") and how many sizes it has.
+  Tapping it asks **Which size?** with one big button per size and its price; the number keys pick
+  too (1 for the first size). The size goes on the cart line as a badge, so a Small is never sold as
+  a Large. Mango S and Mango L are two lines; Mango L again adds one to the L line.
+- **In the Sell form** a product with sizes gets a size choice under its name, starting on the first
+  size; changing it changes the price, unless you typed one yourself. A price list prices the
+  product, not its sizes, so it leaves a sized line's price alone.
+- **On the sale** each line keeps its size by name as well: receipts, returns and old invoices still
+  read "Mango · L" after a size is renamed or removed. Held sales keep their sizes too.
+- Profit on a line uses the size's own cost when it has one.
+
 ### Categories at the till
 
 Off by default; switch on under **Settings → POS → Show categories at the till**. A row of chips

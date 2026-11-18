@@ -173,11 +173,20 @@ export function register(router) {
       const unitPrice = money(Math.max(0, num(line.unit_price)));
       const lineDiscount = money(Math.max(0, num(line.discount)));
       const total = money(Math.max(0, quantity * unitPrice - lineDiscount));
+      // Sold in a size: it must be one of this product's own, and a size with a
+      // cost of its own makes the profit on the line. A line with no size is sold
+      // as the product, the way every line was before sizes.
+      let size = null;
+      if (line.size_id) {
+        size = db.prepare(`SELECT id, name, cost FROM product_sizes WHERE id = ? AND product_id = ?`).get(num(line.size_id), product.id);
+        if (!size) throw badRequest(`That size is not one of "${product.name}"'s`, 'SIZE_UNKNOWN', { name: product.name });
+      }
       return {
         product,
+        size,
         qty: quantity,
         unit_price: unitPrice,
-        unit_cost: money(num(product.cost)),
+        unit_cost: money(num(size && num(size.cost) > 0 ? size.cost : product.cost)),
         discount: lineDiscount,
         total,
       };
@@ -239,8 +248,8 @@ export function register(router) {
       const saleId = lastId(res);
 
       const insertItem = db.prepare(
-        `INSERT INTO sale_items (sale_id, product_id, qty, unit_price, unit_cost, discount, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sale_items (sale_id, product_id, qty, unit_price, unit_cost, discount, total, size_id, size)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const insertMove = db.prepare(
         `INSERT INTO stock_moves (product_id, qty, unit_cost, kind, ref_table, ref_id, note, user_id, created_at)
@@ -248,7 +257,10 @@ export function register(router) {
       );
 
       for (const line of prepared) {
-        insertItem.run(saleId, line.product.id, line.qty, line.unit_price, line.unit_cost, line.discount, line.total);
+        insertItem.run(
+          saleId, line.product.id, line.qty, line.unit_price, line.unit_cost, line.discount, line.total,
+          line.size?.id ?? null, line.size?.name ?? '',
+        );
         insertMove.run(
           line.product.id,
           -line.qty,
@@ -414,15 +426,18 @@ export function register(router) {
         );
       const id = lastId(res);
       const insertItem = db.prepare(
-        `INSERT INTO sale_items (sale_id, product_id, qty, unit_price, unit_cost, discount, total, restock, return_of_item)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sale_items (sale_id, product_id, qty, unit_price, unit_cost, discount, total, restock, return_of_item, size_id, size)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const insertMove = db.prepare(
         `INSERT INTO stock_moves (product_id, qty, unit_cost, kind, ref_table, ref_id, note, user_id, created_at)
          VALUES (?, ?, ?, 'return', 'sales', ?, ?, ?, ?)`,
       );
       for (const l of lines) {
-        insertItem.run(id, l.item.product_id, -l.qty, l.item.unit_price, l.item.unit_cost, -l.discount, -l.total, l.restock ? 1 : 0, l.item.id);
+        insertItem.run(
+          id, l.item.product_id, -l.qty, l.item.unit_price, l.item.unit_cost, -l.discount, -l.total, l.restock ? 1 : 0, l.item.id,
+          l.item.size_id ?? null, l.item.size || '',
+        );
         if (l.restock) {
           // Back on the shelf at what it cost when it was sold, blended in like a delivery.
           applyAverageCost(l.item.product_id, l.qty, l.item.unit_cost);

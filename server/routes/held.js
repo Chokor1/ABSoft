@@ -39,9 +39,14 @@ function readCart(body) {
     if (quantity <= 0) {
       throw badRequest(`Quantity for "${product.name}" must be greater than zero`, 'QTY_POSITIVE', { name: product.name });
     }
-    names.push(`${product.name} × ${quantity}`);
+    // The size travels with the line, by id and by name, so it comes back as it went.
+    const size = line.size_id
+      ? db.prepare(`SELECT id, name FROM product_sizes WHERE id = ? AND product_id = ?`).get(num(line.size_id), product.id)
+      : null;
+    names.push(`${product.name}${size ? ` · ${size.name}` : ''} × ${quantity}`);
     return {
       product_id: product.id,
+      ...(size ? { size_id: size.id, size: size.name } : {}),
       qty: quantity,
       unit_price: money(Math.max(0, num(line.unit_price))),
       discount_pct: Math.min(100, Math.max(0, num(line.discount_pct))),
@@ -107,7 +112,20 @@ export function register(router) {
           dropped++;
           continue;
         }
-        items.push({ ...line, name: product.name, unit: product.unit, stock: num(product.stock), price: num(product.price) });
+        // A size removed while the sale was held: the line keeps its name and its
+        // price, and is sold as the product.
+        const size = line.size_id
+          ? db.prepare(`SELECT id, name FROM product_sizes WHERE id = ? AND product_id = ?`).get(line.size_id, product.id)
+          : null;
+        items.push({
+          ...line,
+          size_id: size ? size.id : null,
+          size: size ? size.name : line.size || '',
+          name: product.name,
+          unit: product.unit,
+          stock: num(product.stock),
+          price: num(product.price),
+        });
       }
       return { id: row.id, label: row.label, created_at: row.created_at, items, draft: cart.draft || {}, dropped };
     }),

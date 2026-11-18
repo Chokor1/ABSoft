@@ -233,6 +233,7 @@ export function formModal({ title, subtitle, fields, submitLabel = t('common.sav
       wireNamePickers(root, fields);
       wireTagInputs(root);
       wireBarcodeTables(root);
+      wireSizeTables(root);
       // A field may need more than the spec can say (a product search, say).
       // Closing the modal sweeps away any picker it attached.
       extraSetup?.(root, close);
@@ -266,9 +267,71 @@ export function readFields(root, fields) {
       data[f.name] = priceValues(el.closest('.prices-field'));
       continue;
     }
+    if (f.type === 'sizes') {
+      data[f.name] = sizeValues(el.closest('.sizes-field'));
+      continue;
+    }
     data[f.name] = f.type === 'checkbox' ? el.checked : f.type === 'number' ? Number(el.value) : el.value.trim();
   }
   return data;
+}
+
+/** One row of a sizes table. An existing size keeps its id, so its sales stay linked to it. */
+function sizeRowHtml(z = {}) {
+  return `<tr data-size-row ${z.id ? `data-size-id="${z.id}"` : ''}>
+    <td><input class="input" data-size-name value="${esc(z.name || '')}" placeholder="${esc(t('size.name_placeholder'))}"
+      aria-label="${esc(t('size.name'))}" maxlength="24"/></td>
+    <td class="right"><input class="input" type="number" step="0.01" min="0" data-size-price value="${z.price ?? ''}"
+      aria-label="${esc(t('size.price'))}"/></td>
+    <td class="right"><input class="input" type="number" step="0.01" min="0" data-size-cost value="${z.cost ? z.cost : ''}"
+      placeholder="${esc(t('size.cost_same'))}" aria-label="${esc(t('size.cost'))}"/></td>
+    <td class="right"><button type="button" class="btn btn-ghost btn-icon btn-sm" data-drop-size
+      title="${esc(t('common.remove'))}" aria-label="${esc(t('common.remove'))}">${icon('trash')}</button></td>
+  </tr>`;
+}
+
+/** The sizes typed into a sizes table, in order; a row with no name is left out. */
+export function sizeValues(field) {
+  return [...(field?.querySelectorAll('[data-size-row]') || [])]
+    .map((tr) => ({
+      id: Number(tr.dataset.sizeId) || null,
+      name: tr.querySelector('[data-size-name]').value.trim(),
+      price: Number(tr.querySelector('[data-size-price]').value) || 0,
+      cost: Number(tr.querySelector('[data-size-cost]').value) || 0,
+    }))
+    .filter((z) => z.name);
+}
+
+/** Add and remove rows in every sizes table under `root`. */
+export function wireSizeTables(root) {
+  root.querySelectorAll('.sizes-field').forEach((field) => {
+    if (field.dataset.wired) return;
+    field.dataset.wired = '1';
+    const rows = field.querySelector('[data-rows]');
+    const head = field.querySelector('thead');
+    const showHead = () => (head.hidden = !rows.children.length);
+    field.querySelector('[data-add-size]').addEventListener('click', () => {
+      rows.insertAdjacentHTML('beforeend', sizeRowHtml());
+      showHead();
+      rows.lastElementChild.querySelector('[data-size-name]').focus();
+    });
+    rows.addEventListener('click', (e) => {
+      const drop = e.target.closest('[data-drop-size]');
+      if (!drop) return;
+      drop.closest('[data-size-row]').remove();
+      showHead();
+    });
+  });
+}
+
+/** A sale line's name, with the size it was sold in: "Mango · L". */
+export const itemName = (i) => (i?.size ? `${i.name} · ${i.size}` : i?.name || '');
+
+/** What a product with sizes costs, said briefly: "from $3". Null without sizes. */
+export function sizesFrom(p) {
+  const sizes = Array.isArray(p?.sizes) ? p.sizes : [];
+  if (!sizes.length) return null;
+  return Math.min(...sizes.map((z) => Number(z.price) || 0));
 }
 
 /** What was typed against each price list: { listId: price }, blanks included. */
@@ -317,6 +380,7 @@ export function formPage(container, { title, subtitle = '', fields, submitLabel 
   wireNamePickers(container, fields);
   wireTagInputs(container);
   wireBarcodeTables(container);
+  wireSizeTables(container);
 
   const first = container.querySelector('[autofocus], input:not([type=hidden]), select, textarea');
   first?.focus();
@@ -342,6 +406,24 @@ function fieldHtml(f) {
         </div>
       </div>
       <input type="hidden" name="${f.name}" value="${esc(JSON.stringify(codes))}"/>
+      ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
+    </div>`;
+  }
+  if (f.type === 'sizes') {
+    // One row per size: its name, its price, and what it costs to make (optional).
+    // No rows at all is a product sold without sizes, the way every product was.
+    const sizes = Array.isArray(f.value) ? f.value : [];
+    return `<div class="field ${span} sizes-field">
+      <label>${esc(f.label)}</label>
+      <div class="sizes-box">
+        <table class="data sizes-table">
+          <thead${sizes.length ? '' : ' hidden'}><tr><th>${esc(t('size.name'))}</th><th class="right">${esc(t('size.price'))}</th>
+            <th class="right">${esc(t('size.cost'))}</th><th></th></tr></thead>
+          <tbody data-rows>${sizes.map(sizeRowHtml).join('')}</tbody>
+        </table>
+        <div class="sizes-add"><button type="button" class="btn btn-sm" data-add-size>${icon('plus')} ${esc(t('size.add'))}</button></div>
+      </div>
+      <input type="hidden" name="${f.name}" value=""/>
       ${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}
     </div>`;
   }

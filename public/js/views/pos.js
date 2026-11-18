@@ -7,7 +7,9 @@ import {
   emptyState,
   esc,
   forgetSuggestions,
+  itemName,
   modal,
+  sizesFrom,
   confirmDialog,
   dateTimeText,
   methodMark,
@@ -304,9 +306,19 @@ export async function render(root, ctx) {
   }
 
   function tileHtml(p) {
+    // A product with sizes shows where its prices start, and how many sizes it has.
+    const from = sizesFrom(p);
+    const priceHtml =
+      from === null
+        ? `<span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}`
+        : `<span class="t-price"><small class="t-from">${esc(t('size.from'))}</small> ${money(from)}</span>${money2Html(from, { cls: 'block' })}`;
+    const stockHtml =
+      from === null
+        ? `<span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>`
+        : `<span class="t-sizes">${esc(t(p.sizes.length === 1 ? 'size.count_one' : 'size.count', { n: p.sizes.length }))}</span>`;
     const prices = `<div class="t-meta">
-      <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
-      <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
+      <span class="t-prices">${priceHtml}</span>
+      ${stockHtml}
     </div>`;
     const title = [p.name, p.description].filter(Boolean).join(' — ');
     if (showImages) {
@@ -326,10 +338,7 @@ export async function render(root, ctx) {
            data-find="${esc(haystack(p))}" ${p.description ? `title="${esc(p.description)}"` : ''}>
     <div class="t-name">${esc(p.name)}</div>
     ${p.description ? `<div class="t-desc">${esc(p.description)}</div>` : ''}
-    <div class="t-meta">
-      <span class="t-prices"><span class="t-price">${money(p.price)}</span>${money2Html(p.price, { cls: 'block' })}</span>
-      <span class="t-stock">${qtyText(p.stock)} ${esc(p.unit)}</span>
-    </div>
+    ${prices}
   </button>`;
   }
 
@@ -565,6 +574,9 @@ export async function render(root, ctx) {
   function toScanBox(e) {
     if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
     const el = e.target;
+    // A key that something on screen already handled and then removed (a dialog
+    // closing on it) is not a stray key for the search box.
+    if (!el.isConnected) return;
     if (el === scan || el.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
     // A dialog, or the shift gate, has the cashier's attention instead.
     if (document.querySelector('.modal-backdrop, .sale-done, #shift-gate:not([hidden])')) return;
@@ -582,13 +594,24 @@ export async function render(root, ctx) {
   const lineDiscount = (l) => round2((l.qty * l.unit_price * Math.min(100, Math.max(0, Number(l.discountPct) || 0))) / 100);
   const lineTotal = (l) => Math.max(0, round2(l.qty * l.unit_price - lineDiscount(l)));
 
-  function addToCart(product) {
+  function addToCart(product, size = null) {
     if (!product) return;
     // A label from the scale carries the weight (or the price, from which the weight follows).
     const weighed = product.scale?.qty > 0 ? product.scale : null;
+    // A product sold in sizes asks which one first. A weighed label already says
+    // what is being sold, so it never asks.
+    if (!size && !weighed && product.sizes?.length) {
+      chooseSize(product).then((chosen) => {
+        if (chosen) addToCart(product, chosen);
+        scan.focus();
+      });
+      return;
+    }
     const qty = weighed ? Math.round(weighed.qty * 1000) / 1000 : 1;
-    const price = weighed?.total > 0 ? round2(weighed.total / qty) : Number(product.price) || 0;
-    const existing = state.cart.find((l) => l.product_id === product.id);
+    const price = weighed?.total > 0 ? round2(weighed.total / qty) : size ? Number(size.price) || 0 : Number(product.price) || 0;
+    // The same product in the same size is one line; Mango S and Mango L are two.
+    const key = size ? `${product.id}-${size.id}` : String(product.id);
+    const existing = state.cart.find((l) => lineKey(l) === key);
     if (existing) {
       // Scanning the same item again adds one to its line rather than a second
       // line, and brings that line back to the top where the cashier is looking.
@@ -598,6 +621,7 @@ export async function render(root, ctx) {
     } else {
       state.cart.unshift({
         product_id: product.id,
+        ...(size ? { size_id: size.id, size: size.name } : {}),
         name: product.name,
         unit: product.unit,
         unit_price: price,
@@ -606,10 +630,48 @@ export async function render(root, ctx) {
         discountPct: 0,
       });
     }
-    drawCart(product.id);
+    drawCart(key);
   }
 
-  const lineOf = (el) => state.cart.find((l) => l.product_id === Number(el.closest('[data-line]')?.dataset.line));
+  /**
+   * Which size? Big buttons, one per size with its price, in the order the shop
+   * set them. The number keys pick too: 1 for the first size, 2 for the second.
+   * Resolves the size, or nothing if the cashier changes their mind.
+   */
+  function chooseSize(product) {
+    return modal({
+      title: product.name,
+      subtitle: t('size.choose'),
+      body: `<div class="size-pick" role="group" aria-label="${esc(t('size.choose'))}">${product.sizes
+        .map(
+          (z, i) => `<button type="button" class="size-btn" data-size="${z.id}">
+            <span class="size-key">${i + 1}</span>
+            <b>${esc(z.name)}</b>
+            <span class="size-price">${money(z.price)}</span>${money2Html(z.price, { cls: 'block' })}
+          </button>`,
+        )
+        .join('')}</div>`,
+      setup: (dialog, close) => {
+        const pick = (id) => close(product.sizes.find((z) => String(z.id) === String(id)));
+        dialog.querySelectorAll('[data-size]').forEach((b) => b.addEventListener('click', () => pick(b.dataset.size)));
+        dialog.addEventListener('keydown', (e) => {
+          const n = Number(e.key);
+          if (n >= 1 && n <= product.sizes.length) {
+            // The key picks the size and ends there: it must not go on to the
+            // search box once the picker has closed.
+            e.preventDefault();
+            e.stopPropagation();
+            pick(product.sizes[n - 1].id);
+          }
+        });
+        dialog.querySelector('[data-size]')?.focus();
+      },
+    });
+  }
+
+  /** A line is a product, or a product in one size: Mango S and Mango L are two lines. */
+  const lineKey = (l) => (l.size_id ? `${l.product_id}-${l.size_id}` : String(l.product_id));
+  const lineOf = (el) => state.cart.find((l) => lineKey(l) === el.closest('[data-line]')?.dataset.line);
 
   /** What the line comes to before its discount. */
   const lineGross = (l) => round2(l.qty * l.unit_price);
@@ -637,7 +699,7 @@ export async function render(root, ctx) {
    * total — type what the line should come to, and the discount is worked out.
    */
   function lineHtml(l) {
-    return `<div class="cart-line ${l.open ? 'open' : ''}" data-line="${l.product_id}">
+    return `<div class="cart-line ${l.open ? 'open' : ''}" data-line="${lineKey(l)}">
       <div class="cl-top">
         <div class="qty-box">
           <button type="button" data-step="-1" title="${esc(t('pos.less'))}" aria-label="${esc(t('pos.less'))}">−</button>
@@ -646,7 +708,9 @@ export async function render(root, ctx) {
           <button type="button" data-step="1" title="${esc(t('pos.more'))}" aria-label="${esc(t('pos.more'))}">+</button>
         </div>
         <div class="cl-text">
-          <div class="cl-name" title="${esc(l.name)}">${esc(l.name)}</div>
+          <div class="cl-name" title="${esc(itemName(l))}">${esc(l.name)}${
+            l.size ? ` <span class="cl-size">${esc(l.size)}</span>` : ''
+          }</div>
           <div class="cl-sub" data-sub>${lineSub(l)}</div>
         </div>
         <span class="cl-short" data-stock ${l.qty > l.stock ? '' : 'hidden'}
@@ -710,7 +774,7 @@ export async function render(root, ctx) {
 
   /** Only the numbers that depend on the line, so typing never loses its place. */
   function repaintLine(line, typedIn = null) {
-    const el = linesEl.querySelector(`[data-line="${line.product_id}"]`);
+    const el = linesEl.querySelector(`[data-line="${lineKey(line)}"]`);
     if (!el) return;
     // Every field follows the others, except the one being typed in.
     const set = (field, value) => {
@@ -869,7 +933,13 @@ export async function render(root, ctx) {
     if (!state.cart.length) return false;
     try {
       const held = await api.holdSale({
-        items: state.cart.map((l) => ({ product_id: l.product_id, qty: l.qty, unit_price: l.unit_price, discount_pct: l.discountPct || 0 })),
+        items: state.cart.map((l) => ({
+          product_id: l.product_id,
+          size_id: l.size_id || null,
+          qty: l.qty,
+          unit_price: l.unit_price,
+          discount_pct: l.discountPct || 0,
+        })),
         draft: state.draft,
       });
       if (!quiet) toast(t('pos.held_done', { n: held.lines, v: money(held.total) }), 'success');
@@ -893,6 +963,8 @@ export async function render(root, ctx) {
       const back = await api.resumeHeld(id);
       state.cart = back.items.map((l) => ({
         product_id: l.product_id,
+        // A size removed while the sale was held: the line keeps its name and price.
+        ...(l.size_id ? { size_id: l.size_id, size: l.size } : l.size ? { size: l.size } : {}),
         name: l.name,
         unit: l.unit,
         unit_price: Number(l.unit_price) || 0,
@@ -1228,6 +1300,7 @@ export async function render(root, ctx) {
               note: draft.note.trim(),
               items: state.cart.map((l) => ({
                 product_id: l.product_id,
+                size_id: l.size_id || null,
                 qty: l.qty,
                 unit_price: l.unit_price,
                 discount: lineDiscount(l),

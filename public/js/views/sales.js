@@ -9,6 +9,7 @@ import {
   debounce,
   docPage,
   filterSelect,
+  itemName,
   keepList,
   listScroll,
   pager,
@@ -58,7 +59,7 @@ function receiptHtml(sale, change = 0, change2 = null) {
         ${sale.items
           .map(
             (i) =>
-              `${line(`${i.name}`, money(i.total))}
+              `${line(itemName(i), money(i.total))}
                <div class="r-line" style="color:var(--muted)"><span class="r-detail">&nbsp;&nbsp;${qtyText(
                  i.qty,
                )} ${esc(i.unit)} × ${money(i.unit_price)}${
@@ -312,12 +313,12 @@ export function returnDialog(sale, { atTill = false } = {}) {
         <tbody>${lines
           .map(
             (l, i) => `<tr data-i="${i}" class="${l.left > 0 ? '' : 'muted'}">
-              <td><div class="cell-title">${esc(l.item.name)}</div>${
+              <td><div class="cell-title">${esc(itemName(l.item))}</div>${
                 l.item.returned ? `<div class="cell-sub">${esc(t('ret.already', { q: qtyText(l.item.returned) }))}</div>` : ''
               }</td>
               <td class="right">${qtyText(l.item.qty)} ${esc(l.item.unit || '')}</td>
               <td class="right"><input class="input ret-qty" type="number" min="0" max="${l.left}" step="any" value="0" data-qty
-                     ${l.left > 0 ? '' : 'disabled'} aria-label="${esc(t('ret.returning'))} · ${esc(l.item.name)}"/></td>
+                     ${l.left > 0 ? '' : 'disabled'} aria-label="${esc(t('ret.returning'))} · ${esc(itemName(l.item))}"/></td>
               <td><span class="seg seg-sm" role="radiogroup" aria-label="${esc(t('ret.shelf'))}">
                 <button type="button" class="active" data-shelf="1" role="radio" aria-checked="true">${esc(t('ret.shelf_yes'))}</button>
                 <button type="button" data-shelf="0" role="radio" aria-checked="false">${esc(t('ret.damaged'))}</button></span></td>

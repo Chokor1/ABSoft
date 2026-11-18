@@ -2062,3 +2062,52 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 @media (max-width: 1180px) {
   .pos.with-cats { grid-template-areas: "scan" "cart" "cats" "tiles"; grid-template-rows: auto; }
 }
+
+/* ==========================================================================
+   sizes
+   Only a product with sizes shows any of this: a table of them on its form, a
+   "from" price on its card, the picker at the till, and the size on its line.
+   ========================================================================== */
+
+/* The product form: one row per size. */
+.sizes-box { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); overflow: hidden; }
+.sizes-table { background: var(--surface); }
+.sizes-table td { padding: 6px 10px; vertical-align: middle; }
+.sizes-table th { padding: 7px 10px; }
+.sizes-table tr:last-child td { border-bottom: 0; }
+.sizes-table .input { height: 34px; }
+.sizes-table [data-size-name] { min-width: 90px; }
+.sizes-table [data-size-price], .sizes-table [data-size-cost] { width: 120px; text-align: end; font-variant-numeric: tabular-nums; }
+.sizes-add { padding: 8px 10px; border-top: 1px solid var(--border); }
+
+/* The till's card for a product with sizes. */
+.t-from { font-size: 0.72em; font-weight: 600; color: var(--muted); text-transform: lowercase; }
+.t-sizes { font-size: 11.5px; font-weight: 600; color: var(--accent-text); }
+
+/* Which size? Big buttons a finger can't miss. */
+.size-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; padding: 4px 0 6px; }
+.size-btn {
+  position: relative; display: grid; justify-items: center; gap: 2px; padding: 18px 10px 14px;
+  border: 1.5px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text);
+  font: inherit; cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.size-btn b { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; unicode-bidi: plaintext; }
+.size-btn .size-price { font-size: 15px; font-weight: 700; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+.size-btn .money2 { font-size: 11.5px; }
+.size-btn:hover, .size-btn:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+.size-btn:active { transform: scale(0.98); }
+.size-key {
+  position: absolute; inset-inline-start: 8px; top: 7px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 6px; background: var(--surface-3); color: var(--muted); font-size: 11px; font-weight: 700;
+  display: grid; place-items: center;
+}
+@media (max-width: 520px) { .size-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* The size on a cart line, plain enough that S is never read as L. */
+.cl-size {
+  display: inline-block; margin-inline-start: 4px; padding: 1px 8px; border-radius: 999px; vertical-align: 1px;
+  background: var(--accent); color: #fff; font-size: 11.5px; font-weight: 800; letter-spacing: 0.02em;
+}
+
+/* The Sell form's size choice, under the product. */
+.size-select { margin-top: 6px; height: 34px; max-width: 220px; }

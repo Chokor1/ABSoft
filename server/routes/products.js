@@ -14,17 +14,65 @@ const SELECT_PRODUCT = `
          (SELECT json_group_array(b.barcode) FROM
             (SELECT barcode FROM product_barcodes WHERE product_id = p.id ORDER BY id) b) AS barcodes_json,
          (SELECT updated_at FROM product_images i WHERE i.product_id = p.id) AS image_at,
+         (SELECT json_group_array(json_object('id', z.id, 'name', z.name, 'price', z.price, 'cost', z.cost)) FROM
+            (SELECT id, name, price, cost FROM product_sizes WHERE product_id = p.id ORDER BY sort, id) z) AS sizes_json,
          ROUND(COALESCE(s.stock, 0) * p.cost, 2) AS stock_value,
          CASE WHEN p.price > 0 THEN ROUND((p.price - p.cost) / p.price * 100, 1) ELSE 0 END AS margin
   FROM products p
   LEFT JOIN product_stock s ON s.product_id = p.id`;
 
-/** A product row as the client sees it: the extra barcodes as a list. */
+/** A product row as the client sees it: the extra barcodes and the sizes as lists. */
 const shape = (row) => {
   if (!row) return row;
-  const { barcodes_json, ...rest } = row;
-  return { ...rest, barcodes: JSON.parse(barcodes_json || '[]') };
+  const { barcodes_json, sizes_json, ...rest } = row;
+  return { ...rest, barcodes: JSON.parse(barcodes_json || '[]'), sizes: JSON.parse(sizes_json || '[]') };
 };
+
+const MAX_SIZES = 12;
+
+/**
+ * The sizes sent with a product, checked: each has a name, no two share one,
+ * and prices and costs are never negative. An empty list means the product is
+ * sold without sizes, as every product was before sizes existed.
+ */
+function readSizes(value) {
+  const list = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of list) {
+    const name = str(raw?.name);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) throw badRequest(`The size "${name}" is listed twice`, 'SIZE_TWICE', { name });
+    seen.add(key);
+    out.push({
+      id: Number(raw.id) || null,
+      name,
+      price: money(Math.max(0, num(raw.price))),
+      cost: money(Math.max(0, num(raw.cost))),
+    });
+  }
+  if (out.length > MAX_SIZES) throw badRequest(`A product can have at most ${MAX_SIZES} sizes`, 'SIZES_TOO_MANY', { n: MAX_SIZES });
+  return out;
+}
+
+/**
+ * Write a product's sizes. A size sent with its id is updated in place, so the
+ * sales already made in it still point at it; a size left out is removed. Its
+ * old sales keep the size's name, written on the line when they were made.
+ */
+function setSizes(productId, sizes) {
+  const keep = new Set(sizes.filter((z) => z.id).map((z) => z.id));
+  const current = db.prepare(`SELECT id FROM product_sizes WHERE product_id = ?`).all(productId);
+  const drop = db.prepare(`DELETE FROM product_sizes WHERE id = ?`);
+  for (const row of current) if (!keep.has(row.id)) drop.run(row.id);
+  const update = db.prepare(`UPDATE product_sizes SET name = ?, price = ?, cost = ?, sort = ? WHERE id = ? AND product_id = ?`);
+  const insert = db.prepare(`INSERT INTO product_sizes (product_id, name, price, cost, sort) VALUES (?, ?, ?, ?, ?)`);
+  sizes.forEach((z, i) => {
+    const updated = z.id ? update.run(z.name, z.price, z.cost, i, z.id, productId).changes : 0;
+    if (!updated) insert.run(productId, z.name, z.price, z.cost, i);
+  });
+}
 
 /**
  * `?price_list=<id>` adds `list_price` to each row: what this product costs on
@@ -418,6 +466,7 @@ export function register(router) {
         );
       const id = lastId(res);
       setBarcodes(id, extra);
+      if (ctx.body.sizes !== undefined) setSizes(id, readSizes(ctx.body.sizes));
       setPrices(id, ctx.body.prices, ctx.user.id);
 
       // Stock already on hand is recorded as an opening stock adjustment.
@@ -552,6 +601,8 @@ export function register(router) {
         existing.id,
       );
       setBarcodes(existing.id, extra);
+      // Sent: replace the sizes. Left out: keep them as they are.
+      if (ctx.body.sizes !== undefined) setSizes(existing.id, readSizes(ctx.body.sizes));
       if (ctx.body.prices !== undefined) setPrices(existing.id, ctx.body.prices, ctx.user.id);
       // The product's own price and cost are the main list's prices: their
       // changes belong in the same history.
