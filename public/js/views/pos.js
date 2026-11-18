@@ -54,6 +54,9 @@ export async function render(root, ctx) {
     cart: [],
     // Kept between openings of the payment dialog, so cancelling it loses nothing.
     draft: freshDraft(),
+    // Restaurant mode: the table this cart belongs to, and the version of its order
+    // the till opened (null for a new order on a free table).
+    table: null,
   };
 
   const taxRate = Number(store.settings.tax_rate) || 0;
@@ -65,6 +68,8 @@ export async function render(root, ctx) {
   // instead of its variants (with attributes on). The server applies each only
   // while its switch is on, so a shop with both off sees what it always saw.
   const SELLING = { sale: '1', templates: '1' };
+  // Restaurant mode: tables at the till. Off, there is no trace of them.
+  const restaurant = store.settings.restaurant === '1';
   // Made to order (recipes on): no stock of its own to show, run short of or run out of.
   const madeToOrder = (p) => store.settings.recipes === '1' && Number(p?.stocked ?? 1) === 0;
   const MIN_SEARCH = Math.min(5, Math.max(1, Number(store.settings.search_min_chars) || 1));
@@ -89,6 +94,12 @@ export async function render(root, ctx) {
                 title="${esc(t('pos.show_images'))}" aria-label="${esc(t('pos.show_images'))}">${icon('image')}</button>
         <button class="btn" id="clear-search">${esc(t('pos.clear'))}</button>
         <button class="btn" id="take-return" title="${esc(t('ret.pick_sub'))}">${icon('refresh')} <span class="hide-mobile">${esc(t('ret.short'))}</span></button>
+        ${
+          restaurant
+            ? `<button class="btn" id="open-tables" title="${esc(t('tbl.open_tip'))}">${icon('table')} <span class="hide-mobile">${esc(t('tbl.tables'))}</span>
+                 <span class="badge warn" id="tables-open" hidden></span></button>`
+            : ''
+        }
       </div>
 
       <aside class="cart">
@@ -97,6 +108,7 @@ export async function render(root, ctx) {
           <span class="badge accent" id="cart-count"></span>
           <span class="badge warn" id="exchange-chip" hidden></span>
           <button type="button" class="badge warn held-chip" id="held-chip" hidden></button>
+          ${restaurant ? `<button type="button" class="badge accent table-chip" id="table-chip" hidden title="${esc(t('tbl.leave'))}"></button>` : ''}
           <button type="button" class="btn btn-sm" id="hold-cart" disabled title="${esc(t('pos.hold_tip'))}">${icon('pause')} ${esc(t('pos.hold'))}</button>
           <button class="btn btn-ghost btn-icon" id="clear-cart" title="${esc(t('pos.clear_cart'))}" aria-label="${esc(t('pos.clear_cart'))}">${icon(
             'trash',
@@ -105,10 +117,17 @@ export async function render(root, ctx) {
         <div class="cart-lines" id="cart-lines"></div>
         <div class="cart-foot">
           <div id="totals" aria-live="polite" aria-atomic="true"></div>
+          <div class="${restaurant ? 'pay-row' : ''}">
+          ${
+            restaurant
+              ? `<button class="btn btn-lg" id="to-table" disabled title="${esc(t('tbl.send_tip'))}">${icon('table')} <span id="to-table-label">${esc(t('tbl.send'))}</span></button>`
+              : ''
+          }
           <button class="btn btn-primary btn-lg btn-block" id="checkout" disabled aria-keyshortcuts="F9 Control+Enter"
                   title="${esc(t('pos.make_payment'))} (F9 · Ctrl+Enter)">
             ${icon('coins')} ${esc(t('pos.make_payment'))} <span class="kbd kbd-on-brand hide-mobile" aria-hidden="true">F9</span>
           </button>
+          </div>
         </div>
       </aside>
 
@@ -950,7 +969,9 @@ export async function render(root, ctx) {
 
     const empty = state.cart.length === 0;
     $('#checkout').disabled = empty;
-    $('#hold-cart').disabled = empty;
+    // A table's order stays on its table: it is saved there, not held.
+    $('#hold-cart').disabled = empty || !!state.table;
+    if (restaurant) paintTable(empty);
     $('#bar-checkout').disabled = empty;
     $('#bar-total').innerHTML = `${esc(money(tot.total))} ${money2Html(tot.total)}`;
     $('#bar-count').textContent = t('pos.item_count', { n: state.cart.length });
@@ -1026,6 +1047,8 @@ export async function render(root, ctx) {
   });
 
   $('#clear-cart').addEventListener('click', () => {
+    // Clearing a table's cart leaves the table as it was: its order stays on it.
+    if (state.table) return leaveTable();
     if (!state.cart.length) return;
     state.cart = [];
     state.draft = freshDraft();
@@ -1054,7 +1077,7 @@ export async function render(root, ctx) {
   }
 
   async function holdCart({ quiet = false } = {}) {
-    if (!state.cart.length) return false;
+    if (!state.cart.length || state.table) return false;
     try {
       const held = await api.holdSale({
         items: state.cart.map((l) => ({
@@ -1168,6 +1191,232 @@ export async function render(root, ctx) {
 
   $('#hold-cart').addEventListener('click', () => holdCart());
   $('#held-chip').addEventListener('click', openHeld);
+
+  /* --------------------------------------------------------------- tables -- */
+
+  /**
+   * Restaurant mode. A cart sent to a table stays there as its order, moving no
+   * stock and taking no money, and the till is free for the next one. Tables
+   * opens the floor: an open table comes back into the cart to add to and send
+   * back, or to pay — which frees it.
+   */
+  const cartLines = () =>
+    state.cart.map((l) => ({
+      product_id: l.product_id,
+      addons: (l.addons || []).map((a) => a.id),
+      note: (l.note || '').trim(),
+      qty: l.qty,
+      unit_price: l.unit_price,
+      discount_pct: l.discountPct || 0,
+    }));
+
+  function paintTable(empty = !state.cart.length) {
+    const chip = $('#table-chip');
+    if (chip) {
+      chip.hidden = !state.table;
+      chip.innerHTML = state.table ? `${icon('table')} ${esc(state.table.name)} <span aria-hidden="true">×</span>` : '';
+    }
+    const btn = $('#to-table');
+    if (btn) {
+      btn.disabled = empty;
+      $('#to-table-label').textContent = state.table ? t('tbl.save_to', { name: state.table.name }) : t('tbl.send');
+    }
+  }
+
+  async function refreshTables() {
+    try {
+      state.tables = await api.tables();
+    } catch {
+      state.tables = state.tables || [];
+    }
+    const open = state.tables.filter((tb) => tb.status === 'open').length;
+    const badge = $('#tables-open');
+    if (badge) {
+      badge.hidden = !open;
+      badge.textContent = String(open);
+    }
+    return state.tables;
+  }
+
+  /** Put the cart on a table: the one it came from, or one chosen now. */
+  async function sendToTable(table = state.table) {
+    if (!state.cart.length) return;
+    if (!table) {
+      const picked = await pickTable('send');
+      if (!picked) return scan.focus();
+      table = picked.table;
+    }
+    try {
+      await api.sendToTable(table.id, {
+        items: cartLines(),
+        draft: state.draft,
+        // The order this till opened: it replaces that one. None: a new order, or more for an open table.
+        ...(state.table && state.table.id === table.id && state.table.version ? { version: state.table.version } : {}),
+      });
+      toast(t('tbl.sent', { name: table.name }), 'success');
+      state.cart = [];
+      state.draft = freshDraft();
+      state.table = null;
+      drawCart();
+    } catch (err) {
+      toast(errorText(err), 'error');
+    }
+    await refreshTables();
+    scan.focus();
+  }
+
+  /** Bring an open table's order into the cart, at the version it is at. */
+  async function takeTable(table) {
+    try {
+      const order = await api.tableOrder(table.id);
+      state.cart = order.items.map((l) => ({
+        uid: ++lineSeq,
+        product_id: l.product_id,
+        ...(l.addons?.length ? { addons: l.addons } : {}),
+        ...(l.note ? { note: l.note } : {}),
+        name: l.name,
+        unit: l.unit,
+        unit_price: Number(l.unit_price) || 0,
+        stock: Number(l.stock) || 0,
+        ...(madeToOrder(l) ? { made: true } : {}),
+        qty: Number(l.qty) || 0,
+        discountPct: Number(l.discount_pct) || 0,
+      }));
+      state.draft = { ...freshDraft(), ...order.draft };
+      state.table = { id: order.table.id, name: order.table.name, version: order.version };
+      drawCart();
+      if (order.dropped) toast(t('pos.resumed_dropped', { n: order.dropped }), 'warn', 6000);
+      return true;
+    } catch (err) {
+      toast(errorText(err), 'error');
+      await refreshTables();
+      return false;
+    }
+  }
+
+  /** Step away from a table without sending: its order stays as it was. */
+  async function leaveTable() {
+    if (!state.table) return;
+    if (state.cart.length) {
+      const ok = await confirmDialog({
+        title: t('tbl.leave_title', { name: state.table.name }),
+        message: t('tbl.leave_msg'),
+        confirmLabel: t('tbl.leave'),
+      });
+      if (!ok) return;
+    }
+    state.cart = [];
+    state.draft = freshDraft();
+    state.table = null;
+    drawCart();
+    scan.focus();
+  }
+
+  /**
+   * The floor: every table, free or open with its total and since when.
+   * 'send' picks where the cart goes; 'open' works with the tables themselves.
+   * Resolves { table, action } or nothing.
+   */
+  async function pickTable(mode) {
+    const tables = await refreshTables();
+    if (!tables.length) {
+      toast(t('tbl.none_set'), 'warn', 5000);
+      return null;
+    }
+    const admin = store.user.role === 'admin';
+    const card = (tb) => {
+      const open = tb.status === 'open';
+      return `<div class="table-card ${open ? 'open' : 'free'}" data-table="${tb.id}" role="button" tabindex="0">
+        <div class="table-card-head"><b>${esc(tb.name)}</b>
+          <span class="badge ${open ? 'warn' : 'success'}">${esc(t(open ? 'tbl.status_open' : 'tbl.status_free'))}</span></div>
+        ${
+          open
+            ? `<div class="table-card-total">${money(tb.order.total)}</div>
+               <div class="cell-sub">${esc(t('pos.item_count', { n: tb.order.lines }))} · ${esc(t('tbl.since', { t: dateTimeText(tb.order.opened_at) }))}</div>
+               ${
+                 mode === 'open'
+                   ? `<div class="table-card-actions">
+                       <button type="button" class="btn btn-sm" data-act="open">${icon('edit')} ${esc(t('tbl.open'))}</button>
+                       <button type="button" class="btn btn-sm btn-primary" data-act="pay">${icon('coins')} ${esc(t('tbl.pay'))}</button>
+                       ${admin ? `<button type="button" class="btn btn-sm btn-ghost btn-icon" data-act="clear" title="${esc(t('tbl.clear'))}" aria-label="${esc(t('tbl.clear'))}">${icon('trash')}</button>` : ''}
+                     </div>`
+                   : ''
+               }`
+            : `<div class="cell-sub">${esc(t('tbl.free_hint'))}</div>`
+        }
+      </div>`;
+    };
+    return modal({
+      title: t(mode === 'send' ? 'tbl.send_title' : 'tbl.tables'),
+      subtitle: t(mode === 'send' ? 'tbl.send_sub' : 'tbl.floor_sub'),
+      wide: true,
+      body: `<div class="table-floor">${tables.map(card).join('')}</div>`,
+      footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>`,
+      setup: (dialog, close) => {
+        dialog.addEventListener('click', async (e) => {
+          const el = e.target.closest('[data-table]');
+          if (!el) return;
+          const table = tables.find((tb) => tb.id === Number(el.dataset.table));
+          const act = e.target.closest('[data-act]')?.dataset.act;
+          if (act === 'clear') {
+            const ok = await confirmDialog({
+              title: t('tbl.clear_title', { name: table.name }),
+              message: t('tbl.clear_msg'),
+              confirmLabel: t('tbl.clear'),
+              danger: true,
+            });
+            if (!ok) return;
+            try {
+              await api.clearTable(table.id);
+              close({ table, action: 'cleared' });
+            } catch (err) {
+              toast(errorText(err), 'error');
+            }
+            return;
+          }
+          if (mode === 'send') return close({ table, action: 'send' });
+          if (table.status === 'free') return close({ table, action: 'start' });
+          close({ table, action: act === 'pay' ? 'pay' : 'open' });
+        });
+        dialog.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && e.target.matches('[data-table]')) e.target.click();
+        });
+      },
+    });
+  }
+
+  async function openTables() {
+    const picked = await pickTable('open');
+    if (!picked) return scan.focus();
+    const { table, action } = picked;
+    if (action === 'cleared') {
+      toast(t('tbl.cleared', { name: table.name }), 'success');
+      await refreshTables();
+      return scan.focus();
+    }
+    // The sale in hand is not lost to a table: it goes to the free table chosen,
+    // and an open table waits until it is sent, held or paid.
+    if (state.cart.length && !(state.table && state.table.id === table.id)) {
+      if (action === 'start' && !state.table) return sendToTable(table);
+      toast(t('tbl.busy_cart'), 'warn', 5000);
+      return scan.focus();
+    }
+    if (action === 'start') {
+      // A free table: the next items rung up are its order.
+      state.table = { id: table.id, name: table.name, version: null };
+      drawCart();
+      return scan.focus();
+    }
+    if (!(await takeTable(table))) return scan.focus();
+    if (action === 'pay') return openPayment();
+    scan.focus();
+  }
+
+  if (restaurant) {
+    $('#open-tables').addEventListener('click', openTables);
+    $('#to-table').addEventListener('click', () => sendToTable());
+    $('#table-chip').addEventListener('click', leaveTable);
+  }
 
   /* -------------------------------------------------------------- payment -- */
 
@@ -1425,6 +1674,8 @@ export async function render(root, ctx) {
                   }
                 : { paid: Math.max(0, Number(amount.value) || 0) }),
               note: draft.note.trim(),
+              // Paying a table's order frees the table in the same step.
+              ...(state.table?.version ? { table_id: state.table.id, table_version: state.table.version } : {}),
               items: state.cart.map((l) => ({
                 product_id: l.product_id,
                 addons: (l.addons || []).map((a) => a.id),
@@ -1461,8 +1712,10 @@ export async function render(root, ctx) {
 
     state.cart = [];
     state.draft = freshDraft();
+    state.table = null;
     drawCart();
     loadProducts();
+    if (restaurant) refreshTables();
 
     playSaleChime();
     await celebrateSale(sale);
@@ -1507,6 +1760,7 @@ export async function render(root, ctx) {
   await loadProducts();
   drawCart();
   refreshHeld();
+  if (restaurant) refreshTables();
   scan.focus();
 
   // Switching the second currency on or off redraws the prices; a new rate

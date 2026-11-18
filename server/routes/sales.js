@@ -7,6 +7,7 @@ import { applyAverageCost } from '../costing.js';
 import { openShift, shiftsEnabled } from './shifts.js';
 import { priceListId } from './price-lists.js';
 import { readLineAddons } from './addons.js';
+import { closeTableForSale, restaurantEnabled } from './tables.js';
 import { keepsStock, recipeCost, recipesEnabled, recordEstimatedUse, useStamp } from './recipes.js';
 
 /**
@@ -229,6 +230,8 @@ export function register(router) {
       .map((l) => ({ name: l.product.name, available: num(l.product.stock), requested: l.qty }));
 
     const sale = transact(() => {
+      // Paying a table's order frees the table, in this same step — or not at all.
+      const table = ctx.body.table_id && restaurantEnabled() ? closeTableForSale(ctx.body.table_id, ctx.body.table_version) : null;
       const docNo = str(ctx.body.doc_no) || nextDocNo(db, 'sales', 'INV');
       const res = db
         .prepare(
@@ -253,6 +256,7 @@ export function register(router) {
           priceListId(ctx.body.price_list_id),
         );
       const saleId = lastId(res);
+      if (table) db.prepare(`UPDATE sales SET table_name = ? WHERE id = ?`).run(table.name, saleId);
 
       const insertItem = db.prepare(
         `INSERT INTO sale_items (sale_id, product_id, qty, unit_price, unit_cost, discount, total, size_id, size, addons, note)

@@ -170,6 +170,8 @@ const DEFAULT_SETTINGS = {
   recipes: '0',
   // Attributes and variants (templates): off, products are as they always were.
   attributes: '0',
+  // Restaurant mode: tables at the till, each free or open with an order. Off, no tables.
+  restaurant: '0',
   search_min_chars: '1',
   pos_page_size: '40',
 };

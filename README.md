@@ -601,6 +601,24 @@ choose **None** on its page to take it off again.
 
 A shop with no add-on list sees no change; products are not even asked which list they offer.
 
+### Restaurant mode — tables (off until switched on)
+
+Switch it on under **Settings → POS → Restaurant mode**; until then the till has no tables at all.
+
+- **Settings → Tables** lists them: add one by name, or several at once ("Table 1" to "Table 10").
+  A table can be taken out of use; one with an open order cannot be removed.
+- **Table**, beside Make payment, sends the cart to a table: a free table opens with it, an open one
+  gets these items added. The till is free for the next order. An open order is like a held sale:
+  no stock moves and no money is taken until it is paid.
+- **Tables**, in the till's top row (with how many are open), shows the floor: each table free or
+  open, with its total and since when. **Open** brings its order into the cart — the cart shows the
+  table, and the button becomes **Save to Table 1** — to add the dessert and send it back. **Pay**
+  brings it in and opens the payment straight away; paying frees the table in the same step, and
+  the receipt names the table. Tapping a free table starts its order. An administrator can clear a
+  table without a sale.
+- Two tills never overwrite each other: each save and each payment carries the version of the order
+  it opened, and an order that changed meanwhile must be opened again. A table is never paid twice.
+
 ### Categories at the till
 
 Off by default; switch on under **Settings → POS → Show categories at the till**. A row of chips

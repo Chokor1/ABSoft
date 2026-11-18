@@ -30,6 +30,7 @@ import { register as registerPriceLists } from './routes/price-lists.js';
 import { register as registerAddons } from './routes/addons.js';
 import { register as registerRecipes } from './routes/recipes.js';
 import { register as registerAttributes } from './routes/attributes.js';
+import { register as registerTables } from './routes/tables.js';
 import { register as registerHeld } from './routes/held.js';
 import { startAutoBackups } from './autobackup.js';
 
@@ -79,6 +80,7 @@ registerPriceLists(router);
 registerAddons(router);
 registerRecipes(router);
 registerAttributes(router);
+registerTables(router);
 registerHeld(router);
 
 /* -------------------------------------------------------------- server ---- */
@@ -110,6 +112,11 @@ const CASHIER_ROUTES = new Set([
   'POST /api/sales/:id/returns',
   // A sale put aside while the next customer is served, and taken back at any till.
   'GET /api/held',
+  // Restaurant mode: the floor, and the orders open on its tables. Setting tables up is for administrators.
+  'GET /api/tables',
+  'GET /api/tables/:id/order',
+  'PUT /api/tables/:id/order',
+  'DELETE /api/tables/:id/order',
   'POST /api/held',
   'POST /api/held/:id/resume',
   'DELETE /api/held/:id',

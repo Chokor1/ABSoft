@@ -95,7 +95,7 @@ export function showReceipt(sale, { change = 0, change2 = null, onChanged, after
 
   return modal({
     title: t('receipt.title', { doc: sale.doc_no }),
-    subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')}`,
+    subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')}${sale.table_name ? ` · ${sale.table_name}` : ''}`,
     body: `${receiptHtml(sale, change, change2)}
       ${afterSale ? '' : paymentsHtml(sale)}`,
     footer: `<button class="btn" data-close>${esc(t('common.close'))}</button>
@@ -306,7 +306,7 @@ export function returnDialog(sale, { atTill = false } = {}) {
 
   return modal({
     title: t('ret.title', { doc: sale.doc_no }),
-    subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')} · ${methodText(sale.method)}`,
+    subtitle: `${dateText(sale.date)} · ${sale.customer || t('common.walk_in')}${sale.table_name ? ` · ${sale.table_name}` : ''} · ${methodText(sale.method)}`,
     wide: true,
     body: `
       <div class="table-wrap"><table class="data ret-table">

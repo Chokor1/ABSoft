@@ -600,6 +600,35 @@ const MIGRATIONS = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_products_variant_of ON products(variant_of)`);
     },
   },
+  {
+    // Restaurant mode: tables, and the order open on each. Nothing here is used
+    // until the shop switches restaurant mode on.
+    name: 'restaurant-tables',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS dining_tables (
+          id     INTEGER PRIMARY KEY AUTOINCREMENT,
+          name   TEXT    NOT NULL COLLATE NOCASE UNIQUE,
+          sort   INTEGER NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1
+        );
+        -- One open order per table, kept like a held sale until it is paid.
+        CREATE TABLE IF NOT EXISTS table_orders (
+          table_id   INTEGER PRIMARY KEY REFERENCES dining_tables(id) ON DELETE CASCADE,
+          user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          cart       TEXT    NOT NULL,
+          summary    TEXT    NOT NULL DEFAULT '',
+          lines      INTEGER NOT NULL DEFAULT 0,
+          total      REAL    NOT NULL DEFAULT 0,
+          opened_at  TEXT    NOT NULL,
+          updated_at TEXT    NOT NULL,
+          version    INTEGER NOT NULL DEFAULT 1
+        );
+      `);
+      // Which table a sale was served at, by name, for the receipt and the record.
+      addColumn(db, 'sales', 'table_name', "TEXT NOT NULL DEFAULT ''");
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

@@ -27,7 +27,7 @@ const LIST_SQL = `
 
 export const heldCount = () => num(db.prepare(`SELECT COUNT(*) AS n FROM held_sales`).get().n);
 
-function readCart(body) {
+export function readCart(body) {
   const lines = Array.isArray(body.items) ? body.items : [];
   if (!lines.length) throw badRequest('There is nothing in the cart to hold', 'HOLD_EMPTY');
   if (lines.length > MAX_LINES) throw badRequest('That sale is too long to hold', 'HOLD_TOO_LONG', { n: MAX_LINES });
@@ -69,6 +69,37 @@ function readCart(body) {
   return { items, draft, total, summary };
 }
 
+/**
+ * Kept lines brought back to a till: the name and the stock are today's, the
+ * price is the one they were kept at. A product deleted meanwhile is dropped.
+ */
+export function restoreLines(lines) {
+  const items = [];
+  let dropped = 0;
+  for (const line of lines) {
+    // The name and the stock are today's; the price is the one it was held at.
+    const product = db
+      .prepare(
+        `SELECT p.id, p.name, p.unit, p.price, p.stocked, COALESCE(s.stock, 0) AS stock FROM products p
+         LEFT JOIN product_stock s ON s.product_id = p.id WHERE p.id = ?`,
+      )
+      .get(line.product_id);
+    if (!product) {
+      dropped++;
+      continue;
+    }
+    items.push({
+      ...line,
+      name: product.name,
+      unit: product.unit,
+      stocked: product.stocked,
+      stock: num(product.stock),
+      price: num(product.price),
+    });
+  }
+  return { items, dropped };
+}
+
 export function register(router) {
   router.get('/api/held', () => db.prepare(`${LIST_SQL} ORDER BY h.id DESC`).all());
 
@@ -99,29 +130,7 @@ export function register(router) {
       db.prepare(`DELETE FROM held_sales WHERE id = ?`).run(row.id);
 
       const cart = JSON.parse(row.cart);
-      const items = [];
-      let dropped = 0;
-      for (const line of cart.items || []) {
-        // The name and the stock are today's; the price is the one it was held at.
-        const product = db
-          .prepare(
-            `SELECT p.id, p.name, p.unit, p.price, p.stocked, COALESCE(s.stock, 0) AS stock FROM products p
-             LEFT JOIN product_stock s ON s.product_id = p.id WHERE p.id = ?`,
-          )
-          .get(line.product_id);
-        if (!product) {
-          dropped++;
-          continue;
-        }
-        items.push({
-          ...line,
-          name: product.name,
-          unit: product.unit,
-          stocked: product.stocked,
-          stock: num(product.stock),
-          price: num(product.price),
-        });
-      }
+      const { items, dropped } = restoreLines(cart.items || []);
       return { id: row.id, label: row.label, created_at: row.created_at, items, draft: cart.draft || {}, dropped };
     }),
   );

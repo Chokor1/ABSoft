@@ -2185,3 +2185,18 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .qty-unit .input { width: 100px; }
 #con-lines .price-input { width: 110px; }
 #con-lines tr.con-off td:not(:first-child) { opacity: 0.55; }
+
+/* ---- restaurant mode: tables ---- */
+.pay-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin-top: 12px; }
+.pay-row .btn-block { margin-top: 0; }
+.table-chip { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; border: 0; font: inherit; }
+.table-chip svg { width: 14px; height: 14px; }
+#open-tables .badge { margin-inline-start: 2px; }
+.table-floor { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.table-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; cursor: pointer; display: grid; gap: 6px;
+  background: var(--surface); transition: border-color .15s, box-shadow .15s; }
+.table-card:hover, .table-card:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+.table-card.open { border-color: color-mix(in srgb, var(--warn, #d97706) 45%, var(--border)); }
+.table-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.table-card-total { font-size: 18px; font-weight: 700; }
+.table-card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }

@@ -29,6 +29,8 @@ const SECTIONS = [
   { key: 'addons', icon: 'plus', admin: true },
   // Size, Flavour…: what a template's variants are made of. Listed once switched on.
   { key: 'attributes', icon: 'list', admin: true, when: (cfg) => cfg.attributes === '1' },
+  // The restaurant's tables. Listed once restaurant mode is switched on.
+  { key: 'tables', icon: 'table', admin: true, when: (cfg) => cfg.restaurant === '1' },
   { key: 'language', icon: 'globe' },
   { key: 'backup', icon: 'database', admin: true },
   { key: 'about', icon: 'info' },
@@ -119,6 +121,10 @@ export async function render(root, ctx) {
                 <label class="set-switch">
                   <input type="checkbox" name="pos_shifts" ${cfg.pos_shifts === '1' ? 'checked' : ''}/>
                   <span><b>${esc(t('set.shifts_enable'))}</b><small>${esc(t('set.shifts_help'))}</small></span>
+                </label>
+                <label class="set-switch">
+                  <input type="checkbox" name="restaurant" ${cfg.restaurant === '1' ? 'checked' : ''}/>
+                  <span><b>${esc(t('set.restaurant_enable'))}</b><small>${esc(t('set.restaurant_help'))}</small></span>
                 </label>
                 <label class="set-switch">
                   <input type="checkbox" name="attributes" ${cfg.attributes === '1' ? 'checked' : ''}/>
@@ -312,6 +318,17 @@ export async function render(root, ctx) {
         <div class="card-body flush"><div id="addon-groups"></div></div>
       </div>`,
 
+    tables: () => `
+      <div class="card">
+        <div class="card-head">
+          <div><h3>${esc(t('tbl.tables'))}</h3><div class="sub">${esc(t('tbl.settings_sub'))}</div></div>
+          <div class="spacer"></div>
+          <button class="btn btn-sm" id="tables-many">${icon('plus')} ${esc(t('tbl.add_many'))}</button>
+          <button class="btn btn-primary btn-sm" id="table-new">${icon('plus')} ${esc(t('tbl.new'))}</button>
+        </div>
+        <div class="card-body flush"><div id="tables-list"></div></div>
+      </div>`,
+
     attributes: () => `
       <div class="card">
         <div class="card-head">
@@ -488,6 +505,93 @@ export async function render(root, ctx) {
     }
 
     root.querySelector('#addon-new').addEventListener('click', () => editGroup(null));
+    await load();
+    return;
+  }
+
+  if (active === 'tables') {
+    const box = root.querySelector('#tables-list');
+    const load = async () => {
+      const tables = await api.tables({ all: '1' });
+      if (!tables.length) {
+        box.innerHTML = `<div class="empty"><p>${esc(t('tbl.none'))}</p><p class="muted">${esc(t('tbl.none_sub'))}</p></div>`;
+        return;
+      }
+      box.innerHTML = `<div class="table-wrap"><table class="data" id="tables-table">
+        <thead><tr><th>${esc(t('common.name'))}</th><th>${esc(t('common.status'))}</th><th></th></tr></thead>
+        <tbody>${tables
+          .map(
+            (tb) => `<tr data-table-row="${tb.id}">
+              <td><b>${esc(tb.name)}</b>${tb.active ? '' : ` <span class="badge">${esc(t('tbl.hidden'))}</span>`}</td>
+              <td>${
+                tb.status === 'open'
+                  ? `<span class="badge warn">${esc(t('tbl.status_open'))}</span> <span class="muted">${money(tb.order.total)}</span>`
+                  : `<span class="badge success">${esc(t('tbl.status_free'))}</span>`
+              }</td>
+              <td class="right nowrap">
+                <button class="btn btn-ghost btn-icon btn-sm" data-edit title="${esc(t('common.edit'))}">${icon('edit')}</button>
+                <button class="btn btn-ghost btn-icon btn-sm" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>
+              </td>
+            </tr>`,
+          )
+          .join('')}</tbody></table></div>`;
+      box.querySelectorAll('[data-table-row]').forEach((tr) => {
+        const table = tables.find((x) => x.id === Number(tr.dataset.tableRow));
+        tr.querySelector('[data-edit]').addEventListener('click', () => editTable(table));
+        tr.querySelector('[data-del]').addEventListener('click', () => removeTable(table));
+      });
+    };
+
+    async function editTable(table) {
+      const data = await formModal({
+        title: table ? t('tbl.edit', { name: table.name }) : t('tbl.new'),
+        submitLabel: t('common.save'),
+        fields: [
+          { name: 'name', label: t('common.name'), required: true, span: 2, value: table?.name || '', autofocus: true, placeholder: t('tbl.name_placeholder') },
+          ...(table ? [{ name: 'active', label: t('tbl.active'), type: 'checkbox', span: 2, value: !!table.active }] : []),
+        ],
+      });
+      if (!data) return;
+      try {
+        await api.saveTable({ ...data, id: table?.id });
+        toast(t('tbl.saved'), 'success');
+        load();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    }
+
+    async function removeTable(table) {
+      const ok = await confirmDialog({ title: t('tbl.delete_title', { name: table.name }), message: t('tbl.delete_msg'), confirmLabel: t('common.delete'), danger: true });
+      if (!ok) return;
+      try {
+        await api.deleteTable(table.id);
+        toast(t('tbl.deleted'), 'success');
+        load();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    }
+
+    root.querySelector('#table-new').addEventListener('click', () => editTable(null));
+    root.querySelector('#tables-many').addEventListener('click', async () => {
+      const data = await formModal({
+        title: t('tbl.add_many'),
+        submitLabel: t('tbl.add'),
+        fields: [
+          { name: 'prefix', label: t('tbl.prefix'), value: t('tbl.prefix_default'), required: true },
+          { name: 'count', label: t('tbl.count'), type: 'number', min: 1, max: 60, step: 1, value: 10, required: true },
+        ],
+      });
+      if (!data) return;
+      try {
+        await api.saveTable({ prefix: data.prefix, count: data.count });
+        toast(t('tbl.saved'), 'success');
+        load();
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+    });
     await load();
     return;
   }
@@ -727,10 +831,11 @@ export async function render(root, ctx) {
       pos_shifts: e.target.pos_shifts.checked ? '1' : '0',
       pos_categories: e.target.pos_categories.checked ? '1' : '0',
       attributes: e.target.attributes.checked ? '1' : '0',
+      restaurant: e.target.restaurant.checked ? '1' : '0',
       recipes: e.target.recipes.checked ? '1' : '0',
     });
     // Attributes switched on or off adds or takes away its section above.
-    if (saved && saved.attributes !== cfg.attributes) render(root, ctx);
+    if (saved && (saved.attributes !== cfg.attributes || saved.restaurant !== cfg.restaurant)) render(root, ctx);
   });
 
   // Scale labels: the example under the fields follows what is typed, so the layout
