@@ -172,6 +172,8 @@ const DEFAULT_SETTINGS = {
   attributes: '0',
   // Restaurant mode: tables at the till, each free or open with an order. Off, no tables.
   restaurant: '0',
+  // Add-ons (toppings and extras as items): off, items have no add-on mark and lines offer none.
+  addons: '0',
   search_min_chars: '1',
   pos_page_size: '40',
 };

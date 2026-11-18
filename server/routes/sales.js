@@ -166,7 +166,7 @@ export function register(router) {
     const prepared = lines.map((line) => {
       const product = db
         .prepare(
-          `SELECT p.id, p.name, p.cost, p.stocked, p.has_variants, COALESCE(st.stock, 0) AS stock FROM products p
+          `SELECT p.id, p.name, p.cost, p.stocked, p.has_variants, p.category, p.variant_of, COALESCE(st.stock, 0) AS stock FROM products p
            LEFT JOIN product_stock st ON st.product_id = p.id WHERE p.id = ?`,
         )
         .get(num(line.product_id));
@@ -183,7 +183,7 @@ export function register(router) {
       // Toppings and extras: each must exist, is written on the line by name and
       // price, and what it costs adds to the line's cost. The price the till sends
       // already includes them.
-      const addons = readLineAddons(line.addons);
+      const addons = readLineAddons(line.addons, product);
       // With recipes on, what a made-to-order product costs is what its recipe
       // costs at today's prices, when it has one.
       const fromRecipe = recipesEnabled() ? recipeCost(product.id) : null;
@@ -297,6 +297,14 @@ export function register(router) {
           quantity: line.qty,
           stamp: usedAt,
         });
+        // Each add-on is an item too: one of it per one of the line, from its stock or its recipe.
+        for (const addon of line.addons) {
+          if (keepsStock(addon)) {
+            insertMove.run(addon.id, -line.qty, addon.cost, saleId, `${docNo} · ${line.product.name}`, ctx.user.id,
+              `${date} ${new Date().toISOString().slice(11, 19)}`);
+          }
+          recordEstimatedUse({ saleId, saleItemId: lastId(itemRes), productId: addon.id, quantity: line.qty, stamp: usedAt });
+        }
       }
       // What was handed over at the till is the first instalment, one row per
       // currency. Anything above the total is change, not an overpayment, so the

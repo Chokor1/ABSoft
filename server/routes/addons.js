@@ -1,138 +1,123 @@
-import { db, lastId, transact } from '../db.js';
+import { db, getSettings } from '../db.js';
 import { badRequest, notFound } from '../http.js';
-import { money, num, required, str } from '../util.js';
+import { num, str } from '../util.js';
+import { recipeCost, recipesEnabled } from './recipes.js';
 
 /**
- * Add-ons: the extras a line can carry — toppings on a crêpe, protein in a shake —
- * each at its own price. They come in lists ("Crêpe toppings"), and a product
- * offers at most one list. A shop with no list, or a product without one, sells
- * exactly as before.
+ * Add-ons are items: Lotus Biscuit, Extra cheese, a shot of protein. An item
+ * marked "add-on" has its own price and cost, can keep stock (or, made to order,
+ * a recipe), and is never a card at the till: it is added to another item's
+ * line. Each add-on says what it is offered with — every item, some categories,
+ * or some items (a template's variants included).
  *
- * A sale line keeps the add-ons it was made with by name and price, as text, so
- * an old invoice still reads "Lotus Biscuit +$1" after the list is changed or
- * removed. Add-ons are priced, not stocked: what they use comes out of stock
- * with recipes.
+ * A sale line keeps its add-ons by name and price, as text, so an old invoice
+ * still reads "+ Lotus Biscuit" after the add-on is renamed or removed. What an
+ * add-on costs is part of the line's cost; its stock (or recipe) moves with the
+ * sale like any item's.
+ *
+ * A shop with no add-on item sees no change: no line offers any.
  */
 
 const MAX_ADDONS = 40;
 
-const groupRow = (id) => db.prepare(`SELECT * FROM addon_groups WHERE id = ?`).get(id) || null;
+/** Add-ons are switched on in Settings → POS. Off: none is offered, and none can be sold. */
+export const addonsEnabled = () => getSettings().addons === '1';
+const SCOPES = new Set(['all', 'categories', 'products']);
 
-/** A list with its add-ons, in the shop's order, and how many products offer it. */
-export function loadGroup(id) {
-  const group = groupRow(id);
-  if (!group) return null;
-  const items = db
-    .prepare(`SELECT id, name, price, cost FROM addons WHERE group_id = ? ORDER BY sort, id`)
-    .all(group.id)
-    .map((a) => ({ ...a, price: num(a.price), cost: num(a.cost) }));
-  const products = db.prepare(`SELECT COUNT(*) AS n FROM products WHERE addon_group_id = ?`).get(group.id).n;
-  return { id: group.id, name: group.name, items, products };
+/** Every add-on in use, with what it is offered with: the till works out which lines take which. */
+export function listAddons() {
+  const rows = db
+    .prepare(
+      `SELECT p.id, p.name, p.price, p.cost, p.unit, p.stocked, p.addon_scope AS scope FROM products p
+       WHERE p.is_addon = 1 AND p.active = 1 ORDER BY p.name COLLATE NOCASE`,
+    )
+    .all();
+  const links = db.prepare(`SELECT addon_id, category, product_id FROM addon_links`).all();
+  return rows.map((a) => ({
+    id: a.id,
+    name: a.name,
+    price: num(a.price),
+    scope: SCOPES.has(a.scope) ? a.scope : 'all',
+    categories: links.filter((l) => l.addon_id === a.id && l.category).map((l) => l.category),
+    product_ids: links.filter((l) => l.addon_id === a.id && l.product_id).map((l) => l.product_id),
+  }));
 }
 
-/** The add-ons sent with a list, checked: each has a name, no two share one. */
-function readItems(value) {
-  const list = Array.isArray(value) ? value : [];
-  const out = [];
-  const seen = new Set();
-  for (const raw of list) {
-    const name = str(raw?.name);
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) throw badRequest(`"${name}" is listed twice`, 'ADDON_TWICE', { name });
-    seen.add(key);
-    out.push({ id: Number(raw.id) || null, name, price: money(Math.max(0, num(raw.price))), cost: money(Math.max(0, num(raw.cost))) });
+/** Is this add-on offered with that product? */
+function offeredWith(addon, product) {
+  if (!product) return true;
+  if (addon.scope === 'all') return true;
+  if (addon.scope === 'categories') {
+    const cat = str(product.category).toLowerCase();
+    return !!cat && addon.categories.some((c) => c.toLowerCase() === cat);
   }
-  if (out.length > MAX_ADDONS) throw badRequest(`A list can hold at most ${MAX_ADDONS} add-ons`, 'ADDONS_TOO_MANY', { n: MAX_ADDONS });
-  return out;
+  return addon.product_ids.includes(product.id) || (product.variant_of && addon.product_ids.includes(product.variant_of));
 }
-
-/** Write a list's add-ons: kept ids are updated in place, the ones left out are removed. */
-function setItems(groupId, items) {
-  const keep = new Set(items.filter((a) => a.id).map((a) => a.id));
-  const drop = db.prepare(`DELETE FROM addons WHERE id = ?`);
-  for (const row of db.prepare(`SELECT id FROM addons WHERE group_id = ?`).all(groupId)) if (!keep.has(row.id)) drop.run(row.id);
-  const update = db.prepare(`UPDATE addons SET name = ?, price = ?, cost = ?, sort = ? WHERE id = ? AND group_id = ?`);
-  const insert = db.prepare(`INSERT INTO addons (group_id, name, price, cost, sort) VALUES (?, ?, ?, ?, ?)`);
-  items.forEach((a, i) => {
-    const updated = a.id ? update.run(a.name, a.price, a.cost, i, a.id, groupId).changes : 0;
-    if (!updated) insert.run(groupId, a.name, a.price, a.cost, i);
-  });
-}
-
-const assertFreeName = (name, ignoreId = 0) => {
-  const clash = db.prepare(`SELECT id FROM addon_groups WHERE name = ? COLLATE NOCASE AND id <> ?`).get(name, ignoreId);
-  if (clash) throw badRequest(`A list called "${name}" already exists`, 'ADDON_GROUP_EXISTS', { name });
-};
 
 /**
- * The add-ons a sale line was made with, from their ids: each must exist, and
- * comes back with the name and price it has now, ready to be written on the line.
+ * The add-ons a sale line was made with, from their ids: each must be an add-on
+ * item offered with the line's product. Comes back with today's name, price and
+ * cost (its recipe's, when it is made to order and has one), ready for the line.
  */
-export function readLineAddons(ids) {
+export function readLineAddons(ids, product = null) {
   const list = Array.isArray(ids) ? ids : [];
+  if (!list.length) return [];
+  if (!addonsEnabled()) throw badRequest('Add-ons are switched off in Settings', 'ADDONS_OFF');
+  const all = new Map(listAddons().map((a) => [a.id, a]));
   const out = [];
-  const one = db.prepare(`SELECT id, name, price, cost FROM addons WHERE id = ?`);
-  for (const id of list.slice(0, MAX_ADDONS)) {
-    const row = one.get(num(id));
-    if (!row) throw badRequest('One of the add-ons on the line no longer exists', 'ADDON_UNKNOWN');
-    out.push({ id: row.id, name: row.name, price: num(row.price), cost: num(row.cost) });
+  const one = db.prepare(`SELECT id, name, price, cost, stocked FROM products WHERE id = ? AND is_addon = 1`);
+  for (const id of [...new Set(list.map(num))].slice(0, MAX_ADDONS)) {
+    const row = one.get(id);
+    const addon = all.get(id);
+    if (!row || !addon) throw badRequest('One of the add-ons on the line is no longer an add-on', 'ADDON_UNKNOWN');
+    if (product && product.id === row.id) throw badRequest('An add-on cannot be added to itself', 'ADDON_UNKNOWN');
+    if (!offeredWith(addon, product)) {
+      throw badRequest(`${row.name} is not offered with ${product.name}`, 'ADDON_NOT_OFFERED', { name: row.name, product: product.name });
+    }
+    const fromRecipe = recipesEnabled() ? recipeCost(row.id) : null;
+    out.push({ id: row.id, name: row.name, price: num(row.price), cost: fromRecipe !== null ? fromRecipe : num(row.cost), stocked: row.stocked });
   }
   return out;
+}
+
+/** What an add-on is offered with, for its page. */
+function loadScope(id) {
+  const p = db.prepare(`SELECT id, is_addon, addon_scope FROM products WHERE id = ?`).get(num(id));
+  if (!p) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+  const links = db.prepare(`SELECT category, product_id FROM addon_links WHERE addon_id = ?`).all(p.id);
+  const ids = links.filter((l) => l.product_id).map((l) => l.product_id);
+  return {
+    scope: SCOPES.has(p.addon_scope) ? p.addon_scope : 'all',
+    categories: links.filter((l) => l.category).map((l) => l.category),
+    products: ids.length
+      ? db.prepare(`SELECT id, name FROM products WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY name COLLATE NOCASE`).all(...ids)
+      : [],
+  };
 }
 
 export function register(router) {
-  router.get('/api/addon-groups', () =>
-    db
-      .prepare(`SELECT id FROM addon_groups ORDER BY sort, name COLLATE NOCASE`)
-      .all()
-      .map((g) => loadGroup(g.id)),
-  );
+  router.get('/api/addons', () => (addonsEnabled() ? listAddons() : []));
 
-  router.post('/api/addon-groups', (ctx) => {
-    const name = required(ctx.body.name, 'name');
-    assertFreeName(name);
-    const items = readItems(ctx.body.items);
-    return transact(() => {
-      const id = lastId(db.prepare(`INSERT INTO addon_groups (name) VALUES (?)`).run(name));
-      setItems(id, items);
-      return loadGroup(id);
-    });
-  });
+  router.get('/api/products/:id/addon-for', (ctx) => loadScope(ctx.params.id));
 
-  router.put('/api/addon-groups/:id', (ctx) => {
-    const group = groupRow(ctx.params.id);
-    if (!group) throw notFound('Add-on list not found', 'ADDON_GROUP_NOT_FOUND');
-    const name = ctx.body.name === undefined ? group.name : required(ctx.body.name, 'name');
-    assertFreeName(name, group.id);
-    const items = ctx.body.items === undefined ? null : readItems(ctx.body.items);
-    return transact(() => {
-      db.prepare(`UPDATE addon_groups SET name = ? WHERE id = ?`).run(name, group.id);
-      if (items) setItems(group.id, items);
-      return loadGroup(group.id);
-    });
-  });
-
-  router.delete('/api/addon-groups/:id', (ctx) => {
-    const group = groupRow(ctx.params.id);
-    if (!group) throw notFound('Add-on list not found', 'ADDON_GROUP_NOT_FOUND');
-    return transact(() => {
-      // Its products simply stop offering add-ons; sales keep what was written on them.
-      db.prepare(`UPDATE products SET addon_group_id = NULL WHERE addon_group_id = ?`).run(group.id);
-      db.prepare(`DELETE FROM addons WHERE group_id = ?`).run(group.id);
-      db.prepare(`DELETE FROM addon_groups WHERE id = ?`).run(group.id);
-      return { ok: true };
-    });
-  });
-
-  /** Offer this list on every product in a category, in one go. */
-  router.post('/api/addon-groups/:id/apply', (ctx) => {
-    const group = groupRow(ctx.params.id);
-    if (!group) throw notFound('Add-on list not found', 'ADDON_GROUP_NOT_FOUND');
-    const category = required(ctx.body.category, 'category');
-    const res = db
-      .prepare(`UPDATE products SET addon_group_id = ? WHERE category = ? COLLATE NOCASE AND active = 1`)
-      .run(group.id, category);
-    return { applied: Number(res.changes) || 0, group: loadGroup(group.id) };
+  /** Offered with: { scope: 'all' | 'categories' | 'products', categories: [...], product_ids: [...] } */
+  router.put('/api/products/:id/addon-for', (ctx) => {
+    const p = db.prepare(`SELECT id, is_addon FROM products WHERE id = ?`).get(num(ctx.params.id));
+    if (!p) throw notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    if (!p.is_addon) throw badRequest('This item is not an add-on', 'NOT_ADDON');
+    const scope = SCOPES.has(ctx.body.scope) ? ctx.body.scope : 'all';
+    const categories = [...new Set((Array.isArray(ctx.body.categories) ? ctx.body.categories : []).map((c) => str(c)).filter(Boolean))].slice(0, 100);
+    const productIds = [...new Set((Array.isArray(ctx.body.product_ids) ? ctx.body.product_ids : []).map(num).filter((n) => n > 0 && n !== p.id))].slice(0, 500);
+    if (scope === 'categories' && !categories.length) throw badRequest('Choose at least one category', 'ADDON_SCOPE_EMPTY');
+    if (scope === 'products' && !productIds.length) throw badRequest('Choose at least one item', 'ADDON_SCOPE_EMPTY');
+    for (const id of productIds) {
+      if (!db.prepare(`SELECT 1 FROM products WHERE id = ?`).get(id)) throw badRequest('One of the items no longer exists', 'PRODUCT_NOT_FOUND');
+    }
+    db.prepare(`UPDATE products SET addon_scope = ? WHERE id = ?`).run(scope, p.id);
+    db.prepare(`DELETE FROM addon_links WHERE addon_id = ?`).run(p.id);
+    const insert = db.prepare(`INSERT INTO addon_links (addon_id, category, product_id) VALUES (?, ?, ?)`);
+    if (scope === 'categories') for (const c of categories) insert.run(p.id, c, null);
+    if (scope === 'products') for (const id of productIds) insert.run(p.id, null, id);
+    return loadScope(p.id);
   });
 }

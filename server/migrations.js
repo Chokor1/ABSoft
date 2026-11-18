@@ -629,6 +629,25 @@ const MIGRATIONS = [
       addColumn(db, 'sales', 'table_name', "TEXT NOT NULL DEFAULT ''");
     },
   },
+  {
+    // Add-ons become items: an item marked as an add-on, with what it is offered
+    // with — every item, some categories, or some items. The add-on lists of v20
+    // are left in place, unused.
+    name: 'addon-items',
+    up: (db) => {
+      addColumn(db, 'products', 'is_addon', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(db, 'products', 'addon_scope', "TEXT NOT NULL DEFAULT 'all'");
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS addon_links (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          addon_id   INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          category   TEXT,
+          product_id INTEGER REFERENCES products(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_addon_links ON addon_links(addon_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

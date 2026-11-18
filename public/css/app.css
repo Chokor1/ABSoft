@@ -5,6 +5,8 @@
    ========================================================================== */
 
 :root {
+  /* The browser's own controls — scrollbars, date pickers, number arrows — follow the theme. */
+  color-scheme: light;
   --brand: #2f5bea;
   --brand-deep: #1b3aa6;
   --brand-grad: linear-gradient(140deg, #3d6bff 0%, #2f5bea 45%, #1b3aa6 100%);
@@ -51,6 +53,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   /* A soft slate rather than near-black: cards stand clear of the page, borders
      are visible and text is easy on the eyes over a long shift. */
   --brand: #6b8cff;
@@ -1974,13 +1977,13 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .labels-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; }
 .label-preview-card { width: min(320px, 92vw); }
 .label-preview { display: flex; justify-content: center; }
-.label-preview .label { box-shadow: var(--shadow-sm); }
+.label-preview .bc-label { box-shadow: var(--shadow-sm); }
 .label-empty { align-items: center; justify-content: center; }
 @media (max-width: 900px) { .labels-top { grid-template-columns: minmax(0, 1fr); } }
 
 /* The sheet itself is only ever printed. */
 .labels-sheet { display: none; }
-.label {
+.bc-label {
   width: var(--label-w, 40mm); height: var(--label-h, 20mm);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 1.2mm 2mm; box-sizing: border-box; overflow: hidden;
@@ -2008,18 +2011,18 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 
 @media print {
   /* Only the labels go to the printer, one per page, with no letterhead. */
-  body:has(.labels-sheet .label) #app,
-  body:has(.labels-sheet .label) .print-only { display: none !important; }
-  body:has(.labels-sheet .label) { padding: 0 !important; }
+  body:has(.labels-sheet .bc-label) #app,
+  body:has(.labels-sheet .bc-label) .print-only { display: none !important; }
+  body:has(.labels-sheet .bc-label) { padding: 0 !important; }
   /* Plain blocks, so each label is one page and the last one ends the job —
      an absolutely positioned sheet can leave a blank page, which costs a label. */
   .labels-sheet { display: block !important; position: static; margin: 0; padding: 0; }
-  .labels-sheet .label:last-child { break-after: avoid; page-break-after: avoid; }
-  .label {
+  .labels-sheet .bc-label:last-child { break-after: avoid; page-break-after: avoid; }
+  .bc-label {
     border: 0; border-radius: 0; break-after: page; page-break-after: always;
     width: var(--label-w, 40mm); height: var(--label-h, 20mm);
   }
-  .label:last-child { break-after: auto; page-break-after: auto; }
+  .bc-label:last-child { break-after: auto; page-break-after: auto; }
 }
 .label-feed { margin-top: 10px; font-weight: 600; color: var(--text-2); }
 
@@ -2036,12 +2039,31 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
     "tiles cart";
   grid-template-rows: auto auto 1fr;
 }
-.pos > .cat-bar { grid-area: cats; }
+.pos > .cat-wrap { grid-area: cats; }
+/* The row scrolls sideways with no scrollbar of its own: arrows appear at an edge
+   only when there are more categories that way, and the edge fades to say so. */
+.cat-wrap { position: relative; display: flex; align-items: center; min-width: 0; }
+.cat-wrap:has(.cat-bar:empty) { display: none; }
 .cat-bar {
-  display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px;
-  scrollbar-width: thin;
+  display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; min-width: 0; flex: 1;
+  scrollbar-width: none; scroll-behavior: smooth; overscroll-behavior-x: contain;
 }
-.cat-bar:empty { display: none; }
+.cat-bar::-webkit-scrollbar { display: none; }
+.cat-wrap.more-start .cat-bar { mask-image: linear-gradient(to right, transparent 0, #000 56px); }
+.cat-wrap.more-end .cat-bar { mask-image: linear-gradient(to left, transparent 0, #000 56px); }
+.cat-wrap.more-start.more-end .cat-bar { mask-image: linear-gradient(to right, transparent 0, #000 56px, #000 calc(100% - 56px), transparent 100%); }
+[dir="rtl"] .cat-wrap.more-start .cat-bar { mask-image: linear-gradient(to left, transparent 0, #000 56px); }
+[dir="rtl"] .cat-wrap.more-end .cat-bar { mask-image: linear-gradient(to right, transparent 0, #000 56px); }
+.cat-nav {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 32px; height: 32px; border-radius: 50%; display: none; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;
+  box-shadow: var(--shadow-sm); font: inherit; font-size: 18px; line-height: 1;
+}
+.cat-nav:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.cat-nav[data-dir="-1"] { inset-inline-start: 0; }
+.cat-nav[data-dir="1"] { inset-inline-end: 0; }
+.cat-wrap.more-start .cat-nav[data-dir="-1"], .cat-wrap.more-end .cat-nav[data-dir="1"] { display: inline-flex; }
 .cat-chip {
   flex: none; display: inline-flex; align-items: center; gap: 7px;
   height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer;
@@ -2200,3 +2222,19 @@ a.mark:hover { transform: translateY(-1px) scale(1.04); }
 .table-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .table-card-total { font-size: 18px; font-weight: 700; }
 .table-card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ---- add-on items ---- */
+.cl-addons { justify-self: start; align-self: end; }
+.chip-x { border: 0; background: none; cursor: pointer; font: inherit; padding: 0 2px; color: var(--text-2); }
+.chip-x:hover { color: var(--danger, #c0362c); }
+.cl-text { cursor: pointer; }
+#addon-scope { justify-self: start; }
+
+/* ---- the product list's filter builder ---- */
+.flt-rows { display: grid; gap: 8px; margin-bottom: 12px; }
+.flt-row { display: grid; grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 0.9fr) minmax(120px, 1.2fr) auto; gap: 8px; align-items: center; }
+@media (max-width: 640px) { .flt-row { grid-template-columns: 1fr 1fr; } }
+.flt-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 12px; }
+.flt-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 11px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-text); font-size: 12.5px; font-weight: 600; }
+#filter-btn .badge { margin-inline-start: 2px; }

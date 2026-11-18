@@ -121,7 +121,7 @@ export async function render(root, ctx) {
     const barHeight = Math.max(5, now.height - (now.name ? 4.2 : 0) - 4 - 2.5);
     const label = (row) => {
       const code = row.product.barcode || '';
-      return `<div class="label">
+      return `<div class="bc-label">
         ${now.name ? `<div class="label-name">${esc(row.product.name)}</div>` : ''}
         <div class="label-bars">${
           code
@@ -146,7 +146,7 @@ export async function render(root, ctx) {
     preview.style.setProperty('--label-h', `${now.height}mm`);
     preview.innerHTML = rows.length
       ? label(rows[0])
-      : `<div class="label label-empty"><span class="label-nocode">${esc(t('label.preview_empty'))}</span></div>`;
+      : `<div class="bc-label label-empty"><span class="label-nocode">${esc(t('label.preview_empty'))}</span></div>`;
     $('#label-size-note').textContent = t('label.size_note', { w: now.width, h: now.height });
     $('#label-feed-note').textContent = t('label.feed_note', { v: Math.round((now.height + now.gap) * 10) / 10 });
   }

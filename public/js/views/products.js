@@ -19,6 +19,7 @@ import {
   forgetSuggestions,
   formModal,
   formPage,
+  modal,
   money,
   filterSelect,
   keepList,
@@ -54,7 +55,7 @@ export async function render(root, ctx) {
 }
 
 /** The editable fields of a product, shared by the new-product page and the details tab. */
-function productFields(product, addonGroups = []) {
+function productFields(product) {
   const isNew = !product;
   return [
     { name: 'name', label: t('prod.name'), required: true, span: 2, value: product?.name, autofocus: isNew },
@@ -79,20 +80,8 @@ function productFields(product, addonGroups = []) {
     },
     { name: 'cost', label: t('prod.cost_label'), type: 'number', step: '0.01', min: 0, value: product?.cost ?? 0 },
     { name: 'price', label: t('prod.price_label'), type: 'number', step: '0.01', min: 0, value: product?.price ?? 0 },
-    // Only a shop that keeps add-on lists is asked which one a product offers.
-    ...(addonGroups.length
-      ? [
-          {
-            name: 'addon_group_id',
-            label: t('addon.product_label'),
-            type: 'select',
-            span: 2,
-            value: product?.addon_group_id ?? '',
-            options: [{ value: '', label: t('addon.product_none') }, ...addonGroups.map((g) => ({ value: g.id, label: g.name }))],
-            help: t('addon.product_help'),
-          },
-        ]
-      : []),
+    // An add-on: added to other items' lines at the till (toppings, extras), never a card of its own.
+    ...(product?.has_variants || !addonsOn() ? [] : [{ name: 'is_addon', label: t('addon.is_addon'), type: 'checkbox', span: 2, value: Number(product?.is_addon) === 1, help: t('addon.is_addon_help') }]),
     // Only a shop that switched them on is asked about templates and recipes.
     ...kindFields(product),
     { name: 'unit', label: t('common.unit'), value: product?.unit || 'pcs', placeholder: t('prod.unit_placeholder'), names: 'unit' },
@@ -104,6 +93,7 @@ function productFields(product, addonGroups = []) {
 }
 
 const attributesOn = () => store.settings.attributes === '1';
+const addonsOn = () => store.settings.addons === '1';
 const recipesOn = () => store.settings.recipes === '1';
 const isTemplate = (p) => Number(p?.has_variants) === 1;
 const isMadeToOrder = (p) => recipesOn() && Number(p?.stocked ?? 1) === 0;
@@ -213,14 +203,15 @@ async function renderList(root, ctx, { stock = '' } = {}) {
   // Where this list was last left, so opening a product and coming back lands
   // on the same page with the same filters.
   const state = {
-    ...recallList('products', { search: '', showInactive: false, category: '', page: 1, per: 50 }),
+    ...recallList('products', { search: '', showInactive: false, category: '', filters: [], page: 1, per: 50 }),
     rows: [],
     result: null,
     // A badge's link (…/restock) asks for its own filter, whatever was kept.
     ...(stock ? { stock, page: 1 } : {}),
   };
   if (state.stock === undefined) state.stock = '';
-  const keep = () => keepList('products', state, ['search', 'showInactive', 'stock', 'category', 'page', 'per']);
+  if (!Array.isArray(state.filters)) state.filters = [];
+  const keep = () => keepList('products', state, ['search', 'showInactive', 'stock', 'category', 'filters', 'page', 'per']);
   const scroll = listScroll('products', root);
   let dropPicker = () => {};
 
@@ -264,12 +255,47 @@ async function renderList(root, ctx, { stock = '' } = {}) {
       </div>
       <div id="stock-filter"></div>
       <label class="check"><input type="checkbox" id="inactive" ${state.showInactive ? 'checked' : ''}/> ${esc(t('prod.include_archived'))}</label>
+      <button type="button" class="btn" id="filter-btn">${icon('sliders')} ${esc(t('flt.button'))} <span class="badge accent" id="filter-count" hidden></span></button>
       <div class="spacer"></div>
       <div id="summary" class="muted" style="font-size:12.5px"></div>
     </div>
+    <div class="flt-chips" id="filter-chips" hidden></div>
     <div id="list"></div>`;
 
   const list = root.querySelector('#list');
+  /** The filters in use, as chips under the bar: each says what it does and can be taken off. */
+  const paintFilters = () => {
+    const n = state.filters.length;
+    const count = root.querySelector('#filter-count');
+    count.hidden = !n;
+    count.textContent = String(n);
+    const chips = root.querySelector('#filter-chips');
+    chips.hidden = !n;
+    chips.innerHTML = n
+      ? state.filters
+          .map(
+            (f, i) => `<span class="flt-chip">${esc(filterText(f))}
+              <button type="button" class="chip-x" data-unfilter="${i}" aria-label="${esc(t('common.delete'))}">×</button></span>`,
+          )
+          .join('') + `<button type="button" class="btn btn-ghost btn-sm" data-unfilter="all">${esc(t('flt.clear'))}</button>`
+      : '';
+  };
+  root.querySelector('#filter-btn').addEventListener('click', async () => {
+    const next = await buildFilters(state.filters);
+    if (!next) return;
+    state.filters = next;
+    paintFilters();
+    refilter();
+  });
+  root.querySelector('#filter-chips').addEventListener('click', (e) => {
+    const x = e.target.closest('[data-unfilter]');
+    if (!x) return;
+    if (x.dataset.unfilter === 'all') state.filters = [];
+    else state.filters.splice(Number(x.dataset.unfilter), 1);
+    paintFilters();
+    refilter();
+  });
+  paintFilters();
   // Any change of filter starts again at the first page.
   const refilter = () => {
     state.page = 1;
@@ -333,8 +359,12 @@ async function renderList(root, ctx, { stock = '' } = {}) {
       all: state.showInactive ? '1' : '',
       category: state.category,
       stock: state.stock,
+      ...(state.filters.length ? { filters: JSON.stringify(state.filters) } : {}),
       page: state.page,
       per: state.per,
+    }).catch((err) => {
+      toast(errorText(err), 'error');
+      return { rows: [], total: 0, page: 1, pages: 1, per: state.per };
     });
     state.result = result;
     const rows = result.rows;
@@ -381,11 +411,16 @@ async function renderList(root, ctx, { stock = '' } = {}) {
                       <td class="right"><b>${money(p.price)}</b></td>
                       ${second() ? `<td class="right">${money2Html(p.price)}</td>` : ''}
                       <td class="right ${p.margin >= 0 ? 'money-pos' : 'money-neg'}">${pct(p.margin)}</td>
-                      <td class="right">
-                        <span class="badge ${p.stock <= 0 ? 'danger' : p.stock <= p.min_stock ? 'warn' : 'success'}">
+                      <td class="right">${
+                        // No shelf of its own: a template's stock is its variants', and what is made to order has none.
+                        isTemplate(p)
+                          ? `<span class="badge">${esc(t(Number(p.variants) === 1 ? 'variant.count_one' : 'variant.count', { n: Number(p.variants) || 0 }))}</span>`
+                          : isMadeToOrder(p)
+                            ? `<span class="badge">${esc(t('recipe.made_to_order_badge'))}</span>`
+                            : `<span class="badge ${p.stock <= 0 ? 'danger' : p.stock <= p.min_stock ? 'warn' : 'success'}">
                           ${qtyText(p.stock)} ${esc(p.unit)}
-                        </span>
-                      </td>
+                        </span>`
+                      }</td>
                       <td class="right muted">${money(p.stock_value)}</td>
                     </tr>`,
                   )
@@ -396,8 +431,8 @@ async function renderList(root, ctx, { stock = '' } = {}) {
                 </tr></tfoot>
               </table></div>`
             : emptyState(
-                state.search ? t('prod.none_match') : t('prod.none'),
-                state.search ? t('prod.none_match_sub') : t('prod.none_sub'),
+                state.search || state.filters.length ? t('prod.none_match') : t('prod.none'),
+                state.search || state.filters.length ? t('prod.none_match_sub') : t('prod.none_sub'),
                 'box',
               )
         }
@@ -431,12 +466,11 @@ async function renderList(root, ctx, { stock = '' } = {}) {
 
 async function renderForm(root, ctx) {
   const back = () => ctx.navigate('products');
-  const addonGroups = await api.addonGroups().catch(() => []);
   formPage(root, {
     title: t('prod.new'),
     subtitle: t('prod.new_sub'),
     submitLabel: t('prod.create'),
-    fields: productFields(null, addonGroups),
+    fields: productFields(null),
     onCancel: back,
     onSubmit: async (data) => {
       try {
@@ -453,6 +487,147 @@ async function renderForm(root, ctx) {
   });
 }
 
+/* -------------------------------------------------------- filter builder -- */
+
+/**
+ * The fields a product can be filtered on, with what kind of value each takes.
+ * Fields that belong to a switched-off feature are not offered.
+ */
+const filterFields = () => [
+  { key: 'name', label: t('prod.name'), type: 'text' },
+  { key: 'description', label: t('common.description'), type: 'text' },
+  { key: 'barcode', label: t('common.barcode'), type: 'text' },
+  { key: 'category', label: t('common.category'), type: 'text' },
+  { key: 'unit', label: t('common.unit'), type: 'text' },
+  { key: 'price', label: t('common.price'), type: 'number' },
+  { key: 'cost', label: t('common.cost'), type: 'number' },
+  { key: 'margin', label: `${t('common.margin')} %`, type: 'number' },
+  { key: 'stock', label: t('common.stock'), type: 'number' },
+  { key: 'stock_value', label: t('common.value'), type: 'number' },
+  { key: 'min_stock', label: t('prod.min_stock'), type: 'number' },
+  { key: 'active', label: t('flt.active'), type: 'bool' },
+  ...(addonsOn() ? [{ key: 'is_addon', label: t('addon.badge'), type: 'bool' }] : []),
+  ...(recipesOn()
+    ? [
+        { key: 'made_to_order', label: t('recipe.made_to_order_badge'), type: 'bool' },
+        { key: 'raw', label: t('recipe.raw_badge'), type: 'bool' },
+      ]
+    : []),
+  ...(attributesOn()
+    ? [
+        { key: 'template', label: t('variant.template'), type: 'bool' },
+        { key: 'variant', label: t('flt.variant'), type: 'bool' },
+      ]
+    : []),
+];
+const OPS = {
+  text: ['like', 'eq', 'neq', 'starts', 'not_like', 'set', 'not_set'],
+  number: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'],
+  bool: ['is'],
+};
+const noValue = (op) => op === 'set' || op === 'not_set';
+
+/** One filter, said briefly: "Price > 5", "Category contains juice", "Add-on: yes". */
+function filterText(f) {
+  const field = filterFields().find((x) => x.key === f.field);
+  if (!field) return '';
+  if (field.type === 'bool') return `${field.label}: ${t(f.value === '0' ? 'flt.no' : 'flt.yes')}`;
+  return `${field.label} ${t(`flt.op.${f.op}`)}${noValue(f.op) ? '' : ` ${f.value}`}`;
+}
+
+/** The filter builder: rows of field, operator and value, all of which must hold. Resolves the list, or null. */
+function buildFilters(current) {
+  const fields = filterFields();
+  const rows = current.length ? current.map((f) => ({ ...f })) : [{ field: 'name', op: 'like', value: '' }];
+  const rowHtml = (f, i) => {
+    const field = fields.find((x) => x.key === f.field) || fields[0];
+    const ops = OPS[field.type];
+    const op = ops.includes(f.op) ? f.op : ops[0];
+    const value =
+      field.type === 'bool'
+        ? `<select class="select" data-value="${i}"><option value="1" ${f.value !== '0' ? 'selected' : ''}>${esc(t('flt.yes'))}</option>
+             <option value="0" ${f.value === '0' ? 'selected' : ''}>${esc(t('flt.no'))}</option></select>`
+        : `<input class="input" data-value="${i}" ${field.type === 'number' ? 'type="number" step="any"' : ''} value="${esc(f.value ?? '')}"
+             ${noValue(op) ? 'disabled' : ''} placeholder="${esc(t('flt.value'))}" autocomplete="off"/>`;
+    return `<div class="flt-row" data-row="${i}">
+      <select class="select" data-field="${i}">${fields
+        .map((x) => `<option value="${x.key}" ${x.key === field.key ? 'selected' : ''}>${esc(x.label)}</option>`)
+        .join('')}</select>
+      <select class="select" data-op="${i}" ${ops.length === 1 ? 'disabled' : ''}>${ops
+        .map((o) => `<option value="${o}" ${o === op ? 'selected' : ''}>${esc(t(`flt.op.${o}`))}</option>`)
+        .join('')}</select>
+      ${value}
+      <button type="button" class="btn btn-ghost btn-icon btn-sm" data-drop="${i}" aria-label="${esc(t('common.delete'))}">${icon('trash')}</button>
+    </div>`;
+  };
+  return modal({
+    title: t('flt.title'),
+    subtitle: t('flt.sub'),
+    wide: true,
+    body: `<div class="flt-rows" id="flt-rows"></div>
+      <button type="button" class="btn btn-sm" id="flt-add">${icon('plus')} ${esc(t('flt.add'))}</button>`,
+    footer: `<button class="btn btn-ghost" id="flt-clear">${esc(t('flt.clear'))}</button>
+      <div class="spacer"></div>
+      <button class="btn" data-close>${esc(t('common.cancel'))}</button>
+      <button class="btn btn-primary" id="flt-apply">${icon('check')} ${esc(t('flt.apply'))}</button>`,
+    setup: (dialog, close) => {
+      const box = dialog.querySelector('#flt-rows');
+      // What is typed is read back into the rows before they are drawn again.
+      const read = () =>
+        rows.forEach((f, i) => {
+          const field = fields.find((x) => x.key === dialog.querySelector(`[data-field="${i}"]`).value);
+          f.field = field.key;
+          const ops = OPS[field.type];
+          const op = dialog.querySelector(`[data-op="${i}"]`).value;
+          f.op = ops.includes(op) ? op : ops[0];
+          f.value = dialog.querySelector(`[data-value="${i}"]`).value.trim();
+        });
+      const paint = () => {
+        box.innerHTML = rows.length ? rows.map(rowHtml).join('') : `<p class="muted">${esc(t('flt.none'))}</p>`;
+      };
+      box.addEventListener('change', (e) => {
+        const i = e.target.dataset.field;
+        read();
+        // A different field: its first operator, and a value of its own kind.
+        if (i !== undefined) {
+          const field = fields.find((x) => x.key === rows[i].field);
+          rows[i].op = OPS[field.type][0];
+          rows[i].value = field.type === 'bool' ? '1' : '';
+        }
+        paint();
+      });
+      box.addEventListener('click', (e) => {
+        const drop = e.target.closest('[data-drop]');
+        if (!drop) return;
+        read();
+        rows.splice(Number(drop.dataset.drop), 1);
+        paint();
+      });
+      dialog.querySelector('#flt-add').addEventListener('click', () => {
+        read();
+        rows.push({ field: 'price', op: 'gt', value: '' });
+        paint();
+        dialog.querySelector(`[data-value="${rows.length - 1}"]`)?.focus();
+      });
+      dialog.querySelector('#flt-clear').addEventListener('click', () => close([]));
+      const apply = () => {
+        read();
+        // A row with nothing to compare with is left out, rather than matching nothing.
+        close(rows.filter((f) => noValue(f.op) || f.value !== '' || fields.find((x) => x.key === f.field)?.type === 'bool'));
+      };
+      dialog.querySelector('#flt-apply').addEventListener('click', apply);
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.matches('input')) {
+          e.preventDefault();
+          apply();
+        }
+      });
+      paint();
+      dialog.querySelector('[data-value="0"]')?.focus();
+    },
+  });
+}
+
 /* ----------------------------------------------------------- detail page -- */
 
 const TABS = ['details', 'pricing', 'overview', 'movements', 'sales', 'purchases'];
@@ -464,8 +639,10 @@ const TABS = ['details', 'pricing', 'overview', 'movements', 'sales', 'purchases
  */
 function tabsFor(product) {
   if (isTemplate(product)) return ['details', 'variants'];
-  if (isMadeToOrder(product)) return ['details', 'pricing', 'recipe', 'overview', 'sales'];
-  return TABS;
+  // An add-on says, beside its details, what it is offered with.
+  const addon = addonsOn() && Number(product.is_addon) === 1 ? ['addon'] : [];
+  if (isMadeToOrder(product)) return ['details', ...addon, 'pricing', 'recipe', 'overview', 'sales'];
+  return ['details', ...addon, ...TABS.slice(1)];
 }
 
 async function renderDetail(root, ctx, id, initialTab) {
@@ -479,8 +656,6 @@ async function renderDetail(root, ctx, id, initialTab) {
   }
   const state = { tab: tabsFor(product).includes(initialTab) ? initialTab : 'details', from: shiftDays(todayISO(), -29), to: todayISO() };
   let dropPickers = () => {};
-  // The add-on lists the shop keeps, so the product can offer one.
-  const addonGroups = await api.addonGroups().catch(() => []);
 
   ctx.actions.innerHTML = `
     <button class="btn" id="labels">${icon('barcode')} ${esc(t('label.print_this'))}</button>
@@ -550,6 +725,7 @@ async function renderDetail(root, ctx, id, initialTab) {
     if (product.variant_of) {
       badges.push(`<button type="button" class="badge badge-link" data-template>${esc(t('variant.of', { name: product.template_name || '' }))}</button>`);
     }
+    if (addonsOn() && Number(product.is_addon) === 1) badges.push(`<span class="badge">${esc(t('addon.badge'))}</span>`);
     if (!isTemplate(product) && isMadeToOrder(product)) badges.push(`<span class="badge">${esc(t('recipe.made_to_order_badge'))}</span>`);
     if (recipesOn() && Number(product.raw) === 1) badges.push(`<span class="badge">${esc(t('recipe.raw_badge'))}</span>`);
     return badges.length ? `<div class="ph-badges">${badges.join('')}</div>` : '';
@@ -571,6 +747,7 @@ async function renderDetail(root, ctx, id, initialTab) {
       purchases: tabPurchases,
       variants: tabVariants,
       recipe: tabRecipe,
+      addon: tabAddon,
     })[
       state.tab
     ]();
@@ -580,7 +757,7 @@ async function renderDetail(root, ctx, id, initialTab) {
   function tabDetails() {
     // Laid out to fill the grid: the editable fields, what the product holds
     // (read only), then the active switch.
-    const fields = productFields(product, addonGroups).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
+    const fields = productFields(product).map((f) => (f.name === 'active' ? { ...f, span: undefined } : f));
     const editable = fields.filter((f) => f.name !== 'active');
     const active = fields.filter((f) => f.name === 'active');
     const readOnly = (label, value) =>
@@ -894,6 +1071,122 @@ async function renderDetail(root, ctx, id, initialTab) {
       }
     });
     body.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => ctx.navigate(`products/${b.dataset.open}`)));
+  }
+
+  /**
+   * Offered with: which items' lines this add-on can be added to at the till —
+   * every item, the items of some categories, or some items (a template's
+   * variants with it).
+   */
+  async function tabAddon() {
+    const [data, cats] = await Promise.all([api.addonFor(id).catch(() => null), api.categoriesInUse().catch(() => [])]);
+    if (state.tab !== 'addon') return;
+    if (!data) {
+      body.innerHTML = `<div class="card"><div class="card-body">${emptyState(t('common.page_error'), '', 'tag')}</div></div>`;
+      return;
+    }
+    let scope = data.scope;
+    const chosenCats = new Set(data.categories.map((c) => c.toLowerCase()));
+    const items = [...data.products];
+    // Every category in use, and any chosen one no item is filed under any more.
+    const allCats = [...cats.map((c) => c.name), ...data.categories.filter((c) => !cats.some((x) => x.name.toLowerCase() === c.toLowerCase()))];
+    body.innerHTML = `
+      <div class="card">
+        <div class="card-head"><div><h3>${esc(t('addon.offered_with'))}</h3>
+          <div class="sub">${esc(t('addon.offered_sub'))}</div></div></div>
+        <div class="card-body" style="display:grid;gap:14px">
+          <div class="seg" id="addon-scope" role="radiogroup">${['all', 'categories', 'products']
+            .map((k) => `<button type="button" data-scope="${k}" role="radio">${esc(t(`addon.scope.${k}`))}</button>`)
+            .join('')}</div>
+          <div id="scope-categories" class="attr-values">${
+            allCats.length
+              ? allCats
+                  .map(
+                    (c) => `<label class="attr-chip"><input type="checkbox" data-cat="${esc(c)}" ${chosenCats.has(c.toLowerCase()) ? 'checked' : ''} ${admin ? '' : 'disabled'}/><span>${esc(c)}</span></label>`,
+                  )
+                  .join('')
+              : `<p class="muted">${esc(t('addon.no_categories'))}</p>`
+          }</div>
+          <div id="scope-products" style="display:grid;gap:10px">
+            ${admin ? `<div class="combo"><input class="input" id="addon-find" placeholder="${esc(t('addon.find_item'))}" autocomplete="off"/></div>` : ''}
+            <div class="attr-values" id="addon-items"></div>
+          </div>
+        </div>
+        ${
+          admin
+            ? `<div class="card-head set-foot"><div class="help" id="scope-help"></div><div class="spacer"></div>
+                 <button class="btn btn-primary" id="save-addon-for">${icon('check')} ${esc(t('common.save'))}</button></div>`
+            : ''
+        }
+      </div>`;
+    const paintItems = () => {
+      body.querySelector('#addon-items').innerHTML = items.length
+        ? items
+            .map(
+              (p) => `<span class="addon-chip">${esc(p.name)}${
+                admin ? ` <button type="button" class="chip-x" data-drop="${p.id}" aria-label="${esc(t('common.delete'))}">×</button>` : ''
+              }</span>`,
+            )
+            .join('')
+        : `<span class="muted">${esc(t('addon.no_items'))}</span>`;
+    };
+    const paintScope = () => {
+      body.querySelectorAll('[data-scope]').forEach((b) => {
+        b.classList.toggle('active', b.dataset.scope === scope);
+        b.setAttribute('aria-checked', String(b.dataset.scope === scope));
+      });
+      // Only what applies to the choice shows: the categories, or the items, or neither.
+      body.querySelector('#scope-categories').style.display = scope === 'categories' ? '' : 'none';
+      body.querySelector('#scope-products').style.display = scope === 'products' ? 'grid' : 'none';
+      const help = body.querySelector('#scope-help');
+      if (help) help.textContent = t(`addon.scope_help.${scope}`);
+    };
+    body.querySelector('#addon-scope').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-scope]');
+      if (!b || !admin) return;
+      scope = b.dataset.scope;
+      paintScope();
+    });
+    body.querySelector('#addon-items').addEventListener('click', (e) => {
+      const x = e.target.closest('[data-drop]');
+      if (!x) return;
+      items.splice(items.findIndex((p) => p.id === Number(x.dataset.drop)), 1);
+      paintItems();
+    });
+    const find = body.querySelector('#addon-find');
+    if (find) {
+      const picker = attachPicker(find, {
+        // Items sold as they are: no other add-on, no raw material.
+        search: (q) => (q ? api.products({ search: q, limit: 25, templates: '1' }).then((rows) => rows.filter((p) => p.id !== id && !Number(p.is_addon) && !Number(p.raw))) : []),
+        render: productOption,
+        emptyText: t('buy.no_product_match'),
+        openOnFocus: false,
+        onPick: (p) => {
+          find.value = '';
+          picker.reset();
+          if (!items.some((x) => x.id === p.id)) items.push({ id: p.id, name: p.name });
+          paintItems();
+        },
+      });
+      dropPickers = () => picker.destroy();
+    }
+    paintItems();
+    paintScope();
+    body.querySelector('#save-addon-for')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await api.saveAddonFor(id, {
+          scope,
+          categories: [...body.querySelectorAll('[data-cat]:checked')].map((el) => el.dataset.cat),
+          product_ids: items.map((p) => p.id),
+        });
+        toast(t('addon.saved_for'), 'success');
+      } catch (err) {
+        toast(errorText(err), 'error');
+      }
+      btn.disabled = false;
+    });
   }
 
   /**

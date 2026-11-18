@@ -313,6 +313,18 @@ just the page. The report shows costs, so it is for administrators only.
 
 ---
 
+## Filtering the product list
+
+**Filter**, beside the list's other filters, builds conditions like ERPNext's: a field, an operator
+and a value — *Price > 5*, *Category = Fresh Juices*, *Name contains juice*, *Barcode is set*, *Add-on:
+yes*. Add as many as you need; every one must hold, together with the search, the category and the
+stock filter. Text fields take = ≠ contains, does not contain, starts with, is set and is empty;
+numbers (price, cost, margin %, stock, stock value, minimum) take = ≠ > ≥ < ≤; yes/no fields (active,
+add-on, made to order, raw material, template, variant — the last four once their feature is on)
+take yes or no. The conditions show as chips under the bar, each with an × to take it off, and the
+list remembers them like its other filters. A condition on *Active* includes archived items by
+itself.
+
 ## A product's page
 
 Click any product. Its name, stock and price sit at the top with the menu beside them —
@@ -580,26 +592,27 @@ consumption**; until then stock moves exactly as it always has.
   again.
 - A returned made-to-order item goes back on no shelf; what it used stays used.
 
-### Add-ons and line notes
+### Add-ons and line notes (off until switched on)
 
-Toppings on a crêpe, protein in a shake: extras a product can offer at the till, each at its own
-price. Make a list under **Settings → Add-ons** — "Crêpe toppings" with Lotus Biscuit, Banana,
-Kiwi… at $1 each — then offer it on the products that take it: on one product from its page, or on
-every product in a category in one go from the list itself. A product offers at most one list;
-choose **None** on its page to take it off again.
+Toppings on a crêpe, protein in a shake: an add-on is an item. Switch add-ons on under **Settings → POS
+→ Add-ons** (until then items have no add-on mark and lines offer none), then tick **Add-on** on its page — Lotus
+Biscuit at $1, costing $0.25 — and it has its own price, cost, stock (or, made to order, its own
+recipe) like any item, but it is never a card at the till: it is added to other items' lines.
 
-- **At the till**, tapping a product that offers a list opens one sheet: the add-ons to tick, and a
-  note. The **Add** button shows what the line will come to. The
-  same product with the same add-ons and note joins its line; anything different is a line of its
-  own.
-- **Any line can carry a note** — open it with its arrow and type ("grind fine", "less sugar") —
-  whether or not it has add-ons. The note shows under the name.
-- **On the sale** each line keeps its add-ons by name and price, and its note: receipts, returns
-  and held sales show them, and old invoices still read them after a list is changed or removed.
-  The add-ons' prices are part of the line's price, and their costs part of its cost.
-- Add-ons are priced, not stocked: what they use comes out of stock with recipes.
+- **Offered with**, a tab on the add-on's page, says which lines take it: **every item**, the items
+  of **some categories** (ticked), or **some items** (picked; a template counts for all its
+  variants). A new add-on starts offered with every item.
+- **At the till**, an item goes straight into the cart. Open its line — tap its name or the arrow —
+  and, when add-ons go with that item, an **Add-ons** button lists those only. Tick them and the
+  line's price goes up by theirs; untick to take one off. The button shows how many the line has.
+- **Any line can carry a note** — "grind fine", "less sugar" — in the same opened line. The add-ons
+  and the note show under the name. The same item with the same add-ons and note joins its line.
+- **On the sale** each line keeps its add-ons by name and price, and its note: receipts, returns,
+  held sales and table orders show them, and old invoices still read them after the add-on changes.
+  The add-ons' prices are part of the line's price and their costs part of its cost; one of each
+  comes off its stock per one of the line (or, made to order, its recipe's use is written down).
 
-A shop with no add-on list sees no change; products are not even asked which list they offer.
+A shop with no add-on item sees no change: no line offers any.
 
 ### Restaurant mode — tables (off until switched on)
 

@@ -98,7 +98,7 @@ const CASHIER_ROUTES = new Set([
   // The till's row of categories.
   'GET /api/categories/in-use',
   // The add-ons the till offers on a product.
-  'GET /api/addon-groups',
+  'GET /api/addons',
   // A template's variants, which the till asks for when it is tapped.
   'GET /api/products/:id/variants',
   'GET /api/products/lookup',

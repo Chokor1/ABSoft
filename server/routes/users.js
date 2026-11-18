@@ -100,7 +100,7 @@ export function register(router) {
     const allowed = [
       'store_name', 'currency', 'tax_rate', 'low_stock_alert', 'receipt_footer',
       'currency2_enabled', 'currency2_symbol', 'currency2_decimals',
-      'pos_shifts', 'pos_categories', 'recipes', 'attributes', 'restaurant', 'search_min_chars', 'pos_page_size', 'store_logo', 'backup_dir2',
+      'pos_shifts', 'pos_categories', 'recipes', 'attributes', 'restaurant', 'addons', 'search_min_chars', 'pos_page_size', 'store_logo', 'backup_dir2',
       'scale_enabled', 'scale_prefix', 'scale_item_digits', 'scale_mode',
     ];
     const patch = {};
@@ -111,6 +111,7 @@ export function register(router) {
     if (patch.recipes !== undefined) patch.recipes = patch.recipes === '1' ? '1' : '0';
     if (patch.attributes !== undefined) patch.attributes = patch.attributes === '1' ? '1' : '0';
     if (patch.restaurant !== undefined) patch.restaurant = patch.restaurant === '1' ? '1' : '0';
+    if (patch.addons !== undefined) patch.addons = patch.addons === '1' ? '1' : '0';
     // A logo is a small picture or nothing at all; anything else is not one.
     if (patch.store_logo) {
       const ok = /^data:image\/(png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(patch.store_logo);

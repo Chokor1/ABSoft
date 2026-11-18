@@ -25,8 +25,6 @@ const SECTIONS = [
   { key: 'payments', icon: 'card', admin: true },
   // The prices the shop sells and buys at: retail, جملة, a supplier's own.
   { key: 'prices', icon: 'tag', admin: true },
-  // Toppings and extras a product can offer at the till.
-  { key: 'addons', icon: 'plus', admin: true },
   // Size, Flavour…: what a template's variants are made of. Listed once switched on.
   { key: 'attributes', icon: 'list', admin: true, when: (cfg) => cfg.attributes === '1' },
   // The restaurant's tables. Listed once restaurant mode is switched on.
@@ -121,6 +119,10 @@ export async function render(root, ctx) {
                 <label class="set-switch">
                   <input type="checkbox" name="pos_shifts" ${cfg.pos_shifts === '1' ? 'checked' : ''}/>
                   <span><b>${esc(t('set.shifts_enable'))}</b><small>${esc(t('set.shifts_help'))}</small></span>
+                </label>
+                <label class="set-switch">
+                  <input type="checkbox" name="addons" ${cfg.addons === '1' ? 'checked' : ''}/>
+                  <span><b>${esc(t('set.addons_enable'))}</b><small>${esc(t('set.addons_help'))}</small></span>
                 </label>
                 <label class="set-switch">
                   <input type="checkbox" name="restaurant" ${cfg.restaurant === '1' ? 'checked' : ''}/>
@@ -308,16 +310,6 @@ export async function render(root, ctx) {
     // Filled in below by the same list that customers and suppliers use.
     payments: () => `<div id="payments-list"></div>`,
 
-    addons: () => `
-      <div class="card">
-        <div class="card-head">
-          <div><h3>${esc(t('addon.title'))}</h3><div class="sub">${esc(t('addon.sub'))}</div></div>
-          <div class="spacer"></div>
-          <button class="btn btn-primary btn-sm" id="addon-new">${icon('plus')} ${esc(t('addon.new'))}</button>
-        </div>
-        <div class="card-body flush"><div id="addon-groups"></div></div>
-      </div>`,
-
     tables: () => `
       <div class="card">
         <div class="card-head">
@@ -397,118 +389,6 @@ export async function render(root, ctx) {
     if (btn && btn.dataset.section !== active) ctx.navigate(`settings/${btn.dataset.section}`);
   });
   root.innerHTML = `<div class="set-panel" id="set-panel">${panels[active]()}</div>`;
-  if (active === 'addons') {
-    const box = root.querySelector('#addon-groups');
-    let categories = [];
-    const load = async () => {
-      const [groups, cats] = await Promise.all([api.addonGroups(), api.categoriesInUse().catch(() => [])]);
-      categories = cats;
-      if (!groups.length) {
-        box.innerHTML = `<div class="empty"><p>${esc(t('addon.none'))}</p><p class="muted">${esc(t('addon.none_sub'))}</p></div>`;
-        return;
-      }
-      box.innerHTML = `<div class="addon-lists">${groups
-        .map(
-          (g) => `<div class="addon-list" data-group="${g.id}">
-            <div class="addon-list-head">
-              <div><b>${esc(g.name)}</b>
-                <div class="cell-sub">${esc(t('addon.count', { n: g.items.length }))} · ${esc(t('addon.on_products', { n: g.products }))}</div></div>
-              <div class="spacer"></div>
-              <button class="btn btn-ghost btn-icon btn-sm" data-edit title="${esc(t('common.edit'))}">${icon('edit')}</button>
-              <button class="btn btn-ghost btn-icon btn-sm" data-del title="${esc(t('common.delete'))}">${icon('trash')}</button>
-            </div>
-            <div class="addon-chips">${g.items
-              .map((a) => `<span class="addon-chip">${esc(a.name)} <small>${a.price > 0 ? `+${money(a.price)}` : esc(t('addon.free'))}</small></span>`)
-              .join('')}</div>
-            ${
-              categories.length
-                ? `<div class="addon-apply">
-                    <span>${esc(t('addon.offer_on'))}</span>
-                    <select class="select" data-category>${categories
-                      .map((c) => `<option value="${esc(c.name)}">${esc(c.name)} (${c.n})</option>`)
-                      .join('')}</select>
-                    <button class="btn btn-sm" data-apply>${esc(t('addon.apply'))}</button>
-                  </div>`
-                : ''
-            }
-          </div>`,
-        )
-        .join('')}</div>`;
-      box.querySelectorAll('[data-group]').forEach((el) => {
-        const group = groups.find((g) => g.id === Number(el.dataset.group));
-        el.querySelector('[data-edit]').addEventListener('click', () => editGroup(group));
-        el.querySelector('[data-del]').addEventListener('click', () => removeGroup(group));
-        el.querySelector('[data-apply]')?.addEventListener('click', async () => {
-          const category = el.querySelector('[data-category]').value;
-          try {
-            const res = await api.applyAddonGroup(group.id, category);
-            toast(t('addon.applied', { n: res.applied, name: group.name, c: category }), 'success');
-            load();
-          } catch (err) {
-            toast(errorText(err), 'error');
-          }
-        });
-      });
-    };
-
-    /** Make a list, or change one: its name, and its add-ons with their prices. */
-    async function editGroup(group) {
-      const isNew = !group;
-      const data = await formModal({
-        title: isNew ? t('addon.new') : t('addon.edit', { name: group.name }),
-        subtitle: t('addon.form_sub'),
-        wide: true,
-        submitLabel: t('common.save'),
-        fields: [
-          { name: 'name', label: t('addon.list_name'), required: true, span: 2, value: group?.name || '', autofocus: true, placeholder: t('addon.list_placeholder') },
-          {
-            name: 'items',
-            label: t('addon.items'),
-            type: 'sizes',
-            span: 2,
-            value: group?.items || [],
-            labels: {
-              name: t('addon.item'),
-              add: t('addon.add_item'),
-              placeholder: t('addon.item_placeholder'),
-              costSame: t('addon.cost_none'),
-              max: 40,
-            },
-          },
-        ],
-      });
-      if (!data) return;
-      try {
-        await api.saveAddonGroup({ ...data, id: group?.id });
-        toast(t('addon.saved'), 'success');
-        load();
-      } catch (err) {
-        toast(errorText(err), 'error');
-      }
-    }
-
-    async function removeGroup(group) {
-      const ok = await confirmDialog({
-        title: t('addon.delete_title', { name: group.name }),
-        message: t('addon.delete_msg', { n: group.products }),
-        confirmLabel: t('common.delete'),
-        danger: true,
-      });
-      if (!ok) return;
-      try {
-        await api.deleteAddonGroup(group.id);
-        toast(t('addon.deleted'), 'success');
-        load();
-      } catch (err) {
-        toast(errorText(err), 'error');
-      }
-    }
-
-    root.querySelector('#addon-new').addEventListener('click', () => editGroup(null));
-    await load();
-    return;
-  }
-
   if (active === 'tables') {
     const box = root.querySelector('#tables-list');
     const load = async () => {
@@ -832,6 +712,7 @@ export async function render(root, ctx) {
       pos_categories: e.target.pos_categories.checked ? '1' : '0',
       attributes: e.target.attributes.checked ? '1' : '0',
       restaurant: e.target.restaurant.checked ? '1' : '0',
+      addons: e.target.addons.checked ? '1' : '0',
       recipes: e.target.recipes.checked ? '1' : '0',
     });
     // Attributes switched on or off adds or takes away its section above.

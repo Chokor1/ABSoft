@@ -77,9 +77,20 @@ export async function render(root, ctx) {
   // Settings → POS can add a row of categories above the products. Off, the till
   // is laid out and behaves exactly as it always has.
   const showCats = store.settings.pos_categories === '1';
-  // The add-on lists the shop keeps, by id: a product that offers one asks for
-  // its toppings and a note before it goes in the cart.
-  const addonGroups = new Map((await api.addonGroups().catch(() => [])).map((g) => [g.id, g]));
+  // Every add-on item and what it is offered with. A line offers the ones that
+  // go with its item; with none at all, no line offers anything.
+  // Off in Settings: no line offers any.
+  const addonItems = store.settings.addons === '1' ? await api.addons().catch(() => []) : [];
+  const addonsFor = (l) => {
+    const cat = String(l.category || '').toLowerCase();
+    return addonItems.filter(
+      (a) =>
+        a.id !== l.product_id &&
+        (a.scope === 'all' ||
+          (a.scope === 'categories' && !!cat && a.categories.some((c) => c.toLowerCase() === cat)) ||
+          (a.scope === 'products' && (a.product_ids.includes(l.product_id) || (l.variant_of && a.product_ids.includes(l.variant_of))))),
+    );
+  };
 
   root.innerHTML = `
     <div class="pos ${showCats ? 'with-cats' : ''}">
@@ -131,7 +142,15 @@ export async function render(root, ctx) {
         </div>
       </aside>
 
-      ${showCats ? `<div class="cat-bar" id="cat-bar" role="tablist" aria-label="${esc(t('pos.categories'))}"></div>` : ''}
+      ${
+        showCats
+          ? `<div class="cat-wrap" id="cat-wrap">
+              <button type="button" class="cat-nav" data-dir="-1" tabindex="-1" aria-label="${esc(t('pos.cats_back'))}">‹</button>
+              <div class="cat-bar" id="cat-bar" role="tablist" aria-label="${esc(t('pos.categories'))}"></div>
+              <button type="button" class="cat-nav" data-dir="1" tabindex="-1" aria-label="${esc(t('pos.cats_more'))}">›</button>
+            </div>`
+          : ''
+      }
       <div id="tiles" class="product-grid"></div>
 
       <!-- phones: the total and the way to pay stay in reach while scrolling products -->
@@ -290,9 +309,38 @@ export async function render(root, ctx) {
       `<button type="button" class="cat-chip ${name === state.category ? 'active' : ''}" role="tab"
          aria-selected="${name === state.category}" data-cat="${esc(name)}">
          <span>${esc(label)}</span>${n === undefined ? '' : `<small>${n}</small>`}</button>`;
+    const wrap = $('#cat-wrap');
+    // Which way there are more categories than show: the arrows and the faded edges follow.
+    const rtl = () => getComputedStyle(bar).direction === 'rtl';
+    const paintEdges = () => {
+      const max = bar.scrollWidth - bar.clientWidth;
+      const at = Math.abs(bar.scrollLeft); // negative in a right-to-left row
+      wrap.classList.toggle('more-start', max > 2 && at > 2);
+      wrap.classList.toggle('more-end', max > 2 && at < max - 2);
+    };
     const paintCats = (cats) => {
       bar.innerHTML = chip('', t('pos.all_categories')) + cats.map((c) => chip(c.name, c.name, c.n)).join('');
+      paintEdges();
     };
+    bar.addEventListener('scroll', paintEdges, { passive: true });
+    new ResizeObserver(paintEdges).observe(bar);
+    // An arrow moves the row by most of its width.
+    wrap.querySelectorAll('.cat-nav').forEach((b) =>
+      b.addEventListener('click', () => {
+        const step = bar.clientWidth * 0.75 * Number(b.dataset.dir);
+        bar.scrollBy({ left: rtl() ? -step : step });
+      }),
+    );
+    // A mouse wheel turns the row sideways, rather than doing nothing over it.
+    bar.addEventListener(
+      'wheel',
+      (e) => {
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || bar.scrollWidth <= bar.clientWidth) return;
+        e.preventDefault();
+        bar.scrollBy({ left: (rtl() ? -1 : 1) * e.deltaY, behavior: 'instant' });
+      },
+      { passive: false },
+    );
     api
       .categoriesInUse(SELLING)
       .then(paintCats)
@@ -638,16 +686,6 @@ export async function render(root, ctx) {
     }
     // A label from the scale carries the weight (or the price, from which the weight follows).
     const weighed = product.scale?.qty > 0 ? product.scale : null;
-    // A product that offers add-ons opens one sheet: the toppings to tick and a
-    // note. A weighed label never asks anything.
-    const group = !weighed && product.addon_group_id ? addonGroups.get(product.addon_group_id) : null;
-    if (extras === null && group?.items.length) {
-      buildLine(product, group).then((built) => {
-        if (built) addToCart(product, { addons: built.addons, note: built.note });
-        scan.focus();
-      });
-      return;
-    }
     const qty = weighed ? Math.round(weighed.qty * 1000) / 1000 : 1;
     const addons = extras?.addons || [];
     const note = (extras?.note || '').trim();
@@ -667,6 +705,9 @@ export async function render(root, ctx) {
       state.cart.unshift({
         uid: ++lineSeq,
         product_id: product.id,
+        // What decides which add-ons the line offers.
+        category: product.category || '',
+        ...(product.variant_of ? { variant_of: product.variant_of } : {}),
         ...(addons.length ? { addons } : {}),
         ...(note ? { note } : {}),
         name: product.name,
@@ -682,36 +723,29 @@ export async function render(root, ctx) {
   }
 
   /**
-   * The sheet for a product with add-ons: every topping on its list to tick, and
-   * a note. The Add button shows what the line will come to. Resolves
-   * { addons, note }, or nothing if the cashier changes their mind.
+   * A line's add-ons: only those offered with its item, the ones it has ticked.
+   * Each adds its price to one of the line. Resolves the add-ons chosen, or
+   * nothing if the cashier changes their mind.
    */
-  function buildLine(product, group) {
-    const picked = new Set();
-    const base = () => Number(product.price) || 0;
-    const total = () => round2(base() + group.items.filter((a) => picked.has(a.id)).reduce((s, a) => s + a.price, 0));
+  function chooseAddons(line) {
+    const offered = addonsFor(line);
+    const picked = new Set((line.addons || []).map((a) => a.id));
+    const sum = () => round2(offered.filter((a) => picked.has(a.id)).reduce((s, a) => s + a.price, 0));
     return modal({
-      title: product.name,
-      subtitle: group.name,
+      title: line.name,
+      subtitle: t('addon.pick'),
       wide: true,
-      body: `<div class="build">
-        <div class="build-part"><div class="build-head">${esc(t('addon.pick'))}</div>
-          <div class="build-addons">${group.items
-            .map(
-              (a) => `<button type="button" class="build-addon" aria-pressed="false" data-addon="${a.id}">
-                <span class="build-tick">${icon('check')}</span><span class="build-name">${esc(a.name)}</span>
-                <span class="build-price">${a.price > 0 ? `+${money(a.price)}` : esc(t('addon.free'))}</span></button>`,
-            )
-            .join('')}</div></div>
-        <div class="build-part">
-          <label class="build-head" for="build-note">${esc(t('line.note'))}</label>
-          <input class="input" id="build-note" maxlength="200" autocomplete="off" placeholder="${esc(t('line.note_placeholder'))}"/>
-        </div>
-      </div>`,
+      body: `<div class="build"><div class="build-addons">${offered
+        .map(
+          (a) => `<button type="button" class="build-addon ${picked.has(a.id) ? 'on' : ''}" aria-pressed="${picked.has(a.id)}" data-addon="${a.id}">
+            <span class="build-tick">${icon('check')}</span><span class="build-name">${esc(a.name)}</span>
+            <span class="build-price">${a.price > 0 ? `+${money(a.price)}` : esc(t('addon.free'))}</span></button>`,
+        )
+        .join('')}</div></div>`,
       footer: `<button class="btn" data-close>${esc(t('common.cancel'))}</button>
-               <button class="btn btn-primary btn-lg" id="build-add">${icon('plus')} ${esc(t('addon.add'))} · <span id="build-total"></span></button>`,
+               <button class="btn btn-primary btn-lg" id="build-add">${icon('check')} ${esc(t('addon.done'))} · <span id="build-total"></span></button>`,
       setup: (dialog, close) => {
-        const paintTotal = () => (dialog.querySelector('#build-total').innerHTML = money(total()));
+        const paint = () => (dialog.querySelector('#build-total').innerHTML = `+${money(sum())}`);
         dialog.querySelectorAll('[data-addon]').forEach((b) =>
           b.addEventListener('click', () => {
             const id = Number(b.dataset.addon);
@@ -719,25 +753,29 @@ export async function render(root, ctx) {
             else picked.add(id);
             b.setAttribute('aria-pressed', String(picked.has(id)));
             b.classList.toggle('on', picked.has(id));
-            paintTotal();
+            paint();
           }),
         );
-        const add = () =>
-          close({
-            addons: group.items.filter((a) => picked.has(a.id)).map(({ id, name, price }) => ({ id, name, price })),
-            note: dialog.querySelector('#build-note').value.trim(),
-          });
-        dialog.querySelector('#build-add').addEventListener('click', add);
-        dialog.querySelector('#build-note').addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            add();
-          }
-        });
-        paintTotal();
+        dialog.querySelector('#build-add').addEventListener('click', () =>
+          close(offered.filter((a) => picked.has(a.id)).map(({ id, name, price }) => ({ id, name, price }))),
+        );
+        paint();
         dialog.querySelector('[data-addon]')?.focus();
       },
     });
+  }
+
+  /** Change a line's add-ons: its price goes up or down by their prices, whatever it was typed at. */
+  async function editAddons(line) {
+    const chosen = await chooseAddons(line);
+    if (!chosen) return;
+    const before = (line.addons || []).reduce((s, a) => s + (Number(a.price) || 0), 0);
+    const after = chosen.reduce((s, a) => s + (Number(a.price) || 0), 0);
+    line.unit_price = round2(Math.max(0, line.unit_price - before + after));
+    if (chosen.length) line.addons = chosen;
+    else delete line.addons;
+    line.open = true;
+    drawCart(lineKey(line));
   }
 
   /**
@@ -875,6 +913,13 @@ export async function render(root, ctx) {
           <span>${esc(t('pos.discount_amount'))}</span>
           <div class="input readonly" data-discount>${money(lineDiscount(l))}</div>
         </label>
+        ${
+          addonsFor(l).length
+            ? `<button type="button" class="btn btn-sm cl-addons" data-addons>${icon('plus')} ${esc(t('addon.button'))}${
+                l.addons?.length ? ` <span class="badge accent">${l.addons.length}</span>` : ''
+              }</button>`
+            : ''
+        }
         <label class="cl-field cl-note">
           <span>${esc(t('line.note'))}</span>
           <input class="input" data-field="note" maxlength="200" value="${esc(l.note || '')}"
@@ -1014,11 +1059,21 @@ export async function render(root, ctx) {
   });
 
   linesEl.addEventListener('click', (e) => {
+    // Tapping the line's name opens it, the same as its chevron.
+    const text = e.target.closest('.cl-text');
+    if (text && !e.target.closest('button')) {
+      text.closest('.cart-line').querySelector('[data-toggle]')?.click();
+      return;
+    }
     const btn = e.target.closest('button');
     if (!btn) return;
     const line = lineOf(btn);
     if (!line) return;
 
+    if (btn.hasAttribute('data-addons')) {
+      editAddons(line);
+      return;
+    }
     if (btn.hasAttribute('data-remove')) {
       state.cart = state.cart.filter((l) => l !== line);
       drawCart();
@@ -1114,6 +1169,8 @@ export async function render(root, ctx) {
         product_id: l.product_id,
         ...(l.addons?.length ? { addons: l.addons } : {}),
         ...(l.note ? { note: l.note } : {}),
+        category: l.category || '',
+        ...(l.variant_of ? { variant_of: l.variant_of } : {}),
         name: l.name,
         unit: l.unit,
         unit_price: Number(l.unit_price) || 0,
@@ -1274,6 +1331,8 @@ export async function render(root, ctx) {
         product_id: l.product_id,
         ...(l.addons?.length ? { addons: l.addons } : {}),
         ...(l.note ? { note: l.note } : {}),
+        category: l.category || '',
+        ...(l.variant_of ? { variant_of: l.variant_of } : {}),
         name: l.name,
         unit: l.unit,
         unit_price: Number(l.unit_price) || 0,

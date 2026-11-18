@@ -204,6 +204,7 @@ saveSettings({
   pos_categories: '1',
   attributes: '1',
   recipes: '1',
+  addons: '1',
   currency2_enabled: '1',
   currency2_symbol: 'L.L',
   currency2_rate: '89500',
@@ -212,14 +213,14 @@ saveSettings({
 
 transact(() => {
   const insertProduct = db.prepare(
-    `INSERT INTO products (name, barcode, category, unit, cost, price, min_stock, stocked, raw, has_variants, variant_of, variant_key, addon_group_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO products (name, barcode, category, unit, cost, price, min_stock, stocked, raw, has_variants, variant_of, variant_key, is_addon, addon_scope)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const product = (p) =>
     Number(
       insertProduct.run(
         p.name, p.barcode ?? null, p.category, p.unit ?? 'pcs', money(p.cost ?? 0), money(p.price ?? 0), p.min ?? 0,
-        p.stocked ?? 1, p.raw ?? 0, p.template ? 1 : 0, p.of ?? null, p.key ?? null, p.addons ?? null,
+        p.stocked ?? 1, p.raw ?? 0, p.template ? 1 : 0, p.of ?? null, p.key ?? null, p.addon ? 1 : 0, p.addon ? 'categories' : 'all',
       ).lastInsertRowid,
     );
 
@@ -266,18 +267,22 @@ transact(() => {
     return variants;
   };
 
-  // Toppings for crêpes and waffles.
-  const groupId = Number(db.prepare(`INSERT INTO addon_groups (name, sort) VALUES ('Crêpe toppings', 0)`).run().lastInsertRowid);
-  const insertAddon = db.prepare(`INSERT INTO addons (group_id, name, price, cost, sort) VALUES (?, ?, 1, 0.25, ?)`);
-  const toppings = TOPPINGS.map((name, i) => ({ id: Number(insertAddon.run(groupId, name, i).lastInsertRowid), name, price: 1, cost: 0.25 }));
+  // Toppings are add-on items, bought and stocked, offered with the crêpes and desserts.
+  const linkAddon = db.prepare(`INSERT INTO addon_links (addon_id, category, product_id) VALUES (?, 'Crêpes & More', NULL)`);
+  const toppings = TOPPINGS.map((name) => {
+    const id = product({ name, category: 'Toppings', price: 1, cost: 0.3, min: 10, addon: true });
+    linkAddon.run(id);
+    return { id, name, price: 1, cost: 0.3 };
+  });
+  const toppingSold = new Map();
 
   const juices = JUICES.map(([name, prices, recipe]) =>
     template(name, 'Fresh Juices', SIZES.filter((z) => prices[z] !== undefined), sizeIds, (z) => prices[z], (z) => scaled(recipe, SCALE[z])),
   );
   const shakes = MILKSHAKES.map(([name, price, recipe]) => made(name, 'Milkshakes', price, recipe));
   const smoothies = SMOOTHIES.map(([name, price, recipe]) => made(name, 'Smoothies', price, recipe));
-  const crepes = CREPES.map(([name, price, recipe]) => made(name, 'Crêpes & More', price, recipe, { addons: groupId }));
-  const plates = template('Qashta Plate', 'Crêpes & More', PLATES, plateIds, (z) => QASHTA_PLATE[z][0], (z) => ({ Qashta: QASHTA_PLATE[z][1], Honey: QASHTA_PLATE[z][2] }), { addons: groupId });
+  const crepes = CREPES.map(([name, price, recipe]) => made(name, 'Crêpes & More', price, recipe));
+  const plates = template('Qashta Plate', 'Crêpes & More', PLATES, plateIds, (z) => QASHTA_PLATE[z][0], (z) => ({ Qashta: QASHTA_PLATE[z][1], Honey: QASHTA_PLATE[z][2] }));
   const saj = SAJ.map(([name, price, recipe]) => made(name, 'Saj Manakish', price, recipe));
   const drinks = DRINKS.map(([name, barcode, cost, price]) => {
     const item = { id: product({ name, barcode, category: 'Soft Drinks', cost, price, min: 12 }), name, price, cost, recipe: null, category: 'Soft Drinks' };
@@ -330,6 +335,7 @@ transact(() => {
         lines.push(line);
         if (item.recipe) for (const [ing, q] of Object.entries(item.recipe)) use.set(ing, (use.get(ing) || 0) + q * line.qty);
         else drinkSold.set(item.id, (drinkSold.get(item.id) || 0) + line.qty);
+        for (const a of addons) toppingSold.set(a.id, (toppingSold.get(a.id) || 0) + line.qty);
       }
       tickets.push({ date, at: `${date} ${clock(m)}`, lines, customer: Math.random() < 0.08 ? pick(CUSTOMERS) : '' });
     }
@@ -366,6 +372,7 @@ transact(() => {
   for (const offset of [38, 20]) {
     buy(day(offset), 'Wholesale Food Depot', RAW.map(([name]) => name).filter((name) => !FRESH.has(name)).map((name) => share(name, 0.65)).filter(Boolean));
     buy(day(offset), 'Beverage Distributor', drinks.map((d) => ({ id: d.id, qty: Math.ceil((drinkSold.get(d.id) || 0) * 0.6 + 12), cost: d.cost })));
+    buy(day(offset), 'Wholesale Food Depot', toppings.map((a) => ({ id: a.id, qty: Math.ceil((toppingSold.get(a.id) || 0) * 0.6 + 10), cost: a.cost })));
   }
 
   /* ---- the sales themselves, each with what it probably used */
@@ -393,6 +400,8 @@ transact(() => {
           l.addons.length ? JSON.stringify(l.addons.map(({ id, name, price }) => ({ id, name, price }))) : '', l.note,
         ).lastInsertRowid,
       );
+      // Each topping is an item too: one comes off its shelf per one of the line.
+      for (const a of l.addons) insertMove.run(a.id, -l.qty, a.cost, 'sale', 'sales', saleId, `${docNo} · ${l.item.name}`, admin.id, tk.at);
       if (l.item.recipe) {
         for (const [ing, q] of Object.entries(l.item.recipe)) insertUse.run(saleId, itemId, raw.get(ing).id, qty(q * l.qty), `${tk.at}.000`);
       } else {

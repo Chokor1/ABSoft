@@ -1,4 +1,4 @@
-/** Add-ons and notes on screen: a list in Settings, a crêpe's toppings at the till. */
+/** Add-ons as items on screen: an add-on and what it goes with, then a crêpe's toppings from its line at the till. */
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -49,124 +49,120 @@ await page.click('button[type=submit]');
 await page.waitForSelector('.shell');
 
 const nutella = await api('/api/products', 'POST', { name: 'Nutella Crêpe', category: 'Crêpes', cost: 1.5, price: 5 });
-const lotusCrepe = await api('/api/products', 'POST', { name: 'Lotus Crêpe', category: 'Crêpes', cost: 1.5, price: 5 });
-const waffle = await api('/api/products', 'POST', { name: 'Belgian Waffle L', category: 'Waffles', cost: 2, price: 10 });
+const waffle = await api('/api/products', 'POST', { name: 'Belgian Waffle', category: 'Waffles', cost: 2, price: 10 });
+const lineOpen = async (n = 0) => {
+  // Tapping the line's name opens it, like a person would.
+  await page.click(`.cart-line >> nth=${n} >> .cl-name`);
+  await page.waitForSelector(`.cart-line.open >> nth=0`);
+};
 
-/* ------------------------------------------------------------ before any list */
-console.log('\n[before any list, nothing changes]');
-await page.goto(`${BASE}#/products/${nutella.id}/details`);
-await page.waitForSelector('#page-form');
-check('a product is not asked about add-ons', !(await page.$('#page-form [name=addon_group_id]')));
+/* ------------------------------------------------------------ before any add-on */
+console.log('\n[before any add-on, nothing changes]');
+await page.goto(`${BASE}#/settings/store`);
+await page.waitForSelector('#set-nav');
+check('Settings has no Add-ons section any more', !(await page.$('[data-section="addons"]')));
 await page.goto(`${BASE}#/pos`);
 await page.waitForSelector('#tiles .tile');
 await page.fill('#scan', 'Nutella');
 await page.waitForSelector(`#tiles .tile[data-add="${nutella.id}"]:not([hidden])`);
 await page.click(`#tiles .tile[data-add="${nutella.id}"]`);
 await page.waitForSelector('.cart-line');
-check('and goes straight into the cart', !(await page.$('.build')) && (await page.$$('.cart-line')).length === 1);
+check('tapping a product puts it straight in the cart', !(await page.$('.modal')) && (await page.$$('.cart-line')).length === 1);
+await lineOpen();
+check('and its line offers no add-ons', !(await page.$('.cart-line [data-addons]')));
 await page.click('#clear-cart');
 await page.waitForTimeout(300);
 
-/* ------------------------------------------------------------ Settings → Add-ons */
-console.log('\n[a list of toppings]');
-await page.goto(`${BASE}#/settings/addons`);
-await page.waitForSelector('#addon-new');
-check('the section starts empty', (await page.textContent('#addon-groups')).includes('No add-on lists yet'));
-await page.click('#addon-new');
-await page.waitForSelector('.modal input[name=name]');
-await page.fill('.modal input[name=name]', 'Crêpe toppings');
-for (const [name, price, cost] of [['Lotus Biscuit', '1', '0.25'], ['Banana', '1', ''], ['Kiwi', '1', '']]) {
-  await page.click('.modal [data-add-size]');
-  const row = '.modal [data-size-row]:last-child';
-  await page.fill(`${row} [data-size-name]`, name);
-  await page.fill(`${row} [data-size-price]`, price);
-  if (cost) await page.fill(`${row} [data-size-cost]`, cost);
-}
-await shot('200-addon-list-form');
-await page.click('.modal button[type=submit]');
-await page.waitForSelector('.addon-list');
-const groups = await api('/api/addon-groups');
-check('the list is saved with its toppings', groups.length === 1 && groups[0].items.map((a) => a.name).join() === 'Lotus Biscuit,Banana,Kiwi',
-  JSON.stringify(groups));
+console.log('\n[switched on in Settings]');
+await page.goto(`${BASE}#/products/new`);
+await page.waitForSelector('#page-form [name=name]');
+check('while it is off, an item has no add-on mark', !(await page.$('#page-form [name=is_addon]')));
+await page.goto(`${BASE}#/settings/pos`);
+await page.waitForSelector('#pos-form [name=addons]');
+check('the switch is there, and off', !(await page.isChecked('#pos-form [name=addons]')));
+await page.check('#pos-form [name=addons]');
+await page.click('#pos-form button[type=submit]');
+await wait(async () => (await api('/api/settings')).addons === '1', 4000);
 
-await page.selectOption('.addon-list [data-category]', 'Crêpes');
-await page.click('.addon-list [data-apply]');
-await wait(async () => (await api('/api/addon-groups'))[0].products === 2, 5000);
-check('offered on the whole Crêpes category in one go', (await api(`/api/products/${lotusCrepe.id}`)).addon_group_id === groups[0].id);
-await api(`/api/products/${waffle.id}`, 'PUT', { addon_group_id: groups[0].id });
-await page.reload();
-await page.waitForSelector('.addon-list');
-await shot('201-addon-settings');
-
-console.log('\n[the product says which list it offers]');
-await page.goto(`${BASE}#/products/${nutella.id}/details`);
-await page.waitForSelector('#page-form [name=addon_group_id]');
-check('the product form shows the list it offers',
-  (await page.inputValue('#page-form [name=addon_group_id]')) === String(groups[0].id));
+/* ------------------------------------------------------------ an add-on item */
+console.log('\n[Lotus Biscuit, an add-on for the crêpes]');
+await page.goto(`${BASE}#/products/new`);
+await page.waitForSelector('#page-form [name=is_addon]');
+await page.fill('#page-form [name=name]', 'Lotus Biscuit');
+await page.fill('#page-form [name=price]', '1');
+await page.fill('#page-form [name=cost]', '0.25');
+await page.check('#page-form [name=is_addon]');
+await page.click('#page-form button[type=submit]');
+await page.waitForSelector('#tabs [data-tab="addon"]');
+check('an add-on has an Offered with tab', true);
+await page.click('#tabs [data-tab="addon"]');
+await page.waitForSelector('[data-scope="categories"]');
+check('it starts offered with every item', (await page.getAttribute('[data-scope="all"]', 'aria-checked')) === 'true');
+await page.click('[data-scope="categories"]');
+await page.check('[data-cat="Crêpes"]');
+await shot('200-offered-with');
+await page.click('#save-addon-for');
+await page.waitForTimeout(500);
+const lotus = (await api('/api/addons')).find((a) => a.name === 'Lotus Biscuit');
+check('saved: offered with the Crêpes', lotus.scope === 'categories' && lotus.categories.join() === 'Crêpes', JSON.stringify(lotus));
+// Kiwi goes with the waffle alone; Banana with everything.
+const kiwi = await api('/api/products', 'POST', { name: 'Kiwi', price: 1, cost: 0.3, is_addon: true });
+await api(`/api/products/${kiwi.id}/addon-for`, 'PUT', { scope: 'products', product_ids: [waffle.id] });
+await api('/api/products', 'POST', { name: 'Banana', price: 1, cost: 0.3, is_addon: true });
 
 /* ------------------------------------------------------------ the till */
 console.log('\n[a crêpe with toppings and a note]');
 await page.goto(`${BASE}#/pos`);
 await page.waitForSelector('#tiles .tile');
+await page.fill('#scan', 'Lotus');
+await page.waitForTimeout(800);
+check('an add-on is not a card at the till', !(await page.$(`#tiles .tile[data-add="${lotus.id}"]:not([hidden])`)));
 await page.fill('#scan', 'Nutella');
 await page.waitForSelector(`#tiles .tile[data-add="${nutella.id}"]:not([hidden])`);
 await page.click(`#tiles .tile[data-add="${nutella.id}"]`);
-await page.waitForSelector('.build .build-addon');
-const offered = await page.$$eval('.build-addon .build-name', (ns) => ns.map((n) => n.textContent.trim()));
-check('tapping it opens its toppings', offered.join() === 'Lotus Biscuit,Banana,Kiwi', offered.join());
-check('the Add button starts at the crêpe\'s price', (await page.textContent('#build-total')).includes('$5.00'));
-await page.click('.build-addon[data-addon] >> nth=0');
-await page.click('.build-addon[data-addon] >> nth=1');
-await page.fill('#build-note', 'cut in four');
-check('ticking two toppings adds them to the price', (await page.textContent('#build-total')).includes('$7.00'),
-  await page.textContent('#build-total'));
-await page.waitForTimeout(300);
-await shot('202-build-sheet');
-await page.click('#build-add');
 await page.waitForSelector('.cart-line');
+check('the crêpe goes straight in the cart', !(await page.$('.modal')));
+await lineOpen();
+await page.waitForSelector('.cart-line [data-addons]');
+await page.click('.cart-line [data-addons]');
+await page.waitForSelector('.build .build-addon');
+const offered = await page.$$eval('.build-addon .build-name', (ns) => ns.map((n) => n.textContent.trim()).sort());
+check('its add-ons are the ones that go with it: not the waffle\'s Kiwi', offered.join() === 'Banana,Lotus Biscuit', offered.join());
+await page.click('.build-addon:has-text("Lotus Biscuit")');
+await page.click('.build-addon:has-text("Banana")');
+check('the two add $2', (await page.textContent('#build-total')).includes('$2.00'), await page.textContent('#build-total'));
+await shot('202-addons-sheet');
+await page.click('#build-add');
+await page.waitForTimeout(300);
+await page.fill('.cart-line >> nth=0 >> [data-field=note]', 'cut in four');
+await page.waitForTimeout(200);
 const extras = (await page.textContent('.cart-line [data-extras]')).trim();
-check('the line says what was asked for', extras === '+ Lotus Biscuit, Banana · cut in four', extras);
-check('at the price with its toppings', (await page.textContent('.cart-line [data-total]')).includes('$7.00'));
+check('the line says what was asked for', extras === '+ Banana, Lotus Biscuit · cut in four', extras);
+check('at the price with its add-ons', (await page.textContent('.cart-line [data-total]')).includes('$7.00'));
+check('and the button counts them', (await page.textContent('.cart-line [data-addons]')).includes('2'));
 
-console.log('\n[the same again, and a different one]');
-for (const ticks of [[0, 1], [2]]) {
-  await page.click(`#tiles .tile[data-add="${nutella.id}"]`);
-  await page.waitForSelector('.build .build-addon');
-  for (const n of ticks) await page.click(`.build-addon[data-addon] >> nth=${n}`);
-  if (ticks.length === 2) await page.fill('#build-note', 'cut in four');
-  await page.click('#build-add');
-  await page.waitForTimeout(400);
-}
-const cart = await page.$$eval('.cart-line', (ls) => ls.map((l) => `${l.querySelector('[data-field=qty]').value}:${l.querySelector('[data-extras]').textContent.trim()}`));
-check('the same toppings and note add one to that line', cart.some((c) => c === '2:+ Lotus Biscuit, Banana · cut in four'), cart.join(' | '));
-check('different toppings are a line of their own', cart.some((c) => c === '1:+ Kiwi'), cart.join(' | '));
+console.log('\n[taking one off]');
+await page.click('.cart-line [data-addons]');
+await page.waitForSelector('.build .build-addon');
+check('the sheet opens with them ticked', (await page.$$('.build-addon.on')).length === 2);
+await page.click('.build-addon:has-text("Banana")');
+await page.click('#build-add');
+await page.waitForTimeout(300);
+check('one less is a dollar less', (await page.textContent('.cart-line [data-total]')).includes('$6.00'));
 
-console.log('\n[a waffle with toppings]');
+console.log('\n[the waffle]');
 await page.fill('#scan', 'Belgian');
 await page.waitForSelector(`#tiles .tile[data-add="${waffle.id}"]:not([hidden])`);
 await page.click(`#tiles .tile[data-add="${waffle.id}"]`);
+await page.waitForFunction(() => document.querySelectorAll('.cart-line').length === 2);
+await lineOpen(0);
+await page.click('.cart-line >> nth=0 >> [data-addons]');
 await page.waitForSelector('.build .build-addon');
-await page.click('.build-addon[data-addon] >> nth=2');
-check('its price and the topping make the line', (await page.textContent('#build-total')).includes('$11.00'), await page.textContent('#build-total'));
+const forWaffle = await page.$$eval('.build-addon .build-name', (ns) => ns.map((n) => n.textContent.trim()).sort());
+check('the waffle offers Kiwi and Banana, not the crêpes\' Lotus', forWaffle.join() === 'Banana,Kiwi', forWaffle.join());
+await page.click('.build-addon:has-text("Kiwi")');
 await page.click('#build-add');
-await page.waitForTimeout(400);
-const wLine = (await page.textContent('.cart-line')).replace(/\s+/g, ' ');
-check('the waffle line has its topping', wLine.includes('Belgian Waffle L') && wLine.includes('+ Kiwi') && wLine.includes('$11.00'), wLine);
-
-console.log('\n[a note on any line]');
-const espresso = (await api('/api/products?search=Espresso&limit=5'))[0];
-await page.fill('#scan', espresso.barcode);
-await page.keyboard.press('Enter');
-await wait(async () => (await page.$$('.cart-line')).length === 4, 4000);
-await page.click('.cart-line >> nth=0 >> [data-toggle]');
-await page.fill('.cart-line >> nth=0 >> [data-field=note]', 'grind fine');
-await page.waitForTimeout(200);
-check('a plain line takes a note too', (await page.textContent('.cart-line >> nth=0 >> [data-extras]')).trim() === 'grind fine');
-await page.click('.cart-line >> nth=0 >> [data-step="1"]');
-await page.waitForTimeout(200);
-check('and stays the same line', (await page.$$('.cart-line')).length === 4 &&
-  (await page.inputValue('.cart-line >> nth=0 >> [data-field=qty]')) === '2');
-await shot('203-cart-extras');
+await page.waitForTimeout(300);
 
 console.log('\n[held and resumed]');
 await page.click('#hold-cart');
@@ -174,10 +170,11 @@ await page.waitForSelector('#held-chip:not([hidden])');
 await page.click('#held-chip');
 await page.waitForSelector('.held-table [data-resume]');
 await page.click('.held-table [data-resume]');
-await wait(async () => (await page.$$('.cart-line')).length === 4, 5000);
+await wait(async () => (await page.$$('.cart-line')).length === 2, 5000);
 const back = await page.$$eval('.cart-line [data-extras]', (es) => es.map((e) => e.textContent.trim()).filter(Boolean).sort());
-check('holding and resuming keeps every topping and note',
-  back.join(' | ') === ['+ Kiwi', '+ Kiwi', '+ Lotus Biscuit, Banana · cut in four', 'grind fine'].sort().join(' | '), back.join(' | '));
+check('holding and resuming keeps every add-on and note', back.join(' | ') === ['+ Kiwi', '+ Lotus Biscuit · cut in four'].sort().join(' | '), back.join(' | '));
+await lineOpen(0);
+check('and the lines still offer their add-ons', !!(await page.$('.cart-line.open [data-addons]')));
 
 console.log('\n[paid]');
 await page.click('#checkout');
@@ -185,24 +182,12 @@ await page.waitForSelector('#pay-confirm');
 await page.click('#pay-confirm');
 await page.waitForSelector('.receipt', { timeout: 8000 });
 const receipt = (await page.textContent('.receipt')).replace(/\s+/g, ' ');
-check('the receipt lists the toppings and notes', receipt.includes('+ Lotus Biscuit, Banana · cut in four') && receipt.includes('grind fine'),
-  receipt.slice(0, 400));
+check('the receipt lists the add-ons and notes', receipt.includes('+ Lotus Biscuit · cut in four') && receipt.includes('+ Kiwi'), receipt.slice(0, 400));
 await page.click('.modal-head [data-close]');
 const sale = await api(`/api/sales/${(await api('/api/sales?limit=1'))[0].id}`);
 const crepe = sale.items.find((i) => i.note === 'cut in four');
-check('the sale keeps them, with the toppings in the price',
-  crepe && crepe.qty === 2 && Math.abs(crepe.unit_price - 7) < 0.01 && JSON.parse(crepe.addons).length === 2,
-  JSON.stringify(sale.items.map((i) => [i.name, i.size, i.addons, i.note, i.unit_price])));
-
-console.log('\n[a list taken away]');
-await api(`/api/addon-groups/${groups[0].id}`, 'DELETE');
-await page.reload(); // a till opened afresh reads the lists as they are now
-await page.waitForSelector('#tiles .tile');
-await page.fill('#scan', 'Nutella');
-await page.waitForSelector(`#tiles .tile[data-add="${nutella.id}"]:not([hidden])`);
-await page.click(`#tiles .tile[data-add="${nutella.id}"]`);
-await page.waitForSelector('.cart-line');
-check('the crêpe goes straight into the cart again', !(await page.$('.build')));
+check('the sale keeps them, with the add-ons in the price', crepe && Math.abs(crepe.unit_price - 6) < 0.01 && JSON.parse(crepe.addons).length === 1,
+  JSON.stringify(sale.items.map((i) => [i.name, i.addons, i.note, i.unit_price])));
 
 check('no page errors', errors.length === 0, errors.join(' | '));
 await browser.close();

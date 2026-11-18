@@ -18,6 +18,7 @@ const TABLES = [
   'consumptions',
   'recipe_lines',
   'product_attribute_values',
+  'addon_links',
   'attribute_values',
   'attributes',
   'payments',

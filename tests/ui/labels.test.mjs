@@ -114,7 +114,7 @@ await page.waitForSelector('#label-table tbody tr');
 check('a product joins the sheet with one label', (await page.$$('#label-table tbody tr')).length === 1 &&
   (await page.inputValue('#label-table [data-copies]')) === '1');
 const preview = await page.evaluate(() => {
-  const label = document.querySelector('#label-preview .label');
+  const label = document.querySelector('#label-preview .bc-label');
   const box = label.getBoundingClientRect();
   return {
     w: Math.round(box.width), h: Math.round(box.height),
@@ -141,7 +141,7 @@ check('and the name taken off', await page.evaluate(() => !document.querySelecto
 await page.check('#label-name');
 await page.fill('#label-h', '30');
 await page.waitForTimeout(300);
-const taller = await page.evaluate(() => Math.round(document.querySelector('#label-preview .label').getBoundingClientRect().height));
+const taller = await page.evaluate(() => Math.round(document.querySelector('#label-preview .bc-label').getBoundingClientRect().height));
 check('a different roll size is followed', Math.abs(taller - 113) <= 4, String(taller));
 await page.fill('#label-h', '20');
 await shot('161-labels-price');
@@ -149,7 +149,7 @@ await shot('161-labels-price');
 console.log('\n[printing]');
 await page.fill('#label-table [data-copies]', '3');
 await page.waitForTimeout(300);
-check('the sheet holds one label per copy', (await page.evaluate(() => document.querySelectorAll('#labels-sheet .label').length)) === 3);
+check('the sheet holds one label per copy', (await page.evaluate(() => document.querySelectorAll('#labels-sheet .bc-label').length)) === 3);
 await page.click('#labels-print');
 check('printing is asked for', (await page.evaluate(() => window.__prints)) === 1);
 check('the roll gap starts at nothing, so a page is one label', (await page.inputValue('#label-gap')) === '0');

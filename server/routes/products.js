@@ -8,6 +8,7 @@ const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 import { createAdjustment, writeAdjustment } from './adjustments.js';
 import { getList, pricesOf, recordPriceChange, setPrices } from './price-lists.js';
 import { onShelf, recipesEnabled } from './recipes.js';
+import { readFilters } from '../filters.js';
 import { attributesEnabled as attributesOn } from './attributes.js';
 
 
@@ -52,15 +53,8 @@ function setKinds(productId, body) {
   }
   if (body.made_to_order !== undefined) db.prepare(`UPDATE products SET stocked = ? WHERE id = ?`).run(flag(body.made_to_order) ? 0 : 1, productId);
   if (body.raw !== undefined) db.prepare(`UPDATE products SET raw = ? WHERE id = ?`).run(flag(body.raw), productId);
-}
-
-/** Which add-on list a product offers: one that exists, or none. */
-function setAddonGroup(productId, value) {
-  const id = value === '' || value === null ? null : Number(value) || null;
-  if (id && !db.prepare(`SELECT 1 FROM addon_groups WHERE id = ?`).get(id)) {
-    throw badRequest('That add-on list does not exist', 'ADDON_GROUP_NOT_FOUND');
-  }
-  db.prepare(`UPDATE products SET addon_group_id = ? WHERE id = ?`).run(id, productId);
+  // An add-on: added to other items' lines at the till, never a card of its own.
+  if (body.is_addon !== undefined) db.prepare(`UPDATE products SET is_addon = ? WHERE id = ?`).run(flag(body.is_addon), productId);
 }
 
 /**
@@ -200,6 +194,30 @@ function assertBarcodeFree(barcode, ignoreId = 0) {
   }
 }
 
+/**
+ * What the product list's filter builder can filter on: each with how to read it
+ * and what kind of value it is. Nothing else can be named.
+ */
+const FILTER_FIELDS = {
+  name: { sql: 'p.name', type: 'text' },
+  description: { sql: 'p.description', type: 'text' },
+  barcode: { sql: 'p.barcode', type: 'text' },
+  category: { sql: 'p.category', type: 'text' },
+  unit: { sql: 'p.unit', type: 'text' },
+  cost: { sql: 'p.cost', type: 'number' },
+  price: { sql: 'p.price', type: 'number' },
+  margin: { sql: 'CASE WHEN p.price > 0 THEN ROUND((p.price - p.cost) / p.price * 100, 1) ELSE 0 END', type: 'number' },
+  stock: { sql: 'COALESCE(s.stock, 0)', type: 'number' },
+  stock_value: { sql: 'ROUND(COALESCE(s.stock, 0) * p.cost, 2)', type: 'number' },
+  min_stock: { sql: 'p.min_stock', type: 'number' },
+  active: { sql: 'p.active = 1', type: 'bool' },
+  is_addon: { sql: 'p.is_addon = 1', type: 'bool' },
+  made_to_order: { sql: 'p.stocked = 0', type: 'bool' },
+  raw: { sql: 'p.raw = 1', type: 'bool' },
+  template: { sql: 'p.has_variants = 1', type: 'bool' },
+  variant: { sql: 'p.variant_of IS NOT NULL', type: 'bool' },
+};
+
 export function register(router) {
   router.get('/api/products', (ctx) => {
     const search = str(ctx.query.search);
@@ -207,7 +225,11 @@ export function register(router) {
     const lowStock = ctx.query.low === '1';
     const where = [];
     const args = [];
-    if (onlyActive) where.push('p.active = 1');
+    // The filter builder's conditions. One on Active decides that for itself.
+    const built = readFilters(ctx.query.filters, FILTER_FIELDS);
+    if (onlyActive && !built.fields.includes('active')) where.push('p.active = 1');
+    where.push(...built.where);
+    args.push(...built.args);
     // Every word typed must appear somewhere: name, a barcode, category or description.
     // "coffee 500" finds "Ground Coffee 500g" however the words are ordered.
     for (const word of search.split(/\s+/).filter(Boolean).slice(0, 6)) {
@@ -221,6 +243,8 @@ export function register(router) {
     if (lowStock) where.push(`COALESCE(s.stock, 0) <= p.min_stock AND ${onShelf()}`);
     // Selling: an ingredient is not for sale, while recipes are switched on.
     if (ctx.query.sale === '1' && recipesEnabled()) where.push('p.raw = 0');
+    // The till's cards: an add-on is added to a line, not sold as a card.
+    if (ctx.query.sale === '1' && ctx.query.templates === '1') where.push('p.is_addon = 0');
     // Anything bought, counted or sold line by line: a template is none of those.
     if (ctx.query.leaf === '1') where.push('p.has_variants = 0');
     // The till: a template stands for its variants, which it asks for when tapped.
@@ -470,7 +494,6 @@ export function register(router) {
         );
       const id = lastId(res);
       setBarcodes(id, extra);
-      if (ctx.body.addon_group_id !== undefined) setAddonGroup(id, ctx.body.addon_group_id);
       setKinds(id, ctx.body);
       setPrices(id, ctx.body.prices, ctx.user.id);
 
@@ -606,7 +629,6 @@ export function register(router) {
         existing.id,
       );
       setBarcodes(existing.id, extra);
-      if (ctx.body.addon_group_id !== undefined) setAddonGroup(existing.id, ctx.body.addon_group_id);
       setKinds(existing.id, ctx.body);
       if (ctx.body.prices !== undefined) setPrices(existing.id, ctx.body.prices, ctx.user.id);
       // The product's own price and cost are the main list's prices: their
@@ -732,6 +754,8 @@ export function register(router) {
     const where = [`active = 1`, `TRIM(category) <> ''`];
     if (ctx.query.sale === '1' && recipesEnabled()) where.push('raw = 0');
     if (ctx.query.templates === '1' && attributesOn()) where.push('variant_of IS NULL');
+    // Add-ons are added to lines, not shown as cards: no chip for theirs.
+    if (ctx.query.sale === '1' && ctx.query.templates === '1') where.push('is_addon = 0');
     return db
       .prepare(
         `SELECT category AS name, COUNT(*) AS n FROM products

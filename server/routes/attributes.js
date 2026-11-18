@@ -101,7 +101,7 @@ function valuesOf(productId) {
 export function loadVariants(templateId, { activeOnly = false } = {}) {
   const variants = db
     .prepare(
-      `SELECT p.id, p.name, p.barcode, p.price, p.cost, p.active, p.stocked, p.raw, p.unit, p.addon_group_id, p.has_variants, COALESCE(s.stock, 0) AS stock
+      `SELECT p.id, p.name, p.barcode, p.price, p.cost, p.active, p.stocked, p.raw, p.unit, p.category, p.variant_of, p.has_variants, COALESCE(s.stock, 0) AS stock
        FROM products p LEFT JOIN product_stock s ON s.product_id = p.id
        WHERE p.variant_of = ? ${activeOnly ? 'AND p.active = 1' : ''} ORDER BY p.id`,
     )
@@ -225,8 +225,8 @@ export function register(router) {
       const link = db.prepare(`INSERT OR IGNORE INTO product_attribute_values (product_id, value_id) VALUES (?, ?)`);
       for (const id of valueIds) link.run(template.id, id);
       const insert = db.prepare(
-        `INSERT INTO products (name, description, category, unit, cost, price, min_stock, active, stocked, raw, addon_group_id, variant_of, variant_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?, ?)`,
+        `INSERT INTO products (name, description, category, unit, cost, price, min_stock, active, stocked, raw, variant_of, variant_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?)`,
       );
       let created = 0;
       for (const combo of combos) {
@@ -242,7 +242,6 @@ export function register(router) {
             money(template.price),
             template.min_stock,
             template.stocked ?? 1,
-            template.addon_group_id ?? null,
             template.id,
             key,
           ),

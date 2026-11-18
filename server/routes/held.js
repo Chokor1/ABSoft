@@ -34,7 +34,7 @@ export function readCart(body) {
 
   const names = [];
   const items = lines.map((line) => {
-    const product = db.prepare(`SELECT id, name FROM products WHERE id = ?`).get(num(line.product_id));
+    const product = db.prepare(`SELECT id, name, category, variant_of FROM products WHERE id = ?`).get(num(line.product_id));
     if (!product) throw badRequest('Unknown product in the cart', 'CART_UNKNOWN_PRODUCT');
     const quantity = qty(num(line.qty));
     if (quantity <= 0) {
@@ -42,7 +42,7 @@ export function readCart(body) {
     }
     names.push(`${product.name} × ${quantity}`);
     // Toppings and the note go aside with the line, by name and price.
-    const addons = readLineAddons(line.addons).map(({ id, name, price }) => ({ id, name, price }));
+    const addons = readLineAddons(line.addons, product).map(({ id, name, price }) => ({ id, name, price }));
     const note = str(line.note).slice(0, 200);
     return {
       product_id: product.id,
@@ -80,7 +80,7 @@ export function restoreLines(lines) {
     // The name and the stock are today's; the price is the one it was held at.
     const product = db
       .prepare(
-        `SELECT p.id, p.name, p.unit, p.price, p.stocked, COALESCE(s.stock, 0) AS stock FROM products p
+        `SELECT p.id, p.name, p.unit, p.price, p.stocked, p.category, p.variant_of, COALESCE(s.stock, 0) AS stock FROM products p
          LEFT JOIN product_stock s ON s.product_id = p.id WHERE p.id = ?`,
       )
       .get(line.product_id);
@@ -93,6 +93,8 @@ export function restoreLines(lines) {
       name: product.name,
       unit: product.unit,
       stocked: product.stocked,
+      category: product.category,
+      variant_of: product.variant_of,
       stock: num(product.stock),
       price: num(product.price),
     });
