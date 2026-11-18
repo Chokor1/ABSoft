@@ -1,7 +1,7 @@
 ﻿import { db, getSettings, lastId, transact } from '../db.js';
 import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str, today } from '../util.js';
+import { isoDate, localClock, money, nextDocNo, num, pageParams, pageResult, qty, str, today } from '../util.js';
 import { secondCurrency, toBase, toSecond } from '../currency.js';
 import { applyAverageCost } from '../costing.js';
 import { openShift, shiftsEnabled } from './shifts.js';
@@ -235,8 +235,8 @@ export function register(router) {
       const docNo = str(ctx.body.doc_no) || nextDocNo(db, 'sales', 'INV');
       const res = db
         .prepare(
-          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2, shift_id, price_list_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2, shift_id, price_list_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
         )
         .run(
           docNo,
@@ -287,7 +287,7 @@ export function register(router) {
             saleId,
             `${docNo}${customer ? ' · ' + customer : ''}`,
             ctx.user.id,
-            `${date} ${new Date().toISOString().slice(11, 19)}`,
+            `${date} ${localClock()}`,
           );
         }
         recordEstimatedUse({
@@ -301,7 +301,7 @@ export function register(router) {
         for (const addon of line.addons) {
           if (keepsStock(addon)) {
             insertMove.run(addon.id, -line.qty, addon.cost, saleId, `${docNo} · ${line.product.name}`, ctx.user.id,
-              `${date} ${new Date().toISOString().slice(11, 19)}`);
+              `${date} ${localClock()}`);
           }
           recordEstimatedUse({ saleId, saleItemId: lastId(itemRes), productId: addon.id, quantity: line.qty, stamp: usedAt });
         }
@@ -310,8 +310,8 @@ export function register(router) {
       // currency. Anything above the total is change, not an overpayment, so the
       // rows stop at the total.
       const insertPayment = db.prepare(
-        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id)
-         VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id, created_at)
+         VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
       );
       let owed = total;
       for (const tender of tenders) {
@@ -373,8 +373,8 @@ export function register(router) {
 
     return transact(() => {
       db.prepare(
-        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
       ).run(
         sale.id,
         amount,
@@ -449,14 +449,14 @@ export function register(router) {
     if (inSecond && !second) throw badRequest('The second currency is not switched on', 'SECOND_CURRENCY_OFF');
     const shift = openShift();
     const date = today();
-    const stamp = `${date} ${new Date().toISOString().slice(11, 19)}`;
+    const stamp = `${date} ${localClock()}`;
 
     const doc = transact(() => {
       const docNo = nextReturnNo();
       const res = db
         .prepare(
-          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2, shift_id, kind, return_of)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 'return', ?)`,
+          `INSERT INTO sales (doc_no, customer, date, subtotal, discount, tax, total, cogs, paid, method, note, user_id, rate2, shift_id, kind, return_of, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 'return', ?, datetime('now', 'localtime'))`,
         )
         .run(
           docNo, sale.customer, date, -subtotal, -discount, -tax, -total, -cogs,
@@ -486,8 +486,8 @@ export function register(router) {
       // the open shift's drawer. "credit" leaves it owed to the customer instead.
       if (method !== 'credit' && total > 0) {
         db.prepare(
-          `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id)
-           VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+          `INSERT INTO payments (sale_id, amount, method, date, note, user_id, currency, amount2, rate, shift_id, created_at)
+           VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
         ).run(
           id, -total, method, date, ctx.user.id,
           inSecond ? 'second' : '', inSecond ? -toSecond(total, second) : null, inSecond ? second.rate : null, shift?.id ?? null,

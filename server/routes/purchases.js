@@ -2,7 +2,7 @@ import { applyAverageCost } from '../costing.js';
 import { db, lastId, transact } from '../db.js';
 import { canonicalName, rememberEntity } from '../entities.js';
 import { badRequest, notFound } from '../http.js';
-import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
+import { isoDate, localClock, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
 import { priceListId } from './price-lists.js';
 
 const LIST_SQL = `
@@ -145,7 +145,7 @@ function diffPurchase(before, after) {
   return { fields, lines, total };
 }
 
-const nowTime = () => new Date().toISOString().slice(11, 19);
+const nowTime = localClock;
 
 export function register(router) {
   router.get('/api/purchases', (ctx) => {

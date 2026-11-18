@@ -27,6 +27,12 @@ export const today = () => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 
+/** This computer's clock, HH:MM:SS: the time beside a document's date on what it moved. */
+export const localClock = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(11, 19);
+};
+
 /** A YYYY-MM-DD date moved by a number of days. */
 export function shiftDays(iso, days) {
   const d = new Date(`${iso}T00:00:00Z`);

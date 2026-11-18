@@ -1,7 +1,7 @@
 import { applyAverageCost } from '../costing.js';
 import { db, lastId, transact } from '../db.js';
 import { badRequest, notFound } from '../http.js';
-import { isoDate, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
+import { isoDate, localClock, money, nextDocNo, num, pageParams, pageResult, qty, str } from '../util.js';
 
 const LIST_SQL = `
   SELECT a.*, u.username, u.full_name,
@@ -99,7 +99,7 @@ export function writeAdjustment({ date, reason, note, items, type }, userId) {
     `INSERT INTO stock_moves (product_id, qty, unit_cost, kind, ref_table, ref_id, note, user_id, created_at)
      VALUES (?, ?, ?, ?, 'adjustments', ?, ?, ?, ?)`,
   );
-  const time = new Date().toISOString().slice(11, 19);
+  const time = localClock();
   const label = [docNo, cleanReason, str(note)].filter(Boolean).join(' · ');
   // Only lines that move stock are kept; a count that matched needs no record.
   for (const line of moving) {

@@ -648,6 +648,19 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    // A sale's and a payment's time were kept in UTC while everything else keeps
+    // this computer's own time, so a receipt read two hours early in Lebanon.
+    // From now on they are written in local time; the ones already written are
+    // moved to it here, by this computer's time zone.
+    name: 'local-sale-times',
+    up: (db) => {
+      db.exec(`
+        UPDATE sales    SET created_at = datetime(created_at, 'localtime') WHERE created_at IS NOT NULL AND created_at <> '';
+        UPDATE payments SET created_at = datetime(created_at, 'localtime') WHERE created_at IS NOT NULL AND created_at <> '';
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

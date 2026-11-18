@@ -193,7 +193,7 @@ export function register(router) {
     if (!shift) throw notFound('Shift not found', 'SHIFT_NOT_FOUND');
     const sales = db
       .prepare(
-        `SELECT id, doc_no, customer, total, paid, method, datetime(created_at, 'localtime') AS created_at FROM sales
+        `SELECT id, doc_no, customer, total, paid, method, created_at FROM sales
          WHERE shift_id = ? ORDER BY id DESC LIMIT 500`,
       )
       .all(shift.id);

@@ -243,7 +243,7 @@ function paintPrintFrame() {
       ${store.settings.receipt_footer ? `<small>${esc(store.settings.receipt_footer)}</small>` : ''}
     </div>
     <div class="spacer"></div>
-    <div class="print-when">${esc(dateTimeText(new Date().toISOString().slice(0, 19).replace('T', ' ')))}</div>`;
+    <div class="print-when">${esc(dateTimeText(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ')))}</div>`;
   foot.innerHTML = `<img src="/img/logo-mark.svg" alt="" />
     <span>${esc(t('print.by', { v: store.version || '' }))}</span>`;
 }
