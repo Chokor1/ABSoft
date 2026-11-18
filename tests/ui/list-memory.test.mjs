@@ -60,7 +60,7 @@ check('the second page is showing', (await pageLabel()).includes('2'), await pag
 await page.click('table.data tbody tr');
 await page.waitForSelector('.doc-head, #page-form, .product-hero', { timeout: 8000 });
 check('a product opens', page.url().includes('#/products/'), page.url());
-await page.click('[data-back], .doc-head [data-back]').catch(() => page.goBack());
+await page.click('#back, [data-back]').catch(() => page.goBack());
 await page.waitForSelector('table.data tbody tr', { timeout: 8000 });
 check('coming back lands on the page you left, not the first',
   (await pageLabel()).includes('2') && (await firstRow()) === onPageTwo, `${await pageLabel()} · ${await firstRow()}`);
@@ -80,12 +80,26 @@ const deepRow = await page.evaluate(() => {
 });
 await page.waitForSelector('.product-hero, #page-form', { timeout: 8000 });
 check('a row well down the list opens', (await page.textContent('#page')).includes(deepRow), deepRow);
-await page.click('[data-back]').catch(() => page.goBack());
+await page.click('#back, [data-back]').catch(() => page.goBack());
 await page.waitForSelector('table.data tbody tr', { timeout: 8000 });
 await page.waitForTimeout(400);
 check('coming back keeps the rows where they were, not at the top',
   Math.abs((await rowsTop()) - scrolledTo) <= 4, `${scrolledTo} -> ${await rowsTop()}`);
 await shot('171-list-scroll');
+
+// Looking around the product — its tabs, its fields — must not cost the list
+// its place: the page behind both is one and the same.
+await page.evaluate(() => document.querySelector('.table-scroll').scrollTop = 450);
+await page.waitForTimeout(300);
+await page.evaluate(() => document.querySelector('table.data tbody tr').click());
+await page.waitForSelector('#tabs [data-tab]', { timeout: 8000 });
+await page.click('#tabs [data-tab=movements]');
+await page.waitForTimeout(900);
+await page.click('#back'); // the arrow at the head of a product
+await page.waitForSelector('table.data tbody tr', { timeout: 8000 });
+await page.waitForTimeout(600);
+check('wandering around the product leaves the list where it was',
+  Math.abs((await rowsTop()) - 450) <= 4, String(await rowsTop()));
 
 console.log('\n[a new page of rows starts at the top]');
 await page.click('.pager-nav [data-go="3"]');
@@ -99,7 +113,7 @@ await page.waitForTimeout(700);
 const searched = await pageLabel();
 await page.click('table.data tbody tr');
 await page.waitForSelector('.product-hero, #page-form', { timeout: 8000 });
-await page.click('[data-back]').catch(() => page.goBack());
+await page.click('#back, [data-back]').catch(() => page.goBack());
 await page.waitForSelector('#search', { timeout: 8000 });
 check('the search box still holds what was typed', (await page.inputValue('#search')) === 'a', await page.inputValue('#search'));
 check('and the same rows are listed', (await pageLabel()) === searched, `${searched} → ${await pageLabel()}`);

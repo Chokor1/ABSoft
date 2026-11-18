@@ -644,8 +644,14 @@ export function listScroll(key, root) {
    * by a previous list is taken off first — otherwise the suppliers on screen
    * now would be writing down the customers' place.
    */
+  // The list's own first box, as proof it is still the thing on screen. Open a
+  // product and the page is rebuilt around it: this box is then off the page,
+  // and the watchers a list left behind fall silent instead of writing down the
+  // product page's place — which is how a list used to lose where it was.
+  let mine = null;
+  const showing = () => !!mine && mine.isConnected;
   const watch = () => {
-    if (!restored) return; // nothing worth keeping until this screen has settled
+    if (!restored || !showing()) return; // nothing to keep until this list settles
     write(here());
   };
   if (root.listScrollWatchers) {
@@ -654,7 +660,9 @@ export function listScroll(key, root) {
     root.removeEventListener('scroll', old.scroll, true);
     window.removeEventListener('scroll', old.scroll);
   }
-  const onClick = () => write(here());
+  const onClick = () => {
+    if (showing()) write(here());
+  };
   root.listScrollWatchers = { click: onClick, scroll: watch };
   root.addEventListener('click', onClick, true);
   // The rows scroll inside their own section, which does not bubble; the page
@@ -674,10 +682,12 @@ export function listScroll(key, root) {
     restore() {
       const rows = area();
       if (restored) {
+        mine = root.firstElementChild;
         if (rows) rows.scrollTop = 0; // a new page of rows starts at its top
         return;
       }
       restored = true;
+      mine = root.firstElementChild;
       let saved = null;
       try {
         saved = JSON.parse(sessionStorage.getItem(SCROLL_KEY) || 'null');
