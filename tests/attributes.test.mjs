@@ -124,6 +124,9 @@ try {
   check('a template ranks by what its variants sold', popular[0].id === juice.id, JSON.stringify(ids(popular)));
   check('everywhere else, the variants are listed', (await get('/api/products?limit=50')).filter((p) => p.variant_of === juice.id).length === 6);
   check('and a document picker leaves the template out', !ids(await get('/api/products?leaf=1&limit=50')).includes(juice.id));
+  const cats = await get('/api/categories/in-use?sale=1&templates=1');
+  check('the till counts a template once in its category, not each variant', cats.find((c) => c.name === 'Juices')?.n === 1, JSON.stringify(cats));
+  check('a template never runs low', !(await get('/api/products?stock=restock&page=1&per=100')).rows.some((p) => p.id === juice.id));
   check('a template\'s variants, asked for', (await get(`/api/products?variant_of=${juice.id}&limit=50`)).length === 6);
   check('the till asks for the active ones', (await get(`/api/products/${juice.id}/variants?active=1`)).variants.length === 6);
 

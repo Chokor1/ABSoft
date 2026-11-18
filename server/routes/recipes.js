@@ -40,6 +40,14 @@ export const useStamp = () => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 23).replace('T', ' ');
 };
 
+/**
+ * SQL: the products that sit on a shelf, so can run low. Not a template (its
+ * variants are what is stocked), nor — with recipes on — something made to order.
+ * With neither feature in use, that is every product, as before.
+ */
+export const onShelf = (alias = 'p') =>
+  `${alias}.has_variants = 0${recipesEnabled() ? ` AND ${alias}.stocked <> 0` : ''}`;
+
 /** Does this product keep stock of its own? Always, while recipes are switched off. */
 export const keepsStock = (product) => !recipesEnabled() || num(product?.stocked ?? 1) !== 0;
 

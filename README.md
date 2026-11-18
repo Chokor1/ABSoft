@@ -33,13 +33,18 @@ Requires Node.js 22.5 or newer (tested on Node 24).
 ### Try it with demo data
 
 ```
-npm run seed                          # ~10 products, 3 restocks, a month of sales and expenses
+npm run seed                          # a juice, crêpe and saj bar: its menu, recipes and a month of sales
 npm run demo:products                 # 131 products in 20 categories, with opening stock
 npm run demo:products -- --remove     # take those 131 out again
 npm run reset                         # wipe all business data, keep users and settings
 ```
 
-`seed` only does anything on an empty catalogue. `demo:products` can be added to a
+`seed` only does anything on an empty catalogue. It loads a juice bar's real menu — 19 fresh
+juices in S, M, L and Bottle (each a template with its variants), milkshakes, smoothies, crêpes
+with a toppings list, saj manakish and soft drinks — with 44 raw materials and a recipe for every
+item, five weeks of sales, weekly market purchases and a reconciliation done a week ago. It
+switches on what that shop uses: attributes, recipes, categories at the till and L.L beside $.
+(The test suites load their own small catalogue, `server/tools/seed-classic.js`.) `demo:products` can be added to a
 database that already has real products: it skips anything already there, and its
 barcodes sit in the 200 in-store range, so they never collide with a real item. Removing
 them deletes the untouched ones and archives any that were already sold or bought, so no

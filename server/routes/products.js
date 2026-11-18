@@ -7,8 +7,8 @@ import { dateRange, ean13Check, money, num, pageParams, pageResult, qty, require
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 import { createAdjustment, writeAdjustment } from './adjustments.js';
 import { getList, pricesOf, recordPriceChange, setPrices } from './price-lists.js';
-import { recipesEnabled } from './recipes.js';
-import { attributesEnabled } from './attributes.js';
+import { onShelf, recipesEnabled } from './recipes.js';
+import { attributesEnabled as attributesOn } from './attributes.js';
 
 
 const SELECT_PRODUCT = `
@@ -218,13 +218,13 @@ export function register(router) {
       const like = `%${word}%`;
       args.push(like, like, like, like, like);
     }
-    if (lowStock) where.push('COALESCE(s.stock, 0) <= p.min_stock');
+    if (lowStock) where.push(`COALESCE(s.stock, 0) <= p.min_stock AND ${onShelf()}`);
     // Selling: an ingredient is not for sale, while recipes are switched on.
     if (ctx.query.sale === '1' && recipesEnabled()) where.push('p.raw = 0');
     // Anything bought, counted or sold line by line: a template is none of those.
     if (ctx.query.leaf === '1') where.push('p.has_variants = 0');
     // The till: a template stands for its variants, which it asks for when tapped.
-    if (ctx.query.templates === '1' && attributesEnabled()) where.push('p.variant_of IS NULL');
+    if (ctx.query.templates === '1' && attributesOn()) where.push('p.variant_of IS NULL');
     // A template's variants, for its picker.
     if (num(ctx.query.variant_of) > 0) (where.push('p.variant_of = ?'), args.push(num(ctx.query.variant_of)));
     // A document re-pricing its lines asks for exactly those products.
@@ -238,11 +238,12 @@ export function register(router) {
     if (str(ctx.query.category)) (where.push('p.category = ? COLLATE NOCASE'), args.push(str(ctx.query.category)));
     // What is on the shelf: running low, none left, or some in hand.
     const stock = str(ctx.query.stock);
-    if (stock === 'low') where.push('COALESCE(s.stock, 0) <= p.min_stock AND COALESCE(s.stock, 0) > 0');
-    if (stock === 'out') where.push('COALESCE(s.stock, 0) <= 0');
+    // Only what sits on a shelf runs low or out: not a template, nor (recipes on) what is made to order.
+    if (stock === 'low') where.push(`COALESCE(s.stock, 0) <= p.min_stock AND COALESCE(s.stock, 0) > 0 AND ${onShelf()}`);
+    if (stock === 'out') where.push(`COALESCE(s.stock, 0) <= 0 AND ${onShelf()}`);
     if (stock === 'in') where.push('COALESCE(s.stock, 0) > 0');
     // Low or out: everything at or below its minimum — what the menu badge counts.
-    if (stock === 'restock') where.push('COALESCE(s.stock, 0) <= p.min_stock');
+    if (stock === 'restock') where.push(`COALESCE(s.stock, 0) <= p.min_stock AND ${onShelf()}`);
 
     const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
     // A search puts the closest matches first: the exact barcode or name, then
@@ -725,13 +726,18 @@ export function register(router) {
    * each with how many, in name order. A category with nothing in it would
    * only be a button that leads nowhere.
    */
-  router.get('/api/categories/in-use', () =>
-    db
+  router.get('/api/categories/in-use', (ctx) => {
+    // The till's row counts what the till shows: no raw materials (recipes on),
+    // and a template once rather than each of its variants (attributes on).
+    const where = [`active = 1`, `TRIM(category) <> ''`];
+    if (ctx.query.sale === '1' && recipesEnabled()) where.push('raw = 0');
+    if (ctx.query.templates === '1' && attributesOn()) where.push('variant_of IS NULL');
+    return db
       .prepare(
         `SELECT category AS name, COUNT(*) AS n FROM products
-         WHERE active = 1 AND TRIM(category) <> ''
+         WHERE ${where.join(' AND ')}
          GROUP BY category COLLATE NOCASE ORDER BY category COLLATE NOCASE`,
       )
-      .all(),
-  );
+      .all();
+  });
 }

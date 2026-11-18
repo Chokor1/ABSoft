@@ -1,6 +1,6 @@
 {
   "name": "absoft",
-  "version": "1.36.0",
+  "version": "1.37.0",
   "description": "ABSoft POS — a small, modern point of sale system with inventory, expenses and profit & loss reporting.",
   "author": "Abbass Chokor",
   "type": "module",

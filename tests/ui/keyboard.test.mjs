@@ -18,7 +18,7 @@ let pass = 0, fail = 0;
 const check = (l, c, d = '') => { if (c) { pass++; console.log(`  PASS  ${l}`); } else { fail++; console.log(`  FAIL  ${l} ${d}`); } };
 
 rmSync(DATA, { recursive: true, force: true });
-const seed = spawn('node', ['--no-warnings', 'server/tools/seed.js'], { cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA } });
+const seed = spawn('node', ['--no-warnings', 'server/tools/seed-classic.js'], { cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA } });
 await new Promise((r) => seed.on('exit', r));
 const server = spawn('node', ['--no-warnings', 'server/index.js'], {
   cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'],

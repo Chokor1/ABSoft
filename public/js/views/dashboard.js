@@ -87,7 +87,7 @@ export async function render(root, ctx) {
               inventory.retail_value,
             )}</span></div>
             <div class="pnl-row"><span>${esc(t('dash.potential_margin'))}</span><span class="v money-pos">${money(
-              inventory.retail_value - inventory.stock_value,
+              inventory.retail_value - (inventory.retail_cost ?? inventory.stock_value),
             )}</span></div>
             <div class="pnl-row"><span>${esc(t('dash.low_alerts'))}</span><span class="v ${
               inventory.low_stock ? 'money-neg' : 'muted'

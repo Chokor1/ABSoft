@@ -275,7 +275,7 @@ export async function render(root, ctx) {
       bar.innerHTML = chip('', t('pos.all_categories')) + cats.map((c) => chip(c.name, c.name, c.n)).join('');
     };
     api
-      .categoriesInUse()
+      .categoriesInUse(SELLING)
       .then(paintCats)
       .catch(() => paintCats([]));
     bar.addEventListener('click', (e) => {

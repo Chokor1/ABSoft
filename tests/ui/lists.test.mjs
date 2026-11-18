@@ -21,7 +21,7 @@ let pass = 0, fail = 0;
 const check = (l, c, d = '') => { if (c) { pass++; console.log(`  PASS  ${l}`); } else { fail++; console.log(`  FAIL  ${l} ${d}`); } };
 
 rmSync(DATA, { recursive: true, force: true });
-for (const tool of ['seed.js', 'demo-products.js']) {
+for (const tool of ['seed-classic.js', 'demo-products.js']) {
   const child = spawn('node', ['--no-warnings', `server/tools/${tool}`], { cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA } });
   await new Promise((r) => child.on('exit', r));
 }

@@ -105,6 +105,13 @@ try {
   // Going short does not apply to something made to order, even with nothing "in stock".
   const crepe = (await call('POST', '/api/products', { name: 'Crêpe', price: 4, made_to_order: true })).data;
   r = await sell([{ product_id: crepe.id, qty: 3, unit_price: 4 }]);
+  const restock = (await get('/api/products?stock=restock&page=1&per=100')).rows;
+  check('something made to order never runs low: it has no shelf', !restock.some((p) => p.id === crepe.id), JSON.stringify(restock.map((p) => p.name)));
+  await call('PUT', `/api/products/${banana.id}`, { category: 'Raw materials' });
+  await call('PUT', `/api/products/${crepe.id}`, { category: 'Crêpes' });
+  const cats = await get('/api/categories/in-use?sale=1');
+  check("the till's categories leave the raw materials out", cats.some((c) => c.name === 'Crêpes') && !cats.some((c) => c.name === 'Raw materials'), JSON.stringify(cats));
+  check('elsewhere they are listed', (await get('/api/categories/in-use')).some((c) => c.name === 'Raw materials'));
   check('a made-to-order product with no recipe sells too, at its own cost, and moves nothing', r.status === 200 && (await stockOf(crepe.id)) === 0,
     JSON.stringify(r.data).slice(0, 200));
 

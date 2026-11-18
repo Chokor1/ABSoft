@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import { onShelf, recipesEnabled } from './recipes.js';
 import { dateRange, money, num, pageParams, pageResult, shiftDays, str, today } from '../util.js';
 
 const round = (n) => money(num(n));
@@ -231,9 +232,12 @@ export function register(router) {
     const inventory = db
       .prepare(
         `SELECT COUNT(*) AS products,
-                COALESCE(SUM(CASE WHEN COALESCE(s.stock, 0) <= p.min_stock THEN 1 ELSE 0 END), 0) AS low_stock,
+                COALESCE(SUM(CASE WHEN COALESCE(s.stock, 0) <= p.min_stock AND ${onShelf()} THEN 1 ELSE 0 END), 0) AS low_stock,
                 ROUND(COALESCE(SUM(COALESCE(s.stock, 0) * p.cost), 0), 2) AS stock_value,
-                ROUND(COALESCE(SUM(COALESCE(s.stock, 0) * p.price), 0), 2) AS retail_value
+                ROUND(COALESCE(SUM(COALESCE(s.stock, 0) * p.price), 0), 2) AS retail_value,
+                -- What the stock that is sold as it is cost: the margin is on those alone.
+                -- With recipes on, raw materials are used, not sold, so they are left out.
+                ROUND(COALESCE(SUM(CASE WHEN ${recipesEnabled() ? 'p.raw = 0' : '1'} THEN COALESCE(s.stock, 0) * p.cost ELSE 0 END), 0), 2) AS retail_cost
          FROM products p LEFT JOIN product_stock s ON s.product_id = p.id
          WHERE p.active = 1`,
       )
@@ -250,7 +254,7 @@ export function register(router) {
         .prepare(
           `SELECT p.id, p.name, p.unit, p.min_stock, COALESCE(s.stock, 0) AS stock
            FROM products p LEFT JOIN product_stock s ON s.product_id = p.id
-           WHERE p.active = 1 AND COALESCE(s.stock, 0) <= p.min_stock
+           WHERE p.active = 1 AND COALESCE(s.stock, 0) <= p.min_stock AND ${onShelf()}
            ORDER BY (COALESCE(s.stock, 0) - p.min_stock) LIMIT 8`,
         )
         .all(),

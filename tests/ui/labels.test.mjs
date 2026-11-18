@@ -66,7 +66,7 @@ check('a long run of digits is packed two to a symbol',
 
 /* ------------------------------------------------------------- the screen */
 rmSync(DATA, { recursive: true, force: true });
-const seed = spawn('node', ['--no-warnings', 'server/tools/seed.js'], { cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA } });
+const seed = spawn('node', ['--no-warnings', 'server/tools/seed-classic.js'], { cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA } });
 await new Promise((r) => seed.on('exit', r));
 const server = spawn('node', ['--no-warnings', 'server/index.js'], {
   cwd: APP, env: { ...process.env, ABSOFT_DATA: DATA, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'],
