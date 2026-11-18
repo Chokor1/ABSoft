@@ -587,19 +587,34 @@ for (const [w, h, label] of [[1024, 800, 'tablet'], [390, 844, 'phone']]) {
     const fields = [...document.querySelectorAll('#cart-lines .cart-line:first-child .cl-field')]
       .map((f) => f.getBoundingClientRect())
       .filter((f) => f.width > 0);
+    const pay = box('#checkout');
     return {
       overflow: document.body.scrollWidth > document.documentElement.clientWidth + 1,
       cartBelowScan: cart.top >= scanBar.bottom - 1,
       tilesBelowCart: tiles.top >= cart.bottom - 1,
+      cartBeside: cart.left >= tiles.right - 1 || cart.right <= tiles.left + 1,
+      pageScrolls: document.documentElement.scrollHeight > innerHeight + 1,
+      payOnScreen: pay.height > 0 && pay.bottom <= innerHeight + 1,
       cartFits: cart.right <= document.documentElement.clientWidth + 1 && cart.left >= -1,
       fieldsFit: fields.every((f) => f.right <= cart.right + 1 && f.left >= cart.left - 1),
     };
   });
   check(`${label}: no sideways scrolling`, !layout.overflow, JSON.stringify(layout));
-  check(`${label}: the cart comes straight after the search`, layout.cartBelowScan, JSON.stringify(layout));
-  check(`${label}: products follow the cart`, layout.tilesBelowCart, JSON.stringify(layout));
   check(`${label}: the cart fits the screen`, layout.cartFits, JSON.stringify(layout));
   check(`${label}: line fields fit inside the cart`, layout.fieldsFit, JSON.stringify(layout));
+
+  if (label === 'tablet') {
+    // A square screen keeps the till on one screen: the cart beside the products, the pay button in view.
+    check('tablet: the cart sits beside the products', layout.cartBeside, JSON.stringify(layout));
+    check('tablet: the page does not scroll', !layout.pageScrolls, JSON.stringify(layout));
+    check('tablet: Make payment is on screen', layout.payOnScreen, JSON.stringify(layout));
+    check('no phone bar on a larger screen', !(await page.isVisible('#pos-bar')));
+    await shot('94-till-tablet');
+    await page.click('#clear-cart');
+    continue;
+  }
+  check(`${label}: the cart comes straight after the search`, layout.cartBelowScan, JSON.stringify(layout));
+  check(`${label}: products follow the cart`, layout.tilesBelowCart, JSON.stringify(layout));
 
   await page.evaluate(() => window.scrollTo(0, 1200));
   await page.waitForTimeout(300);
